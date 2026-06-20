@@ -78,16 +78,5 @@ export interface TimeoutRange {
   end: number;
 }
 
-export interface ViolinBucket {
-  ts: number;
-  values: number[];
-}
 
-export interface ViolinSeries {
-  dns_server: string;
-  color: string;
-  xOffsetSec: number;
-  skipTs: Set<number>;
-  buckets: ViolinBucket[];
-}
 
