@@ -27,7 +27,10 @@ export function parseTsv(text: string): DnsRecord[] {
 
       if (isDomainColumn(cols[2])) {
         const domain = cols[2];
-        if (cols[4]) return { ts, dns_server, domain, error: cols[4] };
+        if (cols[4]) {
+          const duration_ms = cols[3] ? Number(cols[3]) : undefined;
+          return { ts, dns_server, domain, error: cols[4], duration_ms };
+        }
         return { ts, dns_server, domain, latency_ms: Number(cols[3]) };
       }
       if (cols.length >= 4 && cols[3]) {

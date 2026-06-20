@@ -4,21 +4,17 @@ import {
   type TooltipItem,
 } from "chart.js";
 import { SERVER_COLORS } from "../constants.ts";
-import {
-  averageAt,
-  collectTimestamps,
-  failurePointsAt,
-  latencyValuesAt,
-  violinDataAt,
-} from "./latency-data.ts";
+import { latencyValuesAt } from "./latency-data.ts";
+import { buildViolinSeries } from "./violin-overlay.ts";
 import { chartTimeBounds, fmtAxisTick, fmtJst } from "../time.ts";
 import type {
   AggregatedSuccess,
   DnsFailureRecord,
   DnsRecord,
   DnsSuccessRecord,
+  FailurePoint,
 } from "../types.ts";
-import { timeoutRanges, withAlpha } from "../utils.ts";
+import { timeoutRanges, timeoutSpansForServer, withGaps } from "../utils.ts";
 
 function isSuccess(r: DnsRecord): r is DnsSuccessRecord {
   return !r.error;
@@ -36,38 +32,24 @@ export function buildLatencyChart(
   failures: DnsFailureRecord[],
   dataCutoffTs: number,
 ): void {
-  const xBounds = chartTimeBounds();
-  const timestamps = collectTimestamps(rawRecords, xBounds);
   const servers = [...new Set(rawRecords.filter(isSuccess).map((r) => r.dns_server))].sort();
   const datasets: ChartConfiguration["data"]["datasets"] = [];
+  const skipSpansByServer = new Map<string, { start: number; end: number }[]>();
 
   servers.forEach((server, index) => {
     const color = SERVER_COLORS[index % SERVER_COLORS.length];
-    const skipTs = new Set(
-      failures
-        .filter((r) => r.dns_server === server && r.error === "timeout")
-        .map((r) => r.ts),
-    );
+    const spans = timeoutSpansForServer(failures, server);
+    skipSpansByServer.set(server, spans);
 
     datasets.push({
-      type: "violin",
       label: server,
       order: 2,
-      data: timestamps.map((ts) => violinDataAt(rawRecords, server, ts, skipTs)),
-      backgroundColor: withAlpha(color, 0.32),
-      borderColor: withAlpha(color, 0.75),
-      borderWidth: 1,
-      maxBarThickness: 22,
-      outlierRadius: 0,
-      itemRadius: 0,
-      meanRadius: 0,
-    });
-
-    datasets.push({
-      type: "line",
-      label: `${server} avg`,
-      order: 1,
-      data: timestamps.map((ts) => averageAt(successes, server, ts, skipTs)),
+      data: withGaps(
+        successes
+          .filter((r) => r.dns_server === server)
+          .map((r) => ({ x: r.ts, y: r.latency_ms })),
+        spans,
+      ),
       borderColor: color,
       backgroundColor: color,
       pointRadius: 0,
@@ -78,11 +60,18 @@ export function buildLatencyChart(
     });
   });
 
+  const failurePoints: FailurePoint[] = failures.map((r) => ({
+    x: r.ts,
+    y: 0,
+    error: r.error,
+    dns_server: r.dns_server,
+    domain: r.domain,
+  }));
+
   datasets.push({
-    type: "scatter",
     label: "Failures",
     order: 0,
-    data: failurePointsAt(failures, timestamps),
+    data: failurePoints,
     borderColor: "#f87171",
     backgroundColor: "#f87171",
     pointRadius: 5,
@@ -90,33 +79,30 @@ export function buildLatencyChart(
     showLine: false,
   });
 
+  const xBounds = chartTimeBounds();
   const canvas = document.getElementById("latencyChart") as HTMLCanvasElement | null;
   if (!canvas) return;
 
   latencyChart?.destroy();
-  const config: ChartConfiguration = {
+  const config = {
     type: "line",
-    data: {
-      labels: timestamps.map(String),
-      datasets,
-    },
+    data: { datasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       interaction: { mode: "nearest", intersect: false },
       scales: {
         x: {
-          type: "category",
+          type: "linear",
+          min: xBounds.min,
+          max: xBounds.max,
           grid: { color: "#2a2e3d" },
           ticks: {
             color: "#8b90a0",
-            autoSkip: true,
-            maxTicksLimit: 12,
+            stepSize: xBounds.tickStep,
+            autoSkip: false,
             maxRotation: 0,
-            callback: (_value, index) => {
-              const ts = timestamps[index];
-              return ts ? fmtAxisTick(ts, xBounds.tickStep) : "";
-            },
+            callback: (value: string | number) => fmtAxisTick(Number(value), xBounds.tickStep),
           },
         },
         y: {
@@ -128,57 +114,44 @@ export function buildLatencyChart(
       },
       plugins: {
         chartRegions: {
-          timestamps,
           xMin: xBounds.min,
           cutoffEnd: dataCutoffTs > xBounds.min ? dataCutoffTs : 0,
           timeoutRanges: timeoutRanges(failures),
         },
+        violinTimeSeries: {
+          series: buildViolinSeries(rawRecords, servers, SERVER_COLORS, skipSpansByServer),
+        },
         legend: {
           labels: {
             color: "#e4e6ed",
-            filter: (item, chartData) => {
-              const index = item.datasetIndex;
-              if (index === undefined) return false;
-              return chartData.datasets[index]?.type === "violin";
-            },
+            filter: (item: { text: string }) => item.text !== "Failures",
           },
         },
         tooltip: {
           callbacks: {
-            title: (items: TooltipItem<"line">[]) => {
-              const ts = timestamps[items[0]?.dataIndex ?? 0];
-              return ts ? fmtJst(ts) : "";
-            },
+            title: (items: TooltipItem<"line">[]) => fmtJst(items[0].parsed.x as number),
             label(ctx: TooltipItem<"line">) {
-              const raw = ctx.raw as
-                | { x: number; y: number; error?: string; dns_server?: string; domain?: string | null }
-                | number
-                | null;
-              if (raw && typeof raw === "object" && "error" in raw && raw.error) {
+              const raw = ctx.raw as FailurePoint | { x: number; y: number };
+              if ("error" in raw && raw.error) {
                 const domain = raw.domain ? ` / ${raw.domain}` : "";
                 return `${raw.dns_server}${domain}: ${raw.error}`;
               }
-              if (ctx.dataset.type === "line") {
-                const server = (ctx.dataset.label ?? "").replace(/ avg$/, "");
-                const ts = timestamps[ctx.dataIndex];
-                const values = ts ? latencyValuesAt(rawRecords, server, ts) : [];
-                const avg = typeof raw === "number" ? Math.round(raw) : "-";
-                if (values.length >= 2) {
-                  const min = Math.min(...values);
-                  const max = Math.max(...values);
-                  return `${server} 平均: ${avg} ms (${min}–${max})`;
-                }
-                return `${server} 平均: ${avg} ms`;
+
+              const server = ctx.dataset.label ?? "";
+              const ts = raw.x;
+              const values = latencyValuesAt(rawRecords, server, ts);
+              const avg = Math.round(raw.y);
+              if (values.length >= 2) {
+                const min = Math.min(...values);
+                const max = Math.max(...values);
+                return `${server} 平均: ${avg} ms (${min}–${max})`;
               }
-              if (ctx.dataset.type === "violin" && typeof ctx.formattedValue === "string") {
-                return ctx.formattedValue;
-              }
-              return ctx.formattedValue;
+              return `${server} 平均: ${avg} ms`;
             },
           },
         },
       },
     },
   };
-  latencyChart = new Chart(canvas, config);
+  latencyChart = new Chart(canvas, config as ChartConfiguration);
 }

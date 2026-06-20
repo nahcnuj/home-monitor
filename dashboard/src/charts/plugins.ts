@@ -1,11 +1,17 @@
 import type { Plugin } from "chart.js";
+import { MEASURE_INTERVAL_SEC } from "../constants.ts";
+import type { ViolinTimeSeries } from "../types.ts";
+import { drawViolinSeries } from "./violin-overlay.ts";
 import { readableTextColor } from "../utils.ts";
 
 interface ChartRegionsOptions {
-  timestamps?: number[];
   cutoffEnd?: number;
   xMin?: number;
   timeoutRanges?: { start: number; end: number }[];
+}
+
+interface ViolinTimeSeriesOptions {
+  series?: ViolinTimeSeries[];
 }
 
 interface ErrorBandLabelsOptions {
@@ -13,25 +19,7 @@ interface ErrorBandLabelsOptions {
   total?: number;
 }
 
-function lastIndexAtOrBefore(timestamps: number[], ts: number): number {
-  let index = -1;
-  for (let i = 0; i < timestamps.length; i++) {
-    if (timestamps[i] <= ts) index = i;
-    else break;
-  }
-  return index;
-}
-
-function indexAt(timestamps: number[], ts: number): number {
-  const exact = timestamps.indexOf(ts);
-  if (exact >= 0) return exact;
-  for (let i = 0; i < timestamps.length; i++) {
-    if (timestamps[i] >= ts) return i;
-  }
-  return timestamps.length - 1;
-}
-
-export const chartRegionsPlugin: Plugin = {
+export const chartRegionsPlugin: Plugin<"line"> = {
   id: "chartRegions",
   beforeDatasetsDraw(chart, _args, opts) {
     const options = opts as ChartRegionsOptions | undefined;
@@ -39,39 +27,26 @@ export const chartRegionsPlugin: Plugin = {
     const xScale = chart.scales.x;
     if (!chartArea || !xScale) return;
 
-    const timestamps = options?.timestamps ?? [];
     ctx.save();
 
     const cutoffEnd = options?.cutoffEnd ?? 0;
-    const xMin = options?.xMin ?? 0;
-    if (cutoffEnd > xMin && timestamps.length) {
-      const endIndex = lastIndexAtOrBefore(timestamps, cutoffEnd);
-      if (endIndex >= 0) {
-        let left = xScale.getPixelForValue(0);
-        let right = xScale.getPixelForValue(endIndex);
-        const next = xScale.getPixelForValue(Math.min(endIndex + 1, timestamps.length - 1));
-        right = (right + next) / 2;
-        left = Math.max(left, chartArea.left);
-        right = Math.min(right, chartArea.right);
-        if (right > left) {
-          ctx.fillStyle = "rgba(0, 0, 0, 0.32)";
-          ctx.fillRect(left, chartArea.top, right - left, chartArea.bottom - chartArea.top);
-          ctx.fillStyle = "rgba(139, 144, 160, 0.45)";
-          ctx.fillRect(right - 1, chartArea.top, 1, chartArea.bottom - chartArea.top);
-        }
+    const xMin = options?.xMin ?? (xScale.min as number);
+    if (cutoffEnd > xMin) {
+      let left = xScale.getPixelForValue(xMin);
+      let right = xScale.getPixelForValue(cutoffEnd);
+      left = Math.max(left, chartArea.left);
+      right = Math.min(right, chartArea.right);
+      if (right > left) {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.32)";
+        ctx.fillRect(left, chartArea.top, right - left, chartArea.bottom - chartArea.top);
+        ctx.fillStyle = "rgba(139, 144, 160, 0.45)";
+        ctx.fillRect(right - 1, chartArea.top, 1, chartArea.bottom - chartArea.top);
       }
     }
 
     for (const { start, end } of options?.timeoutRanges ?? []) {
-      if (!timestamps.length) continue;
-      const startIndex = indexAt(timestamps, start);
-      const endIndex = indexAt(timestamps, end);
-      const leftCenter = xScale.getPixelForValue(startIndex);
-      const rightCenter = xScale.getPixelForValue(endIndex);
-      const prev = startIndex > 0 ? xScale.getPixelForValue(startIndex - 1) : leftCenter;
-      const next = endIndex < timestamps.length - 1 ? xScale.getPixelForValue(endIndex + 1) : rightCenter;
-      let left = (leftCenter + prev) / 2;
-      let right = (rightCenter + next) / 2;
+      let left = xScale.getPixelForValue(start);
+      let right = xScale.getPixelForValue(end);
       left = Math.max(left, chartArea.left);
       right = Math.min(right, chartArea.right);
       if (right <= left) continue;
@@ -82,6 +57,38 @@ export const chartRegionsPlugin: Plugin = {
       ctx.fillStyle = "rgba(248, 113, 113, 0.55)";
       ctx.fillRect(left, chartArea.top, 2, chartArea.bottom - chartArea.top);
     }
+
+    ctx.restore();
+  },
+};
+
+export const violinTimeSeriesPlugin: Plugin<"line"> = {
+  id: "violinTimeSeries",
+  beforeDatasetsDraw(chart, _args, opts) {
+    const options = opts as ViolinTimeSeriesOptions | undefined;
+    const { ctx, chartArea, scales } = chart;
+    const xScale = scales.x;
+    const yScale = scales.y;
+    if (!chartArea || !xScale || !yScale) return;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(chartArea.left, chartArea.top, chartArea.right - chartArea.left, chartArea.bottom - chartArea.top);
+    ctx.clip();
+
+    drawViolinSeries(
+      ctx,
+      options?.series ?? [],
+      (ts) => xScale.getPixelForValue(ts),
+      (y) => yScale.getPixelForValue(y),
+      (ts) => {
+        const ref = xScale.getPixelForValue(ts + MEASURE_INTERVAL_SEC * 0.35);
+        const center = xScale.getPixelForValue(ts);
+        return Math.min(16, Math.abs(ref - center));
+      },
+      chartArea.left,
+      chartArea.right,
+    );
 
     ctx.restore();
   },

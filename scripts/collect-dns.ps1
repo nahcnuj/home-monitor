@@ -44,7 +44,7 @@ function Invoke-DnsLookup {
     if (-not $completed) {
         Stop-Job -Job $job -ErrorAction SilentlyContinue
         Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
-        return @{ LatencyMs = $null; Error = "timeout"; Output = "" }
+        return @{ LatencyMs = [int]$sw.ElapsedMilliseconds; Error = "timeout"; Output = "" }
     }
 
     $output = Receive-Job -Job $job -ErrorAction SilentlyContinue | Out-String
@@ -100,7 +100,7 @@ foreach ($domain in ($config.domains | Sort-Object)) {
     $server = Get-DnsServerAddress -Output $result.Output
 
     if ($result.Error -eq "timeout") {
-        $lines.Add(("{0}`t{1}`t{2}`t`t{3}" -f $ts, $server, $domain, $result.Error))
+        $lines.Add(("{0}`t{1}`t{2}`t{3}`t{4}" -f $ts, $server, $domain, $result.LatencyMs, $result.Error))
         continue
     }
 

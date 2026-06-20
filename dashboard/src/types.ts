@@ -23,6 +23,7 @@ export interface DnsFailureRecord {
   dns_server: string;
   domain: string | null;
   error: DnsErrorCode;
+  duration_ms?: number;
   latency_ms?: undefined;
 }
 
@@ -76,6 +77,14 @@ export interface FailurePoint {
 export interface TimeoutRange {
   start: number;
   end: number;
+}
+
+export interface ViolinTimeSeries {
+  dns_server: string;
+  color: string;
+  xOffsetSec: number;
+  skipSpans: TimeoutRange[];
+  buckets: { ts: number; values: number[] }[];
 }
 
 
