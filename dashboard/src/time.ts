@@ -25,8 +25,20 @@ function nextJstDay(unixSec: number): number {
   return floorToJstDay(unixSec) + DAY_SEC;
 }
 
-function ceilToHour(unixSec: number): number {
-  return Math.ceil(unixSec / HOUR_SEC) * HOUR_SEC;
+export function ceilToJstHour(unixSec: number): number {
+  return Math.ceil((unixSec + JST_OFFSET) / HOUR_SEC) * HOUR_SEC - JST_OFFSET;
+}
+
+function ceilToMinute(unixSec: number): number {
+  return Math.ceil(unixSec / MIN_SEC) * MIN_SEC;
+}
+
+export function isJstOnTheHour(unixSec: number): boolean {
+  return (unixSec + JST_OFFSET) % HOUR_SEC === 0;
+}
+
+export function isJstMidnight(unixSec: number): boolean {
+  return (unixSec + JST_OFFSET) % DAY_SEC === 0;
 }
 
 export function chartTickStep(rangeSec: number): number {
@@ -40,17 +52,17 @@ export function chartTickStep(rangeSec: number): number {
   return DAY_SEC;
 }
 
-export function chartTimeBounds(): TimeBounds {
-  const now = Math.floor(Date.now() / 1000);
+export function chartTimeBounds(nowSec?: number): TimeBounds {
+  const now = nowSec ?? Math.floor(Date.now() / 1000);
   const rangeSec = displayRangeSec;
   const tickStep = chartTickStep(rangeSec);
   let max: number;
   if (rangeSec > DAY_SEC) {
     max = nextJstDay(now);
-  } else if (rangeSec <= HOUR_SEC) {
-    max = Math.ceil(now / MIN_SEC) * MIN_SEC;
+  } else if (rangeSec < HOUR_SEC) {
+    max = ceilToMinute(now);
   } else {
-    max = ceilToHour(now);
+    max = ceilToJstHour(now);
   }
   return { min: max - rangeSec, max, range: rangeSec, tickStep };
 }
