@@ -71,8 +71,8 @@ export function buildLatencyChart(
         })),
         borderColor: color,
         backgroundColor: withAlpha(color, 0.55),
-        pointRadius: 3,
-        pointHoverRadius: 4,
+        pointRadius: 1.5,
+        pointHoverRadius: 2.5,
         showLine: false,
       });
     }
