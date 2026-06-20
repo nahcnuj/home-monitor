@@ -13,7 +13,7 @@ function Register-MonitorTask {
         [string]$Modifier
     )
 
-    $tr = "powershell.exe -NoProfile -File `"$ScriptPath`""
+    $tr = "powershell.exe -WindowStyle Hidden -NoProfile -File `"$ScriptPath`""
     $output = schtasks.exe /Create /F /TN $TaskName /TR "$tr" /SC $Schedule /MO $Modifier /RU $RunAs /RL LIMITED 2>&1
 
     if ($LASTEXITCODE -ne 0) {
