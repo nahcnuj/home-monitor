@@ -15,8 +15,8 @@ function Register-MonitorTask {
         [string]$Modifier
     )
 
-    # VBS 経由で PowerShell を起動するとウィンドウが出ない
-    $tr = "$Wscript //B //Nologo `"$VbsPath`""
+    # //B 等は schtasks のオプションと誤解釈されるため使わない（VBS 側で非表示起動）
+    $tr = "`"$Wscript`" `"$VbsPath`""
     $output = schtasks.exe /Create /F /TN $TaskName /TR "$tr" /SC $Schedule /MO $Modifier /RU $RunAs /RL LIMITED 2>&1
 
     if ($LASTEXITCODE -ne 0) {
