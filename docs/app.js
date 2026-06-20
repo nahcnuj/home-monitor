@@ -27,6 +27,7 @@ function withGaps(points) {
 // TSV の ts は Unix 秒（UTC エポック）。表示は常に JST に変換する
 const fmtJst = (unixSec) => jstFormatter.format(new Date(unixSec * 1000));
 
+let dataCutoffTs = 0;
 let allRecords = [];
 let latencyChart = null;
 let errorChart = null;
@@ -70,7 +71,8 @@ function aggregateByServer(records) {
 }
 
 function filterByPeriod(records) {
-  const cutoff = Math.floor(Date.now() / 1000) - PERIOD_HOURS * 3600;
+  const rolling = Math.floor(Date.now() / 1000) - PERIOD_HOURS * 3600;
+  const cutoff = Math.max(rolling, dataCutoffTs);
   return records.filter((r) => r.ts >= cutoff);
 }
 
@@ -191,8 +193,21 @@ function render() {
   requestAnimationFrame(resizeCharts);
 }
 
+async function loadConfig() {
+  try {
+    const res = await fetch(`config/monitor.json?t=${Date.now()}`);
+    if (res.ok) {
+      const cfg = await res.json();
+      dataCutoffTs = cfg.data_cutoff_ts || 0;
+    }
+  } catch {
+    dataCutoffTs = 0;
+  }
+}
+
 async function loadData() {
   try {
+    await loadConfig();
     const res = await fetch(`data/dns-latency.tsv?t=${Date.now()}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     allRecords = parseTsv(await res.text());

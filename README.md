@@ -70,15 +70,17 @@ GitHub の Actions タブで **Sync DNS Data** ワークフローが起動する
 
 2列目は名前解決に使った DNS サーバーの IP アドレスです。複数ドメインを計測した場合は同一サーバーごとに平均レイテンシを記録します。
 
+[`config/monitor.json`](config/monitor.json) の `data_cutoff_ts`（Unix 秒）より古い行は保存・表示・送信の対象外です。`docs/config/monitor.json` も同じ値に揃えてください（ダッシュボード用）。
+
 ## 設定
 
 [`config/monitor.json`](config/monitor.json) でクエリ先ドメインのみ変更できます。それ以外（間隔・タイムアウト・保持期間など）は固定です。
 
-ドメイン別の旧形式データを削除する場合:
+旧形式・カットオフ以前のデータを削除する場合:
 
 ```powershell
-.\scripts\purge-domain-data.ps1          # ローカルと docs の TSV から除去
-.\scripts\purge-domain-data.ps1 -Republish  # 除去後に GitHub へ全件再送
+.\scripts\purge-domain-data.ps1          # ローカルと docs の TSV を整理
+.\scripts\purge-domain-data.ps1 -Republish  # 整理後に GitHub へ全件再送
 ```
 
 ## ファイル構成

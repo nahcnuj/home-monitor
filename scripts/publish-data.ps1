@@ -3,9 +3,30 @@ param([switch]$All)
 
 $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path $PSScriptRoot -Parent
+$ConfigPath = Join-Path $RepoRoot "config\monitor.json"
 $DataDir = Join-Path $RepoRoot "data\local"
 $DataFile = Join-Path $DataDir "dns-latency.tsv"
 $LastSyncFile = Join-Path $DataDir ".last-sync"
+
+function Get-DataCutoffTs {
+    $cfg = Get-Content $ConfigPath -Raw | ConvertFrom-Json
+    return [long]$cfg.data_cutoff_ts
+}
+
+function Test-DnsServerKey {
+    param([string]$Key)
+    if ($Key -eq "unknown") { return $true }
+    if ($Key -match '^(?:\d{1,3}\.){3}\d{1,3}$') { return $true }
+    if ($Key -match '^[0-9a-fA-F:]+$') { return $true }
+    return $false
+}
+
+function Test-SendableLine {
+    param([string]$Line, [long]$CutoffTs)
+    $cols = $Line -split "`t"
+    if ($cols.Length -lt 2) { return $false }
+    return ([int]$cols[0] -ge $CutoffTs) -and (Test-DnsServerKey -Key $cols[1])
+}
 
 function Compress-GzipBytes {
     param([byte[]]$Data)
@@ -20,7 +41,10 @@ function Get-UnsentLines {
     param([switch]$All)
 
     if (-not (Test-Path $DataFile)) { return @() }
-    $allLines = Get-Content $DataFile -Encoding UTF8 | Where-Object { $_.Trim() -ne "" }
+    $cutoffTs = Get-DataCutoffTs
+    $allLines = @(Get-Content $DataFile -Encoding UTF8 | Where-Object {
+        $_.Trim() -ne "" -and (Test-SendableLine -Line $_ -CutoffTs $cutoffTs)
+    })
     if ($allLines.Count -eq 0) { return @() }
     if ($All -or -not (Test-Path $LastSyncFile)) { return $allLines }
 

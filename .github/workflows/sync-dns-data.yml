@@ -27,7 +27,7 @@ jobs:
           DATA_B64: ${{ github.event.inputs.data_b64 }}
         run: |
           python3 << 'PYEOF'
-          import os, base64, gzip, re
+          import os, base64, gzip, re, json, time
 
           IPV4 = re.compile(r"^(?:\d{1,3}\.){3}\d{1,3}$")
           IPV6 = re.compile(r"^[0-9a-fA-F:]+$")
@@ -36,6 +36,11 @@ jobs:
               if key == "unknown":
                   return True
               return bool(IPV4.match(key) or IPV6.match(key))
+
+          with open("config/monitor.json", encoding="utf-8") as f:
+              data_cutoff = int(json.load(f).get("data_cutoff_ts", 0))
+          rolling_cutoff = int(time.time()) - 7 * 86400
+          cutoff = max(rolling_cutoff, data_cutoff)
 
           data_b64 = os.environ.get("DATA_B64", "")
           if not data_b64:
@@ -64,9 +69,8 @@ jobs:
               seen.add(key)
               merged.append(line)
 
-          cutoff = int(__import__("time").time()) - 7 * 86400
           merged = sorted(
-              [l for l in merged if int(l.split("\t")[0]) >= cutoff],
+            [l for l in merged if int(l.split("\t")[0]) >= cutoff],
               key=lambda l: int(l.split("\t")[0]),
           )
 

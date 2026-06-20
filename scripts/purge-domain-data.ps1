@@ -3,8 +3,14 @@ param([switch]$Republish)
 
 $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path $PSScriptRoot -Parent
+$ConfigPath = Join-Path $RepoRoot "config\monitor.json"
 $LocalFile = Join-Path $RepoRoot "data\local\dns-latency.tsv"
 $PublicFile = Join-Path $RepoRoot "docs\data\dns-latency.tsv"
+
+function Get-DataCutoffTs {
+    $cfg = Get-Content $ConfigPath -Raw | ConvertFrom-Json
+    return [long]$cfg.data_cutoff_ts
+}
 
 function Test-DnsServerKey {
     param([string]$Key)
@@ -14,8 +20,15 @@ function Test-DnsServerKey {
     return $false
 }
 
-function Remove-DomainRows {
-    param([string]$Path)
+function Test-KeepLine {
+    param([string]$Line, [long]$CutoffTs)
+    $cols = $Line -split "`t"
+    if ($cols.Length -lt 2) { return $false }
+    return ([int]$cols[0] -ge $CutoffTs) -and (Test-DnsServerKey -Key $cols[1])
+}
+
+function Remove-StaleRows {
+    param([string]$Path, [long]$CutoffTs)
 
     if (-not (Test-Path $Path)) {
         Write-Host "Skip (not found): $Path"
@@ -23,10 +36,7 @@ function Remove-DomainRows {
     }
 
     $lines = Get-Content $Path -Encoding UTF8 | Where-Object { $_.Trim() -ne "" }
-    $kept = $lines | Where-Object {
-        $key = ($_ -split "`t")[1]
-        Test-DnsServerKey -Key $key
-    }
+    $kept = $lines | Where-Object { Test-KeepLine -Line $_ -CutoffTs $CutoffTs }
     $removed = $lines.Count - $kept.Count
 
     $utf8NoBom = New-Object System.Text.UTF8Encoding $false
@@ -41,9 +51,12 @@ function Remove-DomainRows {
     return $removed
 }
 
+$cutoffTs = Get-DataCutoffTs
+Write-Host "data_cutoff_ts: $cutoffTs"
+
 $total = 0
-$total += Remove-DomainRows -Path $LocalFile
-$total += Remove-DomainRows -Path $PublicFile
+$total += Remove-StaleRows -Path $LocalFile -CutoffTs $cutoffTs
+$total += Remove-StaleRows -Path $PublicFile -CutoffTs $cutoffTs
 Write-Host "Total removed: $total"
 
 if ($Republish) {

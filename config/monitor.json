@@ -1,3 +1,4 @@
 {
-  "domains": ["google.com", "cloudflare.com"]
+  "domains": ["google.com", "cloudflare.com"],
+  "data_cutoff_ts": 1781960400
 }
