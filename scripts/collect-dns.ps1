@@ -70,6 +70,19 @@ function Test-DnsSuccess {
     return $hasName -and $hasAddress
 }
 
+function Get-DnsServerAddress {
+    param([string]$Output)
+    $jaServer = -join ([char]0x30B5, [char]0x30FC, [char]0x30D0, [char]0x30FC)
+    $jaAddr = -join ([char]0x30A2, [char]0x30C9, [char]0x30EC, [char]0x30B9)
+    if ($Output -match "(?ms)^(?:Server|${jaServer}):\s.*?\r?\n(?:Address|${jaAddr}):\s+(\S+)") {
+        return $Matches[1]
+    }
+    if ($Output -match "(?m)^(?:Address|${jaAddr}):\s+(\S+)") {
+        return $Matches[1]
+    }
+    return "unknown"
+}
+
 $config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
 if (-not (Test-Path $DataDir)) { New-Item -ItemType Directory -Path $DataDir -Force | Out-Null }
 
@@ -80,26 +93,44 @@ Clear-DnsClientCache -ErrorAction SilentlyContinue
 $epoch = [datetime]'1970-01-01T00:00:00Z'
 $ts = [int]([DateTime]::UtcNow - $epoch).TotalSeconds
 
-$lines = New-Object System.Collections.Generic.List[string]
+$byServer = @{}
 foreach ($domain in $config.domains) {
     $result = Invoke-DnsLookup -Domain $domain -QueryType $queryType
+    $server = Get-DnsServerAddress -Output $result.Output
+    if (-not $byServer.ContainsKey($server)) {
+        $byServer[$server] = @{ Latencies = New-Object System.Collections.Generic.List[int]; Errors = New-Object System.Collections.Generic.List[string] }
+    }
+    $bucket = $byServer[$server]
 
     if ($result.Error -eq "timeout") {
-        $lines.Add("$ts`t$domain`t`t$($result.Error)")
+        $bucket.Errors.Add($result.Error)
         continue
     }
 
     $dnsError = Get-DnsError -Output $result.Output
     if ($dnsError) {
-        $lines.Add("$ts`t$domain`t`t$dnsError")
+        $bucket.Errors.Add($dnsError)
         continue
     }
 
     if (Test-DnsSuccess -Output $result.Output) {
-        $lines.Add("$ts`t$domain`t$($result.LatencyMs)")
+        $bucket.Latencies.Add($result.LatencyMs)
     }
     else {
-        $lines.Add("$ts`t$domain`t`tunknown")
+        $bucket.Errors.Add("unknown")
+    }
+}
+
+$lines = New-Object System.Collections.Generic.List[string]
+foreach ($server in ($byServer.Keys | Sort-Object)) {
+    $bucket = $byServer[$server]
+    if ($bucket.Errors.Count -gt 0) {
+        $lines.Add("$ts`t$server`t`t$($bucket.Errors[0])")
+        continue
+    }
+    if ($bucket.Latencies.Count -gt 0) {
+        $avg = [int](($bucket.Latencies | Measure-Object -Average).Average)
+        $lines.Add("$ts`t$server`t$avg")
     }
 }
 
