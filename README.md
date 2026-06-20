@@ -8,15 +8,17 @@
 |----------|------|
 | `master` | ソース（ダッシュボード、スクリプト、ワークフロー、ローカル設定） |
 | `data` | 公開データ（`data/dns-latency.tsv`、`config/monitor.json`） |
-| `gh-pages` | ビルド済み静的サイト（CI が更新、手編集しない） |
+| `gh-pages` | 公開用統合ブランチ（`master` + `docs/data` + `docs/config`） |
 
-GitHub Pages は **`gh-pages` ブランチ** を公開元にします（Settings → Pages → Deploy from a branch）。
+`master` または `data` への push で **Merge to gh-pages** が走り、`gh-pages` を旧 `master` と同じ構成（ソース + `docs/`）に更新します。その後 **Deploy Pages** が `gh-pages` からビルドして公開します。
+
+GitHub Pages は **GitHub Actions** でデプロイします（Settings → Pages → GitHub Actions）。
 
 ## 仕組み
 
 1. **Windows PC** — 1分ごとに `nslookup` を実行し、レイテンシをローカル TSV に記録
 2. **1時間ごと** — `gh workflow run` で未送信データをワークフローへ送信
-3. **GitHub Actions** — `data` ブランチへマージし、`master` のソースをビルドして `gh-pages` へデプロイ
+3. **GitHub Actions** — `data` ブランチへマージ → `gh-pages` へ統合 → Pages デプロイ
 4. **ダッシュボード** — `https://www.nahcnuj.work/home-monitor/` でグラフ表示
 
 ## セットアップ
@@ -29,7 +31,7 @@ git push -u origin master
 git push -u origin data
 ```
 
-GitHub の **Settings → Pages → Build and deployment → Deploy from a branch** で **`gh-pages` / `/ (root)`** を選んでください。
+GitHub の **Settings → Pages → Build and deployment → GitHub Actions** を有効化してください。
 
 ### 2. GitHub CLI
 
@@ -83,7 +85,7 @@ GitHub の Actions タブで **Sync DNS Data** ワークフローが起動する
 
 2列目は名前解決に使った DNS サーバーの IP、3列目はクエリ先ドメインです。
 
-[`config/monitor.json`](config/monitor.json) の `data_cutoff_ts`（Unix 秒）より古い行は保存・表示・送信の対象外です。GitHub 上のデータは最大 7 日分保持されます。ダッシュボードの表示範囲（10m / 30m / 1h / 3h / 6h / 12h / 24h / 3d / 7d）は UI から切り替えでき、選択はブラウザに保存されます。`display_hours`（デフォルト 24）は初回表示の初期値のみです。データ同期時に `data` ブランチの `config/monitor.json` へ反映されます。
+[`config/monitor.json`](config/monitor.json) の `data_cutoff_ts`（Unix 秒）より古い行は保存・表示・送信の対象外です。GitHub 上のデータは最大 7 日分保持されます。ダッシュボードの表示範囲（10m / 30m / 1h / 3h / 6h / 12h / 24h / 3d / 7d）は UI から切り替えでき、選択はブラウザに保存されます。`display_hours`（デフォルト 24）は初回表示の初期値のみです。データ同期時に `data` ブランチの `config/monitor.json` へ反映され、`gh-pages` の `docs/config/` に載ります。
 
 ## 設定
 
@@ -98,7 +100,7 @@ GitHub の Actions タブで **Sync DNS Data** ワークフローが起動する
 
 ## ダッシュボード開発 (Vite + TypeScript)
 
-ソースは `dashboard/src/`。ビルド成果物は `dashboard/dist/` に出力され、CI が `gh-pages` ブランチへ公開します。
+ソースは `dashboard/src/`。ビルド成果物は `dashboard/dist/` に出力され、CI が `gh-pages` からビルドして Pages へ公開します。
 
 ```powershell
 npm install
@@ -114,7 +116,7 @@ npm test
 .\scripts\fetch-data-branch.ps1   # docs/ に取得（gitignore 済み）
 ```
 
-UI を `master` に push すると **Deploy Pages** が走り、`data` ブランチのデータを組み込んで公開します。
+UI を `master` に push すると **Merge to gh-pages** → **Deploy Pages** が順に走ります。
 
 ## ファイル構成
 
@@ -122,6 +124,7 @@ UI を `master` に push すると **Deploy Pages** が走り、`data` ブラン
 config/monitor.json       ローカル設定（ドメイン一覧・カットオフなど）
 scripts/collect-dns.ps1   計測スクリプト
 scripts/publish-data.ps1  データ送信
+scripts/merge-gh-pages.sh master + data → gh-pages 統合
 scripts/install-scheduled-task.ps1  タスク登録
 dashboard/                ダッシュボードソース (Vite + TS)
 data/local/               ローカルデータ (gitignore)
@@ -133,4 +136,12 @@ docs/                     ローカルプレビュー用キャッシュ (gitigno
 ```
 data/dns-latency.tsv      公開 TSV
 config/monitor.json       ダッシュボード用設定（カットオフ・表示時間）
+```
+
+`gh-pages` ブランチ（旧 master 相当）:
+
+```
+dashboard/ scripts/ config/ package.json ...
+docs/data/dns-latency.tsv
+docs/config/monitor.json
 ```

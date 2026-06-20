@@ -1,0 +1,25 @@
+name: Merge to gh-pages
+
+on:
+  push:
+    branches: [master, data]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: merge-gh-pages
+  cancel-in-progress: false
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Merge master and sync data into gh-pages
+        run: bash scripts/merge-gh-pages.sh
