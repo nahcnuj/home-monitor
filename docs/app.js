@@ -1,6 +1,16 @@
 const PERIOD_HOURS = 168;
 const DOMAIN_COLORS = { "google.com": "#5b8def", "cloudflare.com": "#f59e0b" };
 
+const fmtLocal = (ms) =>
+  new Date(ms).toLocaleString("ja-JP", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+
 let allRecords = [];
 let latencyChart = null;
 let errorChart = null;
@@ -80,13 +90,22 @@ function buildLatencyChart(records) {
       responsive: true, maintainAspectRatio: false,
       interaction: { mode: "nearest", intersect: false },
       scales: {
-        x: { type: "time", grid: { color: "#2a2e3d" }, ticks: { color: "#8b90a0", maxTicksLimit: 8 } },
+        x: {
+          type: "time",
+          grid: { color: "#2a2e3d" },
+          ticks: {
+            color: "#8b90a0",
+            maxTicksLimit: 8,
+            callback: (value) => fmtLocal(value),
+          },
+        },
         y: { title: { display: true, text: "ms", color: "#8b90a0" }, grid: { color: "#2a2e3d" }, ticks: { color: "#8b90a0" }, min: 0 },
       },
       plugins: {
         legend: { labels: { color: "#e4e6ed" } },
         tooltip: {
           callbacks: {
+            title: (items) => fmtLocal(items[0].parsed.x),
             label(ctx) {
               const raw = ctx.raw;
               return raw.error ? `${raw.domain}: ${raw.error}` : `${ctx.dataset.label}: ${raw.y} ms`;
@@ -132,7 +151,7 @@ async function loadData() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     allRecords = parseTsv(await res.text());
     document.getElementById("lastUpdated").textContent = allRecords.length
-      ? `最終データ: ${new Date(allRecords.at(-1).ts * 1000).toLocaleString("ja-JP")}`
+      ? `最終データ: ${fmtLocal(allRecords.at(-1).ts * 1000)}（ローカル時間）`
       : "データなし";
     render();
   } catch (err) {
