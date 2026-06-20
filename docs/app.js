@@ -40,13 +40,22 @@ const jstFormatter = new Intl.DateTimeFormat("ja-JP", {
   hour12: false,
 });
 
-function withGaps(points) {
+function segmentCrossesTimeout(prevX, nextX, timeoutTs) {
+  for (const t of timeoutTs) {
+    if (t < nextX && t + MEASURE_INTERVAL_SEC > prevX) return true;
+  }
+  return false;
+}
+
+function withGaps(points, timeoutTs = []) {
   if (points.length < 2) return points;
   const sorted = [...points].sort((a, b) => a.x - b.x);
   const result = [sorted[0]];
   for (let i = 1; i < sorted.length; i++) {
-    if (sorted[i].x - sorted[i - 1].x > MAX_GAP_SEC) {
-      result.push({ x: sorted[i - 1].x, y: null });
+    const prevX = sorted[i - 1].x;
+    const nextX = sorted[i].x;
+    if (nextX - prevX > MAX_GAP_SEC || segmentCrossesTimeout(prevX, nextX, timeoutTs)) {
+      result.push({ x: prevX, y: null });
     }
     result.push(sorted[i]);
   }
@@ -322,16 +331,22 @@ function renderStats(stats) {
 
 function buildLatencyChart(successes, failures) {
   const servers = [...new Set(successes.map((r) => r.dns_server))].sort();
-  const datasets = servers.map((server, index) => ({
+  const datasets = servers.map((server, index) => {
+    const serverTimeouts = failures
+      .filter((r) => r.dns_server === server && r.error === "timeout")
+      .map((r) => r.ts);
+    return {
     label: server,
     data: withGaps(
       successes.filter((r) => r.dns_server === server)
-        .map((r) => ({ x: r.ts, y: r.latency_ms }))
+        .map((r) => ({ x: r.ts, y: r.latency_ms })),
+      serverTimeouts
     ),
     borderColor: SERVER_COLORS[index % SERVER_COLORS.length],
     backgroundColor: SERVER_COLORS[index % SERVER_COLORS.length],
     pointRadius: 1.5, borderWidth: 1.5, tension: 0.1, fill: false, spanGaps: false,
-  }));
+  };
+  });
   datasets.push({
     label: "Failures",
     data: failures.map((r) => ({ x: r.ts, y: 0, error: r.error, dns_server: r.dns_server })),
