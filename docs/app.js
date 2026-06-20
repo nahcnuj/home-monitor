@@ -1,4 +1,5 @@
 const PERIOD_HOURS = 168;
+const MEASURE_INTERVAL_SEC = 60;
 const MAX_GAP_SEC = 3 * 60; // 計測間隔1分 → 3分以上空いたら線を切る
 const SERVER_COLORS = ["#5b8def", "#f59e0b", "#4ade80", "#a78bfa", "#f472b6", "#38bdf8"];
 const jstFormatter = new Intl.DateTimeFormat("ja-JP", {
@@ -26,6 +27,48 @@ function withGaps(points) {
 
 // TSV の ts は Unix 秒（UTC エポック）。表示は常に JST に変換する
 const fmtJst = (unixSec) => jstFormatter.format(new Date(unixSec * 1000));
+
+const timeoutHighlightPlugin = {
+  id: "timeoutHighlight",
+  beforeDatasetsDraw(chart, _args, opts) {
+    const ranges = opts?.ranges;
+    if (!ranges?.length) return;
+
+    const { ctx, chartArea } = chart;
+    const xScale = chart.scales.x;
+    if (!chartArea || !xScale) return;
+
+    ctx.save();
+    for (const { start, end } of ranges) {
+      let left = xScale.getPixelForValue(start);
+      let right = xScale.getPixelForValue(end);
+      left = Math.max(left, chartArea.left);
+      right = Math.min(right, chartArea.right);
+      if (right <= left) continue;
+
+      ctx.fillStyle = "rgba(248, 113, 113, 0.28)";
+      ctx.fillRect(left, chartArea.top, right - left, chartArea.bottom - chartArea.top);
+
+      ctx.fillStyle = "rgba(248, 113, 113, 0.55)";
+      ctx.fillRect(left, chartArea.top, 2, chartArea.bottom - chartArea.top);
+      ctx.fillRect(right - 2, chartArea.top, 2, chartArea.bottom - chartArea.top);
+    }
+    ctx.restore();
+  },
+};
+
+Chart.register(timeoutHighlightPlugin);
+
+function timeoutRanges(failures) {
+  const seen = new Set();
+  const ranges = [];
+  for (const f of failures) {
+    if (f.error !== "timeout" || seen.has(f.ts)) continue;
+    seen.add(f.ts);
+    ranges.push({ start: f.ts, end: f.ts + MEASURE_INTERVAL_SEC });
+  }
+  return ranges;
+}
 
 let dataCutoffTs = 0;
 let allRecords = [];
@@ -148,6 +191,7 @@ function buildLatencyChart(successes, failures) {
         y: { title: { display: true, text: "ms", color: "#8b90a0" }, grid: { color: "#2a2e3d" }, ticks: { color: "#8b90a0" }, min: 0 },
       },
       plugins: {
+        timeoutHighlight: { ranges: timeoutRanges(failures) },
         legend: { labels: { color: "#e4e6ed" } },
         tooltip: {
           callbacks: {
