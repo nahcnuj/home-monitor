@@ -1,4 +1,4 @@
-const PERIOD_HOURS = 168;
+const DEFAULT_DISPLAY_HOURS = 24;
 const HOUR_SEC = 3600;
 const DAY_SEC = 86400;
 const JST_OFFSET = 9 * HOUR_SEC;
@@ -31,8 +31,8 @@ function withGaps(points) {
 // TSV の ts は Unix 秒（UTC エポック）。表示は常に JST に変換する
 const fmtJst = (unixSec) => jstFormatter.format(new Date(unixSec * 1000));
 
-function getPeriodCutoff() {
-  const rolling = Math.floor(Date.now() / 1000) - PERIOD_HOURS * HOUR_SEC;
+function getDisplayCutoff() {
+  const rolling = Math.floor(Date.now() / 1000) - displayHours * HOUR_SEC;
   return Math.max(rolling, dataCutoffTs);
 }
 
@@ -44,19 +44,29 @@ function nextJstDay(unixSec) {
   return floorToJstDay(unixSec) + DAY_SEC;
 }
 
-function chartTimeBounds() {
-  const now = Math.floor(Date.now() / 1000);
-  const max = nextJstDay(now);
-  const min = max - PERIOD_HOURS * HOUR_SEC;
-  return { min, max, range: max - min };
+function ceilToHour(unixSec) {
+  return Math.ceil(unixSec / HOUR_SEC) * HOUR_SEC;
 }
 
-function fmtAxisDay(unixSec) {
-  return new Intl.DateTimeFormat("ja-JP", {
+function chartTimeBounds() {
+  const now = Math.floor(Date.now() / 1000);
+  const rangeSec = displayHours * HOUR_SEC;
+  if (rangeSec > DAY_SEC) {
+    const max = nextJstDay(now);
+    return { min: max - rangeSec, max, range: rangeSec, tickStep: DAY_SEC };
+  }
+  const max = ceilToHour(now);
+  return { min: max - rangeSec, max, range: rangeSec, tickStep: 3 * HOUR_SEC };
+}
+
+function fmtAxisTick(unixSec, tickStep) {
+  const fmt = new Intl.DateTimeFormat("ja-JP", {
     timeZone: "Asia/Tokyo",
     month: "2-digit",
     day: "2-digit",
-  }).format(new Date(unixSec * 1000));
+    ...(tickStep < DAY_SEC ? { hour: "2-digit", minute: "2-digit", hour12: false } : {}),
+  });
+  return fmt.format(new Date(unixSec * 1000));
 }
 
 const chartRegionsPlugin = {
@@ -116,6 +126,7 @@ function timeoutRanges(failures) {
 }
 
 let dataCutoffTs = 0;
+let displayHours = DEFAULT_DISPLAY_HOURS;
 let allRecords = [];
 let latencyChart = null;
 let errorChart = null;
@@ -159,7 +170,7 @@ function aggregateByServer(records) {
 }
 
 function filterByPeriod(records) {
-  return records.filter((r) => r.ts >= getPeriodCutoff());
+  return records.filter((r) => r.ts >= getDisplayCutoff());
 }
 
 function percentile(values, p) {
@@ -231,10 +242,10 @@ function buildLatencyChart(successes, failures) {
           grid: { color: "#2a2e3d" },
           ticks: {
             color: "#8b90a0",
-            stepSize: DAY_SEC,
+            stepSize: xBounds.tickStep,
             autoSkip: false,
             maxRotation: 0,
-            callback: (value) => fmtAxisDay(value),
+            callback: (value) => fmtAxisTick(value, xBounds.tickStep),
           },
         },
         y: { title: { display: true, text: "ms", color: "#8b90a0" }, grid: { color: "#2a2e3d" }, ticks: { color: "#8b90a0" }, min: 0 },
@@ -296,6 +307,7 @@ async function loadConfig() {
     if (res.ok) {
       const cfg = await res.json();
       dataCutoffTs = cfg.data_cutoff_ts || 0;
+      displayHours = cfg.display_hours || DEFAULT_DISPLAY_HOURS;
     }
   } catch {
     dataCutoffTs = 0;

@@ -1,4 +1,5 @@
 {
   "domains": ["google.com", "cloudflare.com"],
-  "data_cutoff_ts": 1781960400
+  "data_cutoff_ts": 1781960400,
+  "display_hours": 24
 }
