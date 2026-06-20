@@ -1,8 +1,10 @@
 const PERIOD_HOURS = 168;
 const DOMAIN_COLORS = { "google.com": "#5b8def", "cloudflare.com": "#f59e0b" };
 
-const fmtLocal = (ms) =>
-  new Date(ms).toLocaleString("ja-JP", {
+// TSV の ts は Unix 秒（数値の文字列）。×1000 で UTC エポック → JST 表示
+const fmtJst = (unixSec) =>
+  new Date(unixSec * 1000).toLocaleString("ja-JP", {
+    timeZone: "Asia/Tokyo",
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
@@ -18,7 +20,7 @@ let errorChart = null;
 function parseTsv(text) {
   return text.trim().split("\n").filter((l) => l.trim()).map((line) => {
     const cols = line.split("\t");
-    const ts = Number(cols[0]);
+    const ts = parseInt(cols[0], 10);
     const domain = cols[1];
     if (cols.length >= 4 && cols[3]) return { ts, domain, error: cols[3] };
     return { ts, domain, latency_ms: Number(cols[2]) };
@@ -96,7 +98,7 @@ function buildLatencyChart(records) {
           ticks: {
             color: "#8b90a0",
             maxTicksLimit: 8,
-            callback: (value) => fmtLocal(value),
+            callback: (value) => fmtJst(value / 1000),
           },
         },
         y: { title: { display: true, text: "ms", color: "#8b90a0" }, grid: { color: "#2a2e3d" }, ticks: { color: "#8b90a0" }, min: 0 },
@@ -105,7 +107,7 @@ function buildLatencyChart(records) {
         legend: { labels: { color: "#e4e6ed" } },
         tooltip: {
           callbacks: {
-            title: (items) => fmtLocal(items[0].parsed.x),
+            title: (items) => fmtJst(items[0].parsed.x / 1000),
             label(ctx) {
               const raw = ctx.raw;
               return raw.error ? `${raw.domain}: ${raw.error}` : `${ctx.dataset.label}: ${raw.y} ms`;
@@ -151,7 +153,7 @@ async function loadData() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     allRecords = parseTsv(await res.text());
     document.getElementById("lastUpdated").textContent = allRecords.length
-      ? `最終データ: ${fmtLocal(allRecords.at(-1).ts * 1000)}（ローカル時間）`
+      ? `最終データ: ${fmtJst(allRecords.at(-1).ts)}（JST）`
       : "データなし";
     render();
   } catch (err) {
