@@ -1,4 +1,4 @@
-import { Chart } from "chart.js";
+import { Chart, registerables } from "chart.js";
 import { buildErrorChart, getErrorChart } from "./charts/error.ts";
 import { buildLatencyChart, getLatencyChart } from "./charts/latency.ts";
 import {
@@ -18,7 +18,7 @@ import { fmtJst } from "./time.ts";
 import { initRangeSelector, loadDisplayRangeFromConfig, renderStats } from "./ui.ts";
 import "./style.css";
 
-Chart.register(chartRegionsPlugin, errorBandLabelsPlugin, latencyRangePlugin);
+Chart.register(...registerables, chartRegionsPlugin, errorBandLabelsPlugin, latencyRangePlugin);
 
 function render(): void {
   const filtered = filterByPeriod(allRecords, dataCutoffTs);
