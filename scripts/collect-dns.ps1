@@ -90,8 +90,9 @@ $queryType = Get-QueryType
 Set-Content -Path $QueryTypeStateFile -Value $queryType -NoNewline -Encoding UTF8
 Clear-DnsClientCache -ErrorAction SilentlyContinue
 
-$epoch = [datetime]'1970-01-01T00:00:00Z'
-$ts = [int]([DateTime]::UtcNow - $epoch).TotalSeconds
+# Use DateTimeOffset; [DateTime]::UtcNow minus epoch is wrong by 9h on PS 5.1 + JST.
+$ts = [long][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+if ($ts -le 0) { throw "Invalid timestamp: $ts" }
 
 $byServer = @{}
 foreach ($domain in $config.domains) {
@@ -125,12 +126,12 @@ $lines = New-Object System.Collections.Generic.List[string]
 foreach ($server in ($byServer.Keys | Sort-Object)) {
     $bucket = $byServer[$server]
     if ($bucket.Errors.Count -gt 0) {
-        $lines.Add("$ts`t$server`t`t$($bucket.Errors[0])")
+        $lines.Add(("{0}`t{1}`t`t{2}" -f $ts, $server, $bucket.Errors[0]))
         continue
     }
     if ($bucket.Latencies.Count -gt 0) {
         $avg = [int](($bucket.Latencies | Measure-Object -Average).Average)
-        $lines.Add("$ts`t$server`t$avg")
+        $lines.Add(("{0}`t{1}`t{2}" -f $ts, $server, $avg))
     }
 }
 

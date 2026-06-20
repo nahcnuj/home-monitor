@@ -63,7 +63,8 @@ try {
 
     $maxTs = ($unsentLines | ForEach-Object { [int]($_ -split "`t")[0] } | Measure-Object -Maximum).Maximum
     if (-not (Test-Path $DataDir)) { New-Item -ItemType Directory -Path $DataDir -Force | Out-Null }
-    Set-Content -Path $LastSyncFile -Value $maxTs -NoNewline -Encoding UTF8
+    $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::WriteAllText($LastSyncFile, "$maxTs", $utf8NoBom)
 }
 finally {
     Pop-Location
