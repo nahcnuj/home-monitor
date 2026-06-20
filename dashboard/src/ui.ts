@@ -11,7 +11,7 @@ import {
   setDisplayRangeSec,
   setRangeSelectorReady,
 } from "./state.ts";
-import { isValidDisplayRangeSec, rangeLabel } from "./time.ts";
+import { isValidDisplayRangeSec } from "./time.ts";
 import type { MonitorConfig, Stats } from "./types.ts";
 
 export function renderStats(stats: Stats): void {
@@ -40,11 +40,6 @@ export function renderStats(stats: Stats): void {
 }
 
 export function updateRangeUi(): void {
-  const subtitle = document.getElementById("subtitle");
-  if (subtitle) {
-    subtitle.textContent =
-      `自宅回線の DNS 応答レイテンシ — DNS サーバー別（直近 ${rangeLabel(displayRangeSec)} / データ保持 7 日）`;
-  }
   document.querySelectorAll(".range-btn").forEach((btn) => {
     btn.classList.toggle("active", Number((btn as HTMLButtonElement).dataset.seconds) === displayRangeSec);
   });
