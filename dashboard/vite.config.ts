@@ -4,6 +4,7 @@ import { type Plugin, defineConfig } from "vite";
 
 const root = resolve(import.meta.dirname);
 const docsRoot = resolve(root, "../docs");
+const outDir = resolve(root, "dist");
 
 function serveDocsData(): Plugin {
   return {
@@ -33,8 +34,8 @@ export default defineConfig({
   base: "./",
   plugins: [serveDocsData()],
   build: {
-    outDir: docsRoot,
-    emptyOutDir: false,
+    outDir,
+    emptyOutDir: true,
     rollupOptions: {
       input: resolve(root, "index.html"),
     },
