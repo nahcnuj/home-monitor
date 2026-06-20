@@ -43,7 +43,8 @@ export function buildLatencyChart(
   failures: DnsFailureRecord[],
   dataCutoffTs: number,
 ): void {
-  const xBounds = chartTimeBounds();
+  const latestDataTs = rawRecords.length ? Math.max(...rawRecords.map((r) => r.ts)) : null;
+  const xBounds = chartTimeBounds(undefined, latestDataTs);
   const timestamps = collectTimelineTimestamps(rawRecords, xBounds.min, xBounds.max);
   const servers = [...new Set(rawRecords.filter(isSuccess).map((r) => r.dns_server))].sort();
   const datasets: ChartConfiguration["data"]["datasets"] = [];
