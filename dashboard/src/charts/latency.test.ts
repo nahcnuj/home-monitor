@@ -2,12 +2,18 @@ import { Chart, registerables } from "chart.js";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { aggregateByServer, filterByPeriod, parseTsv } from "../data.ts";
 import { chartRegionsPlugin, errorBandLabelsPlugin } from "./plugins.ts";
-import { buildLatencyChart, getLatencyChart } from "./latency.ts";
+import { buildLatencyChart, getLatencyChart, latencyTooltipTitle } from "./latency.ts";
 import { buildErrorChart } from "./error.ts";
 import { sampleTsv } from "../test/fixtures.ts";
 import { setDataCutoffTs, setDisplayRangeSec } from "../state.ts";
 
 Chart.register(...registerables, chartRegionsPlugin, errorBandLabelsPlugin);
+
+describe("latencyTooltipTitle", () => {
+  it("returns empty string when tooltip items are filtered out", () => {
+    expect(latencyTooltipTitle([])).toBe("");
+  });
+});
 
 describe("buildLatencyChart", () => {
   beforeAll(() => {

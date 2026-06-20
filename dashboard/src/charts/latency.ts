@@ -35,6 +35,11 @@ function isHiddenBand(label: string | undefined): boolean {
     || !!label?.endsWith(" q3");
 }
 
+export function latencyTooltipTitle(items: TooltipItem<"line">[]): string {
+  const x = items[0]?.parsed?.x;
+  return x == null || Number.isNaN(Number(x)) ? "" : fmtJst(Number(x));
+}
+
 export function buildLatencyChart(
   rawRecords: DnsRecord[],
   successes: AggregatedSuccess[],
@@ -185,9 +190,10 @@ export function buildLatencyChart(
         tooltip: {
           filter: (item: TooltipItem<"line">) => !isHiddenBand(item.dataset.label),
           callbacks: {
-            title: (items: TooltipItem<"line">[]) => fmtJst(items[0].parsed.x as number),
+            title: latencyTooltipTitle,
             label(ctx: TooltipItem<"line">) {
-              const raw = ctx.raw as FailurePoint | { x: number; y: number };
+              const raw = ctx.raw as FailurePoint | { x: number; y: number } | null;
+              if (!raw || typeof raw !== "object") return "";
               if ("error" in raw && raw.error) {
                 const domain = raw.domain ? ` / ${raw.domain}` : "";
                 return `${raw.dns_server}${domain}: ${raw.error}`;
