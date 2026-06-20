@@ -1,14 +1,19 @@
-const DEFAULT_DISPLAY_HOURS = 24;
-const STORAGE_KEY = "dns-monitor-display-hours";
+const DEFAULT_DISPLAY_RANGE_SEC = 24 * 3600;
+const STORAGE_KEY = "dns-monitor-display-range-sec";
+const LEGACY_STORAGE_KEY = "dns-monitor-display-hours";
 const RANGE_PRESETS = [
-  { hours: 3, label: "3h" },
-  { hours: 6, label: "6h" },
-  { hours: 12, label: "12h" },
-  { hours: 24, label: "24h" },
-  { hours: 72, label: "3d" },
-  { hours: 168, label: "7d" },
+  { seconds: 10 * 60, label: "10m" },
+  { seconds: 30 * 60, label: "30m" },
+  { seconds: 3600, label: "1h" },
+  { seconds: 3 * 3600, label: "3h" },
+  { seconds: 6 * 3600, label: "6h" },
+  { seconds: 12 * 3600, label: "12h" },
+  { seconds: 24 * 3600, label: "24h" },
+  { seconds: 72 * 3600, label: "3d" },
+  { seconds: 168 * 3600, label: "7d" },
 ];
 const HOUR_SEC = 3600;
+const MIN_SEC = 60;
 const DAY_SEC = 86400;
 const JST_OFFSET = 9 * HOUR_SEC;
 const MEASURE_INTERVAL_SEC = 60;
@@ -52,7 +57,7 @@ function withGaps(points) {
 const fmtJst = (unixSec) => jstFormatter.format(new Date(unixSec * 1000));
 
 function getDisplayCutoff() {
-  const rolling = Math.floor(Date.now() / 1000) - displayHours * HOUR_SEC;
+  const rolling = Math.floor(Date.now() / 1000) - displayRangeSec;
   return Math.max(rolling, dataCutoffTs);
 }
 
@@ -68,32 +73,38 @@ function ceilToHour(unixSec) {
   return Math.ceil(unixSec / HOUR_SEC) * HOUR_SEC;
 }
 
-function chartTickStep(hours) {
-  if (hours <= 6) return HOUR_SEC;
-  if (hours <= 12) return 2 * HOUR_SEC;
-  if (hours <= 24) return 3 * HOUR_SEC;
-  if (hours <= 72) return 12 * HOUR_SEC;
+function chartTickStep(rangeSec) {
+  if (rangeSec <= 10 * MIN_SEC) return 2 * MIN_SEC;
+  if (rangeSec <= 30 * MIN_SEC) return 5 * MIN_SEC;
+  if (rangeSec <= HOUR_SEC) return 10 * MIN_SEC;
+  if (rangeSec <= 6 * HOUR_SEC) return HOUR_SEC;
+  if (rangeSec <= 12 * HOUR_SEC) return 2 * HOUR_SEC;
+  if (rangeSec <= 24 * HOUR_SEC) return 3 * HOUR_SEC;
+  if (rangeSec <= 72 * HOUR_SEC) return 12 * HOUR_SEC;
   return DAY_SEC;
 }
 
 function chartTimeBounds() {
   const now = Math.floor(Date.now() / 1000);
-  const rangeSec = displayHours * HOUR_SEC;
-  const tickStep = chartTickStep(displayHours);
+  const rangeSec = displayRangeSec;
+  const tickStep = chartTickStep(rangeSec);
+  let max;
   if (rangeSec > DAY_SEC) {
-    const max = nextJstDay(now);
-    return { min: max - rangeSec, max, range: rangeSec, tickStep };
+    max = nextJstDay(now);
+  } else if (rangeSec <= HOUR_SEC) {
+    max = Math.ceil(now / MIN_SEC) * MIN_SEC;
+  } else {
+    max = ceilToHour(now);
   }
-  const max = ceilToHour(now);
   return { min: max - rangeSec, max, range: rangeSec, tickStep };
 }
 
-function rangeLabel(hours) {
-  return RANGE_PRESETS.find((p) => p.hours === hours)?.label ?? `${hours}h`;
+function rangeLabel(seconds) {
+  return RANGE_PRESETS.find((p) => p.seconds === seconds)?.label ?? `${Math.round(seconds / HOUR_SEC)}h`;
 }
 
-function isValidDisplayHours(hours) {
-  return RANGE_PRESETS.some((p) => p.hours === hours);
+function isValidDisplayRangeSec(seconds) {
+  return RANGE_PRESETS.some((p) => p.seconds === seconds);
 }
 
 function fmtAxisTick(unixSec, tickStep) {
@@ -228,7 +239,7 @@ function timeoutRanges(failures) {
 }
 
 let dataCutoffTs = 0;
-let displayHours = DEFAULT_DISPLAY_HOURS;
+let displayRangeSec = DEFAULT_DISPLAY_RANGE_SEC;
 let allRecords = [];
 let latencyChart = null;
 let errorChart = null;
@@ -444,16 +455,16 @@ function buildErrorChart(errors) {
 
 function updateRangeUi() {
   document.getElementById("subtitle").textContent =
-    `自宅回線の DNS 応答レイテンシ — DNS サーバー別（直近 ${rangeLabel(displayHours)} / データ保持 7 日）`;
+    `自宅回線の DNS 応答レイテンシ — DNS サーバー別（直近 ${rangeLabel(displayRangeSec)} / データ保持 7 日）`;
   document.querySelectorAll(".range-btn").forEach((btn) => {
-    btn.classList.toggle("active", Number(btn.dataset.hours) === displayHours);
+    btn.classList.toggle("active", Number(btn.dataset.seconds) === displayRangeSec);
   });
 }
 
-function setDisplayHours(hours) {
-  if (!isValidDisplayHours(hours) || hours === displayHours) return;
-  displayHours = hours;
-  localStorage.setItem(STORAGE_KEY, String(hours));
+function setDisplayRangeSec(seconds) {
+  if (!isValidDisplayRangeSec(seconds) || seconds === displayRangeSec) return;
+  displayRangeSec = seconds;
+  localStorage.setItem(STORAGE_KEY, String(seconds));
   updateRangeUi();
   render();
 }
@@ -462,12 +473,12 @@ function initRangeSelector() {
   const el = document.getElementById("rangeSelector");
   if (!rangeSelectorReady) {
     el.innerHTML = RANGE_PRESETS.map(
-      (p) => `<button type="button" class="range-btn" data-hours="${p.hours}">${p.label}</button>`
+      (p) => `<button type="button" class="range-btn" data-seconds="${p.seconds}">${p.label}</button>`
     ).join("");
     el.addEventListener("click", (e) => {
       const btn = e.target.closest(".range-btn");
       if (!btn) return;
-      setDisplayHours(Number(btn.dataset.hours));
+      setDisplayRangeSec(Number(btn.dataset.seconds));
     });
     rangeSelectorReady = true;
   }
@@ -485,22 +496,35 @@ function render() {
 }
 
 async function loadConfig() {
-  let configDefault = DEFAULT_DISPLAY_HOURS;
+  let configDefaultSec = DEFAULT_DISPLAY_RANGE_SEC;
   try {
     const res = await fetch(`config/monitor.json?t=${Date.now()}`);
     if (res.ok) {
       const cfg = await res.json();
       dataCutoffTs = cfg.data_cutoff_ts || 0;
-      configDefault = cfg.display_hours || DEFAULT_DISPLAY_HOURS;
+      configDefaultSec = (cfg.display_hours || 24) * HOUR_SEC;
     }
   } catch {
     dataCutoffTs = 0;
   }
 
-  const stored = Number(localStorage.getItem(STORAGE_KEY));
-  displayHours = isValidDisplayHours(stored)
-    ? stored
-    : (isValidDisplayHours(configDefault) ? configDefault : DEFAULT_DISPLAY_HOURS);
+  const storedSec = Number(localStorage.getItem(STORAGE_KEY));
+  if (isValidDisplayRangeSec(storedSec)) {
+    displayRangeSec = storedSec;
+    return;
+  }
+
+  const legacyHours = Number(localStorage.getItem(LEGACY_STORAGE_KEY));
+  if (isValidDisplayRangeSec(legacyHours * HOUR_SEC)) {
+    displayRangeSec = legacyHours * HOUR_SEC;
+    localStorage.setItem(STORAGE_KEY, String(displayRangeSec));
+    localStorage.removeItem(LEGACY_STORAGE_KEY);
+    return;
+  }
+
+  displayRangeSec = isValidDisplayRangeSec(configDefaultSec)
+    ? configDefaultSec
+    : DEFAULT_DISPLAY_RANGE_SEC;
 }
 
 async function loadData() {
