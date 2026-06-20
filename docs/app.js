@@ -168,6 +168,71 @@ const chartRegionsPlugin = {
   },
 };
 
+function withAlpha(hex, alpha) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function latencyRanges(rawRecords, servers) {
+  const serverIndex = new Map(servers.map((server, index) => [server, index]));
+  const buckets = new Map();
+  for (const r of rawRecords) {
+    if (r.error) continue;
+    const key = `${r.dns_server}\0${r.ts}`;
+    if (!buckets.has(key)) {
+      buckets.set(key, { ts: r.ts, dns_server: r.dns_server, values: [] });
+    }
+    buckets.get(key).values.push(r.latency_ms);
+  }
+
+  const ranges = [];
+  for (const { ts, dns_server, values } of buckets.values()) {
+    if (values.length < 2) continue;
+    const idx = serverIndex.get(dns_server) ?? 0;
+    ranges.push({
+      ts,
+      min: Math.min(...values),
+      max: Math.max(...values),
+      color: SERVER_COLORS[idx % SERVER_COLORS.length],
+    });
+  }
+  return ranges;
+}
+
+const latencyRangePlugin = {
+  id: "latencyRange",
+  beforeDatasetsDraw(chart, _args, opts) {
+    const { ctx, chartArea, scales } = chart;
+    const xScale = scales.x;
+    const yScale = scales.y;
+    if (!chartArea || !xScale || !yScale) return;
+
+    ctx.save();
+    for (const { ts, min, max, color } of opts?.ranges ?? []) {
+      const x = xScale.getPixelForValue(ts);
+      if (x < chartArea.left || x > chartArea.right) continue;
+
+      const yTop = yScale.getPixelForValue(max);
+      const yBottom = yScale.getPixelForValue(min);
+      const cap = 3;
+
+      ctx.strokeStyle = withAlpha(color, 0.7);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x, yTop);
+      ctx.lineTo(x, yBottom);
+      ctx.moveTo(x - cap, yTop);
+      ctx.lineTo(x + cap, yTop);
+      ctx.moveTo(x - cap, yBottom);
+      ctx.lineTo(x + cap, yBottom);
+      ctx.stroke();
+    }
+    ctx.restore();
+  },
+};
+
 function readableTextColor(hex) {
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
@@ -233,7 +298,7 @@ const errorBandLabelsPlugin = {
   },
 };
 
-Chart.register(chartRegionsPlugin, errorBandLabelsPlugin);
+Chart.register(chartRegionsPlugin, errorBandLabelsPlugin, latencyRangePlugin);
 
 function timeoutRanges(failures) {
   const seen = new Set();
@@ -310,9 +375,11 @@ function percentile(values, p) {
   return sorted[Math.max(0, Math.ceil((p / 100) * sorted.length) - 1)];
 }
 
-function computeStats(successes, failures) {
+function computeStats(records) {
+  const successes = records.filter((r) => !r.error);
+  const failures = records.filter((r) => r.error);
   const latencies = successes.map((r) => r.latency_ms);
-  const total = successes.length + failures.length;
+  const total = records.length;
   return {
     total,
     failureRate: total ? (failures.length / total) * 100 : 0,
@@ -337,29 +404,58 @@ function renderStats(stats) {
     </div>`).join("");
 }
 
-function buildLatencyChart(successes, failures) {
-  const servers = [...new Set(successes.map((r) => r.dns_server))].sort();
-  const datasets = servers.map((server, index) => {
+function buildLatencyChart(rawRecords, successes, failures) {
+  const servers = [...new Set(rawRecords.filter((r) => !r.error).map((r) => r.dns_server))].sort();
+  const datasets = [];
+
+  servers.forEach((server, index) => {
+    const color = SERVER_COLORS[index % SERVER_COLORS.length];
     const serverTimeouts = failures
       .filter((r) => r.dns_server === server && r.error === "timeout")
       .map((r) => r.ts);
-    return {
-    label: server,
-    data: withGaps(
-      successes.filter((r) => r.dns_server === server)
-        .map((r) => ({ x: r.ts, y: r.latency_ms })),
-      serverTimeouts
-    ),
-    borderColor: SERVER_COLORS[index % SERVER_COLORS.length],
-    backgroundColor: SERVER_COLORS[index % SERVER_COLORS.length],
-    pointRadius: 1.5, borderWidth: 1.5, tension: 0.1, fill: false, spanGaps: false,
-  };
+
+    datasets.push({
+      label: server,
+      order: 2,
+      data: withGaps(
+        successes.filter((r) => r.dns_server === server)
+          .map((r) => ({ x: r.ts, y: r.latency_ms })),
+        serverTimeouts
+      ),
+      borderColor: color,
+      backgroundColor: color,
+      pointRadius: 0,
+      borderWidth: 1.5,
+      tension: 0.1,
+      fill: false,
+      spanGaps: false,
+    });
+
+    const samples = rawRecords.filter((r) => !r.error && r.dns_server === server);
+    if (samples.length) {
+      datasets.push({
+        label: `${server} samples`,
+        type: "scatter",
+        order: 1,
+        data: samples.map((r) => ({ x: r.ts, y: r.latency_ms, domain: r.domain })),
+        borderColor: color,
+        backgroundColor: withAlpha(color, 0.55),
+        pointRadius: 3,
+        pointHoverRadius: 4,
+        showLine: false,
+      });
+    }
   });
+
   datasets.push({
     label: "Failures",
+    order: 0,
     data: failures.map((r) => ({ x: r.ts, y: 0, error: r.error, dns_server: r.dns_server, domain: r.domain })),
-    borderColor: "#f87171", backgroundColor: "#f87171",
-    pointRadius: 5, pointStyle: "crossRot", showLine: false,
+    borderColor: "#f87171",
+    backgroundColor: "#f87171",
+    pointRadius: 5,
+    pointStyle: "crossRot",
+    showLine: false,
   });
 
   const xBounds = chartTimeBounds();
@@ -393,7 +489,13 @@ function buildLatencyChart(successes, failures) {
           cutoffEnd: dataCutoffTs > xBounds.min ? dataCutoffTs : 0,
           timeoutRanges: timeoutRanges(failures),
         },
-        legend: { labels: { color: "#e4e6ed" } },
+        latencyRange: { ranges: latencyRanges(rawRecords, servers) },
+        legend: {
+          labels: {
+            color: "#e4e6ed",
+            filter: (item) => !item.text.endsWith(" samples"),
+          },
+        },
         tooltip: {
           callbacks: {
             title: (items) => fmtJst(items[0].parsed.x),
@@ -403,7 +505,11 @@ function buildLatencyChart(successes, failures) {
                 const domain = raw.domain ? ` / ${raw.domain}` : "";
                 return `${raw.dns_server}${domain}: ${raw.error}`;
               }
-              return `${ctx.dataset.label}: ${Math.round(raw.y)} ms`;
+              if (raw.domain) return `${raw.domain}: ${Math.round(raw.y)} ms`;
+              if (ctx.dataset.label?.endsWith(" samples")) {
+                return `${Math.round(raw.y)} ms`;
+              }
+              return `${ctx.dataset.label} 平均: ${Math.round(raw.y)} ms`;
             },
           },
         },
@@ -515,9 +621,9 @@ function initRangeSelector() {
 function render() {
   const filtered = filterByPeriod(allRecords);
   const { successes, failures } = aggregateByServer(filtered);
-  const stats = computeStats(successes, failures);
+  const stats = computeStats(filtered);
   renderStats(stats);
-  buildLatencyChart(successes, failures);
+  buildLatencyChart(filtered, successes, failures);
   buildErrorChart(stats.errors);
   requestAnimationFrame(resizeCharts);
 }

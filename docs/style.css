@@ -106,6 +106,13 @@ main { max-width: 1100px; margin: 0 auto; padding: 1.5rem 2rem 3rem; }
 .chart-section { margin-bottom: 2rem; }
 .chart-section h2 { font-size: 1rem; font-weight: 500; margin-bottom: 1rem; color: var(--text-muted); }
 
+.chart-hint {
+  font-size: 0.6875rem;
+  font-weight: 400;
+  color: var(--text-muted);
+  opacity: 0.85;
+}
+
 .chart-container {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -228,6 +235,10 @@ main { max-width: 1100px; margin: 0 auto; padding: 1.5rem 2rem 3rem; }
     flex-shrink: 0;
     font-size: 0.875rem;
     margin-bottom: 0.25rem;
+  }
+
+  .chart-hint {
+    font-size: 0.625rem;
   }
 
   .chart-container,
