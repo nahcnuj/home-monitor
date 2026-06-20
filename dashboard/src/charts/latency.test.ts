@@ -7,7 +7,7 @@ import { buildErrorChart } from "./error.ts";
 import { sampleTsv } from "../test/fixtures.ts";
 import { setDataCutoffTs, setDisplayRangeSec } from "../state.ts";
 import { chartTimeBounds, isJstOnTheHour } from "../time.ts";
-import { DAY_SEC } from "../constants.ts";
+import { DAY_SEC, HOUR_SEC } from "../constants.ts";
 
 Chart.register(...registerables, chartRegionsPlugin, errorBandLabelsPlugin);
 
@@ -42,6 +42,26 @@ describe("buildLatencyChart", () => {
     }).not.toThrow();
 
     expect(getLatencyChart()).not.toBeNull();
+  });
+
+  it("anchors the x-axis to latest data for sub-hour ranges", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(1781967900 * 1000));
+
+    setDisplayRangeSec(HOUR_SEC);
+    const records = parseTsv(sampleTsv);
+    const filtered = filterByPeriod(records, 1781967600);
+    const { successes, failures } = aggregateByServer(filtered);
+    const latestTs = Math.max(...filtered.map((r) => r.ts));
+
+    buildLatencyChart(filtered, successes, failures, 1781967600);
+
+    const chart = getLatencyChart();
+    const expected = chartTimeBounds(undefined, latestTs);
+    expect(chart?.options.scales?.x?.max).toBe(expected.max);
+    expect(expected.max).toBeLessThan(chartTimeBounds(undefined, null).max);
+
+    vi.useRealTimers();
   });
 
   it("pins the x-axis right edge to JST on-the-hour for the default 24h range", () => {
