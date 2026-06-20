@@ -172,7 +172,7 @@ export function buildLatencyChart(
           },
         },
         tooltip: {
-          filter: (item) =>
+          filter: (item: TooltipItem<"line">) =>
             !item.dataset.label?.endsWith(" max") && !item.dataset.label?.endsWith(" min"),
           callbacks: {
             title: (items: TooltipItem<"line">[]) => fmtJst(items[0].parsed.x as number),
