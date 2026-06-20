@@ -1,5 +1,19 @@
 const PERIOD_HOURS = 168;
+const MAX_GAP_MS = 3 * 60 * 1000; // 計測間隔1分 → 3分以上空いたら線を切る
 const DOMAIN_COLORS = { "google.com": "#5b8def", "cloudflare.com": "#f59e0b" };
+
+function withGaps(points) {
+  if (points.length < 2) return points;
+  const sorted = [...points].sort((a, b) => a.x - b.x);
+  const result = [sorted[0]];
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i].x - sorted[i - 1].x > MAX_GAP_MS) {
+      result.push({ x: sorted[i - 1].x, y: null });
+    }
+    result.push(sorted[i]);
+  }
+  return result;
+}
 
 // TSV の ts は Unix 秒（数値の文字列）。×1000 で UTC エポック → JST 表示
 const fmtJst = (unixSec) =>
@@ -71,11 +85,13 @@ function buildLatencyChart(records) {
   const failures = records.filter((r) => r.error);
   const datasets = domains.map((domain) => ({
     label: domain,
-    data: records.filter((r) => r.domain === domain && !isNaN(r.latency_ms))
-      .map((r) => ({ x: r.ts * 1000, y: r.latency_ms })),
+    data: withGaps(
+      records.filter((r) => r.domain === domain && !isNaN(r.latency_ms))
+        .map((r) => ({ x: r.ts * 1000, y: r.latency_ms }))
+    ),
     borderColor: DOMAIN_COLORS[domain] || "#a78bfa",
     backgroundColor: DOMAIN_COLORS[domain] || "#a78bfa",
-    pointRadius: 1.5, borderWidth: 1.5, tension: 0.1, fill: false,
+    pointRadius: 1.5, borderWidth: 1.5, tension: 0.1, fill: false, spanGaps: false,
   }));
   datasets.push({
     label: "Failures",
