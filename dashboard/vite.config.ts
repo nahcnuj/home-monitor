@@ -3,12 +3,31 @@ import { join, resolve } from "node:path";
 import { type Plugin, defineConfig } from "vite";
 
 const root = resolve(import.meta.dirname);
-const docsRoot = resolve(root, "../docs");
+const repoRoot = resolve(root, "..");
+const dataLocalFile = resolve(repoRoot, "data/local/dns-latency.tsv");
+const configFile = resolve(repoRoot, "config/monitor.json");
+const docsRoot = resolve(repoRoot, "docs");
 const outDir = resolve(root, "dist");
 
-function serveDocsData(): Plugin {
+function resolveDevAsset(url: string): string | null {
+  if (url === "/config/monitor.json" && existsSync(configFile)) {
+    return configFile;
+  }
+  if (url === "/data/dns-latency.tsv") {
+    if (existsSync(dataLocalFile)) return dataLocalFile;
+    const docsFile = join(docsRoot, "data/dns-latency.tsv");
+    if (existsSync(docsFile)) return docsFile;
+  }
+  const docsFile = join(docsRoot, url);
+  if (existsSync(docsFile) && statSync(docsFile).isFile()) {
+    return docsFile;
+  }
+  return null;
+}
+
+function serveDevData(): Plugin {
   return {
-    name: "serve-docs-data",
+    name: "serve-dev-data",
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
         const url = req.url?.split("?")[0] ?? "";
@@ -16,8 +35,8 @@ function serveDocsData(): Plugin {
           next();
           return;
         }
-        const filePath = join(docsRoot, url);
-        if (!existsSync(filePath) || !statSync(filePath).isFile()) {
+        const filePath = resolveDevAsset(url);
+        if (!filePath) {
           next();
           return;
         }
@@ -32,7 +51,7 @@ function serveDocsData(): Plugin {
 export default defineConfig({
   root,
   base: "./",
-  plugins: [serveDocsData()],
+  plugins: [serveDevData()],
   build: {
     outDir,
     emptyOutDir: true,

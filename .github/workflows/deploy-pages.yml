@@ -2,24 +2,15 @@ name: Deploy Pages
 
 on:
   push:
-    branches: [master]
-    paths:
-      - "dashboard/**"
-      - "docs/config/**"
-      - "docs/data/**"
-      - "package.json"
-      - "package-lock.json"
-      - "vitest.config.ts"
-      - "scripts/prepare-pages.sh"
-      - ".github/workflows/ci.yml"
-      - ".github/workflows/deploy-pages.yml"
-      - ".github/workflows/sync-dns-data.yml"
+    branches: [master, data]
   workflow_dispatch:
+  workflow_run:
+    workflows: [Sync DNS Data]
+    types: [completed]
+    branches: [master]
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
   group: pages
@@ -27,30 +18,45 @@ concurrency:
 
 jobs:
   deploy:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: master
+          path: source
+
+      - uses: actions/checkout@v4
+        with:
+          ref: data
+          path: pages-data
 
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
-
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm test
+          cache-dependency-path: source/package-lock.json
 
       - name: Build dashboard and assemble site
-        run: bash scripts/prepare-pages.sh
+        working-directory: source
+        env:
+          PAGES_DATA_DIR: ${{ github.workspace }}/pages-data
+        run: |
+          npm ci
+          npm run typecheck
+          npm run test
+          bash scripts/prepare-pages.sh
 
-      - uses: actions/configure-pages@v5
-
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: dashboard/dist
-
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Deploy to gh-pages branch
+        working-directory: source/dashboard/dist
+        run: |
+          touch .nojekyll
+          git init
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "deploy: ${GITHUB_SHA}"
+          git branch -M gh-pages
+          git push -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

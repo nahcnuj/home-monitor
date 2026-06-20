@@ -24,12 +24,12 @@ describe("buildLatencyChart", () => {
       <canvas id="errorChart" width="800" height="200"></canvas>
     `;
     setDisplayRangeSec(3600);
-    setDataCutoffTs(1781960400);
+    setDataCutoffTs(1781967600);
   });
 
   it("renders charts from published TSV without throwing", () => {
     const records = parseTsv(sampleTsv);
-    const filtered = filterByPeriod(records, 1781960400);
+    const filtered = filterByPeriod(records, 1781967600);
     const { successes, failures } = aggregateByServer(filtered);
     const stats = failures.reduce<Record<string, number>>((acc, row) => {
       acc[row.error] = (acc[row.error] || 0) + 1;
@@ -37,7 +37,7 @@ describe("buildLatencyChart", () => {
     }, {});
 
     expect(() => {
-      buildLatencyChart(filtered, successes, failures, 1781960400);
+      buildLatencyChart(filtered, successes, failures, 1781967600);
       buildErrorChart(stats);
     }).not.toThrow();
 
@@ -50,10 +50,10 @@ describe("buildLatencyChart", () => {
 
     setDisplayRangeSec(DAY_SEC);
     const records = parseTsv(sampleTsv);
-    const filtered = filterByPeriod(records, 1781960400);
+    const filtered = filterByPeriod(records, 1781967600);
     const { successes, failures } = aggregateByServer(filtered);
 
-    buildLatencyChart(filtered, successes, failures, 1781960400);
+    buildLatencyChart(filtered, successes, failures, 1781967600);
 
     const chart = getLatencyChart();
     const expected = chartTimeBounds();

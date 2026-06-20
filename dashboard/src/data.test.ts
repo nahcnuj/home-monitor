@@ -42,10 +42,10 @@ describe("parseTsv", () => {
 describe("dashboard pipeline", () => {
   it("aggregates and filters published data", () => {
     setDisplayRangeSec(24 * 3600);
-    setDataCutoffTs(1781960400);
+    setDataCutoffTs(1781967600);
 
     const records = parseTsv(sampleTsv);
-    const filtered = filterByPeriod(records, 1781960400);
+    const filtered = filterByPeriod(records, 1781967600);
     expect(filtered.length).toBeGreaterThan(0);
 
     const { successes, failures } = aggregateByServer(filtered);

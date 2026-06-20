@@ -1,4 +1,5 @@
 data/local/
+docs/
 node_modules/
 dashboard/dist/
 terminals/

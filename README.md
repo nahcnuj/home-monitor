@@ -2,12 +2,22 @@
 
 自宅回線の DNS 応答レイテンシを監視し、GitHub Pages で可視化するツールです。
 
+## ブランチ構成
+
+| ブランチ | 内容 |
+|----------|------|
+| `master` | ソース（ダッシュボード、スクリプト、ワークフロー、ローカル設定） |
+| `data` | 公開データ（`data/dns-latency.tsv`、`config/monitor.json`） |
+| `gh-pages` | ビルド済み静的サイト（CI が更新、手編集しない） |
+
+GitHub Pages は **`gh-pages` ブランチ** を公開元にします（Settings → Pages → Deploy from a branch）。
+
 ## 仕組み
 
 1. **Windows PC** — 1分ごとに `nslookup` を実行し、レイテンシをローカル TSV に記録
 2. **1時間ごと** — `gh workflow run` で未送信データをワークフローへ送信
-3. **GitHub Actions** — 受信データを `docs/data/dns-latency.tsv` にマージし、Pages をデプロイ
-4. **ダッシュボード** — `https://nahcnuj.github.io/home-monitor/` でグラフ表示
+3. **GitHub Actions** — `data` ブランチへマージし、`master` のソースをビルドして `gh-pages` へデプロイ
+4. **ダッシュボード** — `https://www.nahcnuj.work/home-monitor/` でグラフ表示
 
 ## セットアップ
 
@@ -16,9 +26,10 @@
 ```powershell
 git remote add origin https://github.com/nahcnuj/home-monitor.git
 git push -u origin master
+git push -u origin data
 ```
 
-GitHub の **Settings → Pages → Build and deployment → GitHub Actions** を有効化してください。
+GitHub の **Settings → Pages → Build and deployment → Deploy from a branch** で **`gh-pages` / `/ (root)`** を選んでください。
 
 ### 2. GitHub CLI
 
@@ -72,7 +83,7 @@ GitHub の Actions タブで **Sync DNS Data** ワークフローが起動する
 
 2列目は名前解決に使った DNS サーバーの IP、3列目はクエリ先ドメインです。
 
-[`config/monitor.json`](config/monitor.json) の `data_cutoff_ts`（Unix 秒）より古い行は保存・表示・送信の対象外です。GitHub 上のデータは最大 7 日分保持されます。ダッシュボードの表示範囲（10m / 30m / 1h / 3h / 6h / 12h / 24h / 3d / 7d）は UI から切り替えでき、選択はブラウザに保存されます。`display_hours`（デフォルト 24）は初回表示の初期値のみです。`docs/config/monitor.json` も同じ値に揃えてください。
+[`config/monitor.json`](config/monitor.json) の `data_cutoff_ts`（Unix 秒）より古い行は保存・表示・送信の対象外です。GitHub 上のデータは最大 7 日分保持されます。ダッシュボードの表示範囲（10m / 30m / 1h / 3h / 6h / 12h / 24h / 3d / 7d）は UI から切り替えでき、選択はブラウザに保存されます。`display_hours`（デフォルト 24）は初回表示の初期値のみです。データ同期時に `data` ブランチの `config/monitor.json` へ反映されます。
 
 ## 設定
 
@@ -81,32 +92,45 @@ GitHub の Actions タブで **Sync DNS Data** ワークフローが起動する
 旧形式・カットオフ以前のデータを削除する場合:
 
 ```powershell
-.\scripts\purge-domain-data.ps1          # ローカルと docs の TSV を整理
+.\scripts\purge-domain-data.ps1          # ローカル TSV を整理
 .\scripts\purge-domain-data.ps1 -Republish  # 整理後に GitHub へ全件再送
 ```
 
 ## ダッシュボード開発 (Vite + TypeScript)
 
-ソースは `dashboard/src/`。ビルド成果物は `dashboard/dist/` に出力され、**master の `docs/` には含めません**（GitHub Actions がデプロイ時に組み立てます）。
+ソースは `dashboard/src/`。ビルド成果物は `dashboard/dist/` に出力され、CI が `gh-pages` ブランチへ公開します。
 
 ```powershell
 npm install
-npm run dev      # ローカル開発（docs/data, docs/config を参照）
+npm run dev      # data/local と config/monitor.json を参照
 npm run build    # dashboard/dist/ に出力
 npm run typecheck
+npm test
 ```
 
-`docs/` に置くのは `data/` と `config/` のみです。UI を変えたら push すると `Deploy Pages` ワークフローがビルドして公開します。
+`data` ブランチの内容をローカルで確認したい場合:
+
+```powershell
+.\scripts\fetch-data-branch.ps1   # docs/ に取得（gitignore 済み）
+```
+
+UI を `master` に push すると **Deploy Pages** が走り、`data` ブランチのデータを組み込んで公開します。
 
 ## ファイル構成
 
 ```
-config/monitor.json       設定
+config/monitor.json       ローカル設定（ドメイン一覧・カットオフなど）
 scripts/collect-dns.ps1   計測スクリプト
 scripts/publish-data.ps1  データ送信
 scripts/install-scheduled-task.ps1  タスク登録
 dashboard/                ダッシュボードソース (Vite + TS)
-docs/                     Pages 用データ（data/, config/ のみ）
-dashboard/dist/           ビルド成果物（gitignore、CI がデプロイ）
 data/local/               ローカルデータ (gitignore)
+docs/                     ローカルプレビュー用キャッシュ (gitignore)
+```
+
+`data` ブランチ:
+
+```
+data/dns-latency.tsv      公開 TSV
+config/monitor.json       ダッシュボード用設定（カットオフ・表示時間）
 ```

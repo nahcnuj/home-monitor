@@ -10,17 +10,20 @@ on:
 
 permissions:
   contents: write
-  pages: write
-  id-token: write
 
 jobs:
   sync:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: master
+          path: source
+
+      - uses: actions/checkout@v4
+        with:
+          ref: data
+          path: data
 
       - name: Merge incoming TSV data
         env:
@@ -43,10 +46,20 @@ jobs:
                   domain = cols[2]
               return (cols[0], cols[1], domain)
 
-          with open("config/monitor.json", encoding="utf-8") as f:
-              data_cutoff = int(json.load(f).get("data_cutoff_ts", 0))
+          with open("source/config/monitor.json", encoding="utf-8") as f:
+              master_cfg = json.load(f)
+          data_cutoff = int(master_cfg.get("data_cutoff_ts", 0))
           rolling_cutoff = int(time.time()) - 7 * 86400
           cutoff = max(rolling_cutoff, data_cutoff)
+
+          dashboard_cfg = {
+              "data_cutoff_ts": data_cutoff,
+              "display_hours": int(master_cfg.get("display_hours", 24)),
+          }
+          os.makedirs("data/config", exist_ok=True)
+          with open("data/config/monitor.json", "w", encoding="utf-8") as f:
+              json.dump(dashboard_cfg, f, indent=2)
+              f.write("\n")
 
           data_b64 = os.environ.get("DATA_B64", "")
           if not data_b64:
@@ -55,7 +68,7 @@ jobs:
           incoming = gzip.decompress(base64.b64decode(data_b64)).decode("utf-8")
           incoming_lines = [l for l in incoming.strip().split("\n") if l.strip()]
 
-          path = "docs/data/dns-latency.tsv"
+          path = "data/data/dns-latency.tsv"
           existing_lines = []
           if os.path.exists(path):
               with open(path, encoding="utf-8") as f:
@@ -76,7 +89,7 @@ jobs:
               merged.append(line)
 
           merged = sorted(
-            [l for l in merged if int(l.split("\t")[0]) >= cutoff],
+              [l for l in merged if int(l.split("\t")[0]) >= cutoff],
               key=lambda l: int(l.split("\t")[0]),
           )
 
@@ -86,46 +99,17 @@ jobs:
                   f.write("\n".join(merged) + "\n")
           PYEOF
 
-      - name: Commit and push
+      - name: Commit and push data branch
+        working-directory: data
         run: |
-          if git diff --quiet docs/data/dns-latency.tsv; then
+          if git diff --quiet; then
             echo "data_unchanged=true" >> "$GITHUB_OUTPUT"
+            echo "No data changes"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/data/dns-latency.tsv
+          git add data/dns-latency.tsv config/monitor.json
           git commit -m "chore: update dns latency data"
           git push
         id: commit
-
-      - uses: actions/setup-node@v4
-        if: steps.commit.outputs.data_unchanged != 'true'
-        with:
-          node-version: "22"
-          cache: npm
-
-      - if: steps.commit.outputs.data_unchanged != 'true'
-        run: npm ci
-
-      - if: steps.commit.outputs.data_unchanged != 'true'
-        run: npm run typecheck
-
-      - if: steps.commit.outputs.data_unchanged != 'true'
-        run: npm test
-
-      - name: Build dashboard and assemble site
-        if: steps.commit.outputs.data_unchanged != 'true'
-        run: bash scripts/prepare-pages.sh
-
-      - uses: actions/configure-pages@v5
-        if: steps.commit.outputs.data_unchanged != 'true'
-
-      - uses: actions/upload-pages-artifact@v3
-        if: steps.commit.outputs.data_unchanged != 'true'
-        with:
-          path: dashboard/dist
-
-      - id: deployment
-        if: steps.commit.outputs.data_unchanged != 'true'
-        uses: actions/deploy-pages@v4

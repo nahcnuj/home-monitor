@@ -1,10 +1,12 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-
-const repoRoot = resolve(import.meta.dirname, "../../..");
-
-export function readRepoFile(path: string): string {
-  return readFileSync(resolve(repoRoot, path), "utf8");
-}
-
-export const sampleTsv = readRepoFile("docs/data/dns-latency.tsv");
+export const sampleTsv = `1781967602\t203.165.31.152\tamazon.co.jp\t239
+1781967602\t203.165.31.152\tapple.com\t216
+1781967602\t203.165.31.152\tcloudflare.com\t224
+1781967602\t203.165.31.152\tgithub.com\t249
+1781967602\t203.165.31.152\tgoogle.com\t234
+1781967602\t203.165.31.152\tline.me\t246
+1781967602\t203.165.31.152\tmicrosoft.com\t241
+1781967602\t203.165.31.152\tyahoo.co.jp\t238
+1781967662\t203.165.31.152\tamazon.co.jp\t168
+1781967662\t203.165.31.152\tgoogle.com\t221
+1781967662\t203.165.31.152\tline.me\t\ttimeout
+`;
