@@ -211,7 +211,12 @@ main { max-width: 1100px; margin: 0 auto; padding: 1.5rem 2rem 3rem; }
   }
 
   .chart-section--error {
-    flex: 2;
+    flex: 1.25;
+  }
+
+  .chart-section--error .chart-container {
+    display: flex;
+    align-items: center;
   }
 
   .chart-section h2 {

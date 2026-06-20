@@ -14,6 +14,17 @@ const JST_OFFSET = 9 * HOUR_SEC;
 const MEASURE_INTERVAL_SEC = 60;
 const MAX_GAP_SEC = 3 * 60; // 計測間隔1分 → 3分以上空いたら線を切る
 const SERVER_COLORS = ["#5b8def", "#f59e0b", "#4ade80", "#a78bfa", "#f472b6", "#38bdf8"];
+const ERROR_COLORS = {
+  timeout: "#ef4444",
+  no_response: "#f97316",
+  no_nameserver: "#f59e0b",
+  server_fail: "#eab308",
+  refused: "#a855f7",
+  nxdomain: "#ec4899",
+  no_record: "#6366f1",
+  resolver_error: "#14b8a6",
+  unknown: "#8b90a0",
+};
 const jstFormatter = new Intl.DateTimeFormat("ja-JP", {
   timeZone: "Asia/Tokyo",
   month: "2-digit",
@@ -298,21 +309,75 @@ function buildLatencyChart(successes, failures) {
   });
 }
 
+function errorBandRadius(index, count) {
+  if (count <= 1) return 6;
+  if (index === 0) return { topLeft: 6, bottomLeft: 6, topRight: 0, bottomRight: 0 };
+  if (index === count - 1) return { topLeft: 0, bottomLeft: 0, topRight: 6, bottomRight: 6 };
+  return 0;
+}
+
 function buildErrorChart(errors) {
   const codes = Object.keys(errors).sort((a, b) => errors[b] - errors[a]);
+  const total = codes.reduce((sum, code) => sum + errors[code], 0);
   if (errorChart) errorChart.destroy();
+
+  const datasets = codes.length
+    ? codes.map((code, index) => ({
+        label: code,
+        data: [errors[code]],
+        backgroundColor: ERROR_COLORS[code] || SERVER_COLORS[index % SERVER_COLORS.length],
+        borderWidth: 0,
+        borderRadius: errorBandRadius(index, codes.length),
+      }))
+    : [{
+        label: "なし",
+        data: [1],
+        backgroundColor: "#2a2e3d",
+        borderWidth: 0,
+        borderRadius: 6,
+      }];
+
   errorChart = new Chart(document.getElementById("errorChart"), {
     type: "bar",
-    data: {
-      labels: codes.length ? codes : ["なし"],
-      datasets: [{ data: codes.length ? codes.map((c) => errors[c]) : [0], backgroundColor: "#f87171", borderRadius: 4 }],
-    },
+    data: { labels: [""], datasets },
     options: {
-      responsive: true, maintainAspectRatio: false, indexAxis: "y",
-      plugins: { legend: { display: false } },
+      responsive: true,
+      maintainAspectRatio: false,
+      indexAxis: "y",
+      datasets: { bar: { barThickness: 28 } },
       scales: {
-        x: { ticks: { color: "#8b90a0", stepSize: 1 }, grid: { color: "#2a2e3d" } },
-        y: { ticks: { color: "#8b90a0" }, grid: { display: false } },
+        x: {
+          stacked: true,
+          display: false,
+          max: codes.length ? total : 1,
+        },
+        y: {
+          stacked: true,
+          display: false,
+        },
+      },
+      plugins: {
+        legend: {
+          display: true,
+          position: "bottom",
+          labels: {
+            color: "#e4e6ed",
+            boxWidth: 10,
+            boxHeight: 10,
+            padding: 10,
+            font: { size: 11 },
+          },
+        },
+        tooltip: {
+          filter: (item) => codes.length > 0,
+          callbacks: {
+            label(ctx) {
+              const count = ctx.raw;
+              const pct = total ? ((count / total) * 100).toFixed(1) : "0.0";
+              return `${ctx.dataset.label}: ${count} (${pct}%)`;
+            },
+          },
+        },
       },
     },
   });
