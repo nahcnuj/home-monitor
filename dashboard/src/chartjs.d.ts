@@ -8,9 +8,6 @@ declare module "chart.js" {
       xMin?: number;
       timeoutRanges?: { start: number; end: number }[];
     };
-    latencyRange?: {
-      ranges?: { ts: number; min: number; max: number; color: string }[];
-    };
     errorBandLabels?: {
       empty?: boolean;
       total?: number;

@@ -17,7 +17,7 @@ import type {
 function isSuccess(r: DnsRecord): r is DnsSuccessRecord {
   return !r.error;
 }
-import { latencyRanges, timeoutRanges, withAlpha, withGaps } from "../utils.ts";
+import { latencyRangePoints, timeoutRanges, withAlpha, withGaps } from "../utils.ts";
 
 let latencyChart: Chart | null = null;
 
@@ -39,6 +39,34 @@ export function buildLatencyChart(
     const serverTimeouts = failures
       .filter((r) => r.dns_server === server && r.error === "timeout")
       .map((r) => r.ts);
+
+    const rangePoints = latencyRangePoints(rawRecords, server);
+    if (rangePoints.min.length) {
+      datasets.push({
+        label: `${server} max`,
+        order: 3,
+        data: withGaps(rangePoints.max, serverTimeouts),
+        borderColor: withAlpha(color, 0.4),
+        backgroundColor: "transparent",
+        borderWidth: 1,
+        pointRadius: 0,
+        tension: 0.1,
+        fill: false,
+        spanGaps: false,
+      });
+      datasets.push({
+        label: `${server} min`,
+        order: 3,
+        data: withGaps(rangePoints.min, serverTimeouts),
+        borderColor: withAlpha(color, 0.4),
+        backgroundColor: withAlpha(color, 0.12),
+        borderWidth: 1,
+        pointRadius: 0,
+        tension: 0.1,
+        fill: "-1",
+        spanGaps: false,
+      });
+    }
 
     datasets.push({
       label: server,
@@ -136,14 +164,16 @@ export function buildLatencyChart(
           cutoffEnd: dataCutoffTs > xBounds.min ? dataCutoffTs : 0,
           timeoutRanges: timeoutRanges(failures),
         },
-        latencyRange: { ranges: latencyRanges(rawRecords, servers) },
         legend: {
           labels: {
             color: "#e4e6ed",
-            filter: (item: { text: string }) => !item.text.endsWith(" samples"),
+            filter: (item: { text: string }) =>
+              !item.text.endsWith(" samples") && !item.text.endsWith(" max") && !item.text.endsWith(" min"),
           },
         },
         tooltip: {
+          filter: (item) =>
+            !item.dataset.label?.endsWith(" max") && !item.dataset.label?.endsWith(" min"),
           callbacks: {
             title: (items: TooltipItem<"line">[]) => fmtJst(items[0].parsed.x as number),
             label(ctx: TooltipItem<"line">) {

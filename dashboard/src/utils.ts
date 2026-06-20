@@ -1,5 +1,5 @@
-import { MAX_GAP_SEC, MEASURE_INTERVAL_SEC, SERVER_COLORS } from "./constants.ts";
-import type { ChartPoint, DnsRecord, DnsSuccessRecord, LatencyRangeMark } from "./types.ts";
+import { MAX_GAP_SEC, MEASURE_INTERVAL_SEC } from "./constants.ts";
+import type { ChartPoint, DnsRecord, DnsSuccessRecord } from "./types.ts";
 
 function isSuccess(r: DnsRecord): r is DnsSuccessRecord {
   return !r.error;
@@ -42,30 +42,26 @@ export function withGaps(points: ChartPoint[], timeoutTs: number[] = []): ChartP
   return result;
 }
 
-export function latencyRanges(rawRecords: DnsRecord[], servers: string[]): LatencyRangeMark[] {
-  const serverIndex = new Map(servers.map((server, index) => [server, index]));
-  const buckets = new Map<string, { ts: number; dns_server: string; values: number[] }>();
+export function latencyRangePoints(
+  rawRecords: DnsRecord[],
+  server: string,
+): { min: ChartPoint[]; max: ChartPoint[] } {
+  const buckets = new Map<number, number[]>();
 
   for (const r of rawRecords.filter(isSuccess)) {
-    const key = `${r.dns_server}\0${r.ts}`;
-    if (!buckets.has(key)) {
-      buckets.set(key, { ts: r.ts, dns_server: r.dns_server, values: [] });
-    }
-    buckets.get(key)!.values.push(r.latency_ms);
+    if (r.dns_server !== server) continue;
+    if (!buckets.has(r.ts)) buckets.set(r.ts, []);
+    buckets.get(r.ts)!.push(r.latency_ms);
   }
 
-  const ranges: LatencyRangeMark[] = [];
-  for (const { ts, dns_server, values } of buckets.values()) {
+  const min: ChartPoint[] = [];
+  const max: ChartPoint[] = [];
+  for (const [ts, values] of [...buckets.entries()].sort((a, b) => a[0] - b[0])) {
     if (values.length < 2) continue;
-    const idx = serverIndex.get(dns_server) ?? 0;
-    ranges.push({
-      ts,
-      min: Math.min(...values),
-      max: Math.max(...values),
-      color: SERVER_COLORS[idx % SERVER_COLORS.length],
-    });
+    min.push({ x: ts, y: Math.min(...values) });
+    max.push({ x: ts, y: Math.max(...values) });
   }
-  return ranges;
+  return { min, max };
 }
 
 export function timeoutRanges(failures: DnsRecord[]): { start: number; end: number }[] {

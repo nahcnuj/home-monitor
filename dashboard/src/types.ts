@@ -84,9 +84,3 @@ export interface TimeoutRange {
   end: number;
 }
 
-export interface LatencyRangeMark {
-  ts: number;
-  min: number;
-  max: number;
-  color: string;
-}

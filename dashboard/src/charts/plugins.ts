@@ -1,14 +1,10 @@
 import type { Plugin } from "chart.js";
-import { readableTextColor, withAlpha } from "../utils.ts";
+import { readableTextColor } from "../utils.ts";
 
 interface ChartRegionsOptions {
   cutoffEnd?: number;
   xMin?: number;
   timeoutRanges?: { start: number; end: number }[];
-}
-
-interface LatencyRangeOptions {
-  ranges?: { ts: number; min: number; max: number; color: string }[];
 }
 
 interface ErrorBandLabelsOptions {
@@ -55,39 +51,6 @@ export const chartRegionsPlugin: Plugin<"line"> = {
       ctx.fillRect(left, chartArea.top, 2, chartArea.bottom - chartArea.top);
     }
 
-    ctx.restore();
-  },
-};
-
-export const latencyRangePlugin: Plugin<"line"> = {
-  id: "latencyRange",
-  beforeDatasetsDraw(chart, _args, opts) {
-    const options = opts as LatencyRangeOptions | undefined;
-    const { ctx, chartArea, scales } = chart;
-    const xScale = scales.x;
-    const yScale = scales.y;
-    if (!chartArea || !xScale || !yScale) return;
-
-    ctx.save();
-    for (const { ts, min, max, color } of options?.ranges ?? []) {
-      const x = xScale.getPixelForValue(ts);
-      if (x < chartArea.left || x > chartArea.right) continue;
-
-      const yTop = yScale.getPixelForValue(max);
-      const yBottom = yScale.getPixelForValue(min);
-      const cap = 3;
-
-      ctx.strokeStyle = withAlpha(color, 0.7);
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(x, yTop);
-      ctx.lineTo(x, yBottom);
-      ctx.moveTo(x - cap, yTop);
-      ctx.lineTo(x + cap, yTop);
-      ctx.moveTo(x - cap, yBottom);
-      ctx.lineTo(x + cap, yBottom);
-      ctx.stroke();
-    }
     ctx.restore();
   },
 };
