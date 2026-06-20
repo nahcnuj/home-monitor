@@ -9,7 +9,7 @@
 | `master` | ソース（ダッシュボード、スクリプト、ワークフロー、`monitor.config.ts`） |
 | `gh-pages` | 公開用ブランチ（`master` + `docs/data`） |
 
-`master` への push で **Merge to gh-pages** が走り、ソースを `gh-pages` にマージします（`docs/data/` はそのまま残ります）。**Sync DNS Data** は計測データを `gh-pages` の `docs/data/` に直接書き込みます。いずれも **Deploy Pages** が `gh-pages` からビルドして公開します。
+`master` への push で **Merge to gh-pages** が走り、ソースを `gh-pages` にマージします（`docs/data/` はそのまま残ります）。**Sync DNS Data** は計測データを `gh-pages` の `docs/data/` に直接書き込みます。続けて **Deploy Pages** が `gh-pages` からビルドして公開します（bot による push では後続ワークフローが起動しないため、`workflow_run` で連鎖させています）。
 
 GitHub Pages は **GitHub Actions** でデプロイします（Settings → Pages → GitHub Actions）。
 
