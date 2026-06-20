@@ -7,7 +7,7 @@ cd "$ROOT"
 git config user.name "github-actions[bot]"
 git config user.email "github-actions[bot]@users.noreply.github.com"
 
-git fetch origin master data gh-pages
+git fetch origin master gh-pages
 
 needs_reset=false
 if ! git rev-parse --verify origin/gh-pages >/dev/null 2>&1; then
@@ -22,15 +22,6 @@ if $needs_reset; then
 else
   git checkout -B gh-pages origin/gh-pages
   git merge origin/master --no-edit -m "merge master into gh-pages"
-fi
-
-mkdir -p docs/data docs/config
-git show origin/data:data/dns-latency.tsv > docs/data/dns-latency.tsv
-git show origin/data:config/monitor.json > docs/config/monitor.json
-
-git add -f docs/data/dns-latency.tsv docs/config/monitor.json
-if ! git diff --cached --quiet; then
-  git commit -m "chore: sync docs from data branch"
 fi
 
 if git rev-parse --verify origin/gh-pages >/dev/null 2>&1 && git diff --quiet origin/gh-pages..gh-pages; then

@@ -22,8 +22,10 @@ jobs:
 
       - uses: actions/checkout@v4
         with:
-          ref: data
-          path: data
+          ref: gh-pages
+          path: pages
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Merge incoming TSV data
         env:
@@ -56,8 +58,8 @@ jobs:
               "data_cutoff_ts": data_cutoff,
               "display_hours": int(master_cfg.get("display_hours", 24)),
           }
-          os.makedirs("data/config", exist_ok=True)
-          with open("data/config/monitor.json", "w", encoding="utf-8") as f:
+          os.makedirs("pages/docs/config", exist_ok=True)
+          with open("pages/docs/config/monitor.json", "w", encoding="utf-8") as f:
               json.dump(dashboard_cfg, f, indent=2)
               f.write("\n")
 
@@ -68,7 +70,7 @@ jobs:
           incoming = gzip.decompress(base64.b64decode(data_b64)).decode("utf-8")
           incoming_lines = [l for l in incoming.strip().split("\n") if l.strip()]
 
-          path = "data/data/dns-latency.tsv"
+          path = "pages/docs/data/dns-latency.tsv"
           existing_lines = []
           if os.path.exists(path):
               with open(path, encoding="utf-8") as f:
@@ -99,17 +101,20 @@ jobs:
                   f.write("\n".join(merged) + "\n")
           PYEOF
 
-      - name: Commit and push data branch
-        working-directory: data
+      - name: Commit and push gh-pages
+        working-directory: pages
         run: |
-          if git diff --quiet; then
-            echo "data_unchanged=true" >> "$GITHUB_OUTPUT"
-            echo "No data changes"
-            exit 0
-          fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/dns-latency.tsv config/monitor.json
-          git commit -m "chore: update dns latency data"
+          git fetch origin master
+          git merge origin/master --no-edit -m "merge master into gh-pages"
+
+          git add -f docs/data/dns-latency.tsv docs/config/monitor.json
+          if git diff --cached --quiet && git diff --quiet; then
+            echo "No changes to publish"
+            exit 0
+          fi
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: update dns latency data"
+          fi
           git push
-        id: commit

@@ -53,7 +53,7 @@ function Remove-StaleRows {
 
 $cutoffTs = Get-DataCutoffTs
 Write-Host "data_cutoff_ts: $cutoffTs"
-Write-Host "Published data lives on the data branch; this script cleans local files only."
+Write-Host "Published data lives on gh-pages docs/; this script cleans local files only."
 
 $total = 0
 $total += Remove-StaleRows -Path $LocalFile -CutoffTs $cutoffTs
