@@ -6,17 +6,24 @@ $CollectScript = Join-Path $PSScriptRoot "collect-dns.ps1"
 $PublishScript = Join-Path $PSScriptRoot "publish-data.ps1"
 $PowerShellExe = (Get-Command powershell.exe).Source
 
+# RepetitionDuration の上限は約31日。Daily + 繰り返しで実質無期限に動かす。
+$RepDuration = New-TimeSpan -Days 1
+
 function Register-MonitorTask {
     param(
         [string]$TaskName,
         [string]$ScriptPath,
-        [object]$Trigger
+        [TimeSpan]$Interval
     )
 
     $action = New-ScheduledTaskAction `
         -Execute $PowerShellExe `
         -Argument "-NoProfile -File `"$ScriptPath`"" `
         -WorkingDirectory $RepoRoot
+
+    $trigger = New-ScheduledTaskTrigger -Daily -At "00:00" `
+        -RepetitionInterval $Interval `
+        -RepetitionDuration $RepDuration
 
     $settings = New-ScheduledTaskSettingsSet `
         -AllowStartIfOnBatteries `
@@ -33,20 +40,17 @@ function Register-MonitorTask {
         -Trigger $trigger `
         -Settings $settings `
         -Principal $principal `
-        -Force | Out-Null
+        -Force -ErrorAction Stop | Out-Null
 
     Write-Host "Registered: $TaskName"
 }
 
-$collectTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 1) -RepetitionDuration ([TimeSpan]::MaxValue)
-$publishTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Hours 6) -RepetitionDuration ([TimeSpan]::MaxValue)
-
-Register-MonitorTask -TaskName "HomeMonitor-DNS-Collect" -ScriptPath $CollectScript -Trigger $collectTrigger
-Register-MonitorTask -TaskName "HomeMonitor-DNS-Publish" -ScriptPath $PublishScript -Trigger $publishTrigger
+Register-MonitorTask -TaskName "HomeMonitor-DNS-Collect" -ScriptPath $CollectScript -Interval (New-TimeSpan -Minutes 1)
+Register-MonitorTask -TaskName "HomeMonitor-DNS-Publish" -ScriptPath $PublishScript -Interval (New-TimeSpan -Hours 6)
 
 Write-Host ""
 Write-Host "Setup complete."
-Write-Host "  Collect: every 1 minute"
-Write-Host "  Publish: every 6 hours"
+Write-Host "  Collect: every 1 minute (daily cycle)"
+Write-Host "  Publish: every 6 hours (daily cycle)"
 Write-Host ""
 Write-Host "Ensure gh CLI is installed and authenticated (gh auth login) before publishing."
