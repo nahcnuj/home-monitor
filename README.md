@@ -74,6 +74,13 @@ GitHub の Actions タブで **Sync DNS Data** ワークフローが起動する
 
 [`config/monitor.json`](config/monitor.json) でクエリ先ドメインのみ変更できます。それ以外（間隔・タイムアウト・保持期間など）は固定です。
 
+ドメイン別の旧形式データを削除する場合:
+
+```powershell
+.\scripts\purge-domain-data.ps1          # ローカルと docs の TSV から除去
+.\scripts\purge-domain-data.ps1 -Republish  # 除去後に GitHub へ全件再送
+```
+
 ## ファイル構成
 
 ```

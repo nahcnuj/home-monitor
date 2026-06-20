@@ -27,7 +27,15 @@ jobs:
           DATA_B64: ${{ github.event.inputs.data_b64 }}
         run: |
           python3 << 'PYEOF'
-          import os, base64, gzip
+          import os, base64, gzip, re
+
+          IPV4 = re.compile(r"^(?:\d{1,3}\.){3}\d{1,3}$")
+          IPV6 = re.compile(r"^[0-9a-fA-F:]+$")
+
+          def is_dns_server_key(key: str) -> bool:
+              if key == "unknown":
+                  return True
+              return bool(IPV4.match(key) or IPV6.match(key))
 
           data_b64 = os.environ.get("DATA_B64", "")
           if not data_b64:
@@ -47,6 +55,8 @@ jobs:
           for line in existing_lines + incoming_lines:
               cols = line.split("\t")
               if len(cols) < 2:
+                  continue
+              if not is_dns_server_key(cols[1]):
                   continue
               key = (cols[0], cols[1])
               if key in seen:
