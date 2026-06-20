@@ -27,10 +27,18 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
       - name: Merge incoming TSV data
         env:
           DATA_B64: ${{ github.event.inputs.data_b64 }}
         run: |
+          CONFIG_JSON=$(cd source && npm ci --silent && npx tsx scripts/read-config.ts)
+          export CONFIG_JSON
           python3 << 'PYEOF'
           import os, base64, gzip, re, json, time
 
@@ -48,20 +56,10 @@ jobs:
                   domain = cols[2]
               return (cols[0], cols[1], domain)
 
-          with open("source/config/monitor.json", encoding="utf-8") as f:
-              master_cfg = json.load(f)
+          master_cfg = json.loads(os.environ["CONFIG_JSON"])
           data_cutoff = int(master_cfg.get("data_cutoff_ts", 0))
           rolling_cutoff = int(time.time()) - 7 * 86400
           cutoff = max(rolling_cutoff, data_cutoff)
-
-          dashboard_cfg = {
-              "data_cutoff_ts": data_cutoff,
-              "display_hours": int(master_cfg.get("display_hours", 24)),
-          }
-          os.makedirs("pages/docs/config", exist_ok=True)
-          with open("pages/docs/config/monitor.json", "w", encoding="utf-8") as f:
-              json.dump(dashboard_cfg, f, indent=2)
-              f.write("\n")
 
           data_b64 = os.environ.get("DATA_B64", "")
           if not data_b64:
@@ -109,7 +107,11 @@ jobs:
           git fetch origin master
           git merge origin/master --no-edit -m "merge master into gh-pages"
 
-          git add -f docs/data/dns-latency.tsv docs/config/monitor.json
+          if [[ -d docs/config ]]; then
+            git rm -rf docs/config
+          fi
+
+          git add -f docs/data/dns-latency.tsv
           if git diff --cached --quiet && git diff --quiet; then
             echo "No changes to publish"
             exit 0

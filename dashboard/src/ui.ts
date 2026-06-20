@@ -5,6 +5,7 @@ import {
   RANGE_PRESETS,
   STORAGE_KEY,
 } from "./constants.ts";
+import { monitorConfig } from "./config.ts";
 import {
   displayRangeSec,
   rangeSelectorReady,
@@ -12,7 +13,7 @@ import {
   setRangeSelectorReady,
 } from "./state.ts";
 import { isValidDisplayRangeSec } from "./time.ts";
-import type { MonitorConfig, Stats } from "./types.ts";
+import type { Stats } from "./types.ts";
 
 export function renderStats(stats: Stats): void {
   const grid = document.getElementById("statsGrid");
@@ -68,17 +69,8 @@ export function initRangeSelector(onChange: () => void): void {
   updateRangeUi();
 }
 
-export async function loadDisplayRangeFromConfig(): Promise<number> {
-  let configDefaultSec = DEFAULT_DISPLAY_RANGE_SEC;
-  try {
-    const res = await fetch(`config/monitor.json?t=${Date.now()}`);
-    if (res.ok) {
-      const cfg = (await res.json()) as MonitorConfig;
-      configDefaultSec = (cfg.display_hours || 24) * HOUR_SEC;
-    }
-  } catch {
-    // keep default
-  }
+export function loadDisplayRangeFromConfig(): number {
+  const configDefaultSec = monitorConfig.display_hours * HOUR_SEC;
 
   const storedSec = Number(localStorage.getItem(STORAGE_KEY));
   if (isValidDisplayRangeSec(storedSec)) return storedSec;

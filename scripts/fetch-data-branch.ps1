@@ -3,7 +3,6 @@
 $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path $PSScriptRoot -Parent
 $DocsDataDir = Join-Path $RepoRoot "docs\data"
-$DocsConfigDir = Join-Path $RepoRoot "docs\config"
 $PagesBranch = "gh-pages"
 
 Push-Location $RepoRoot
@@ -18,12 +17,9 @@ try {
     }
 
     New-Item -ItemType Directory -Path $DocsDataDir -Force | Out-Null
-    New-Item -ItemType Directory -Path $DocsConfigDir -Force | Out-Null
-
     git show "origin/${PagesBranch}:docs/data/dns-latency.tsv" | Set-Content -Path (Join-Path $DocsDataDir "dns-latency.tsv") -Encoding UTF8
-    git show "origin/${PagesBranch}:docs/config/monitor.json" | Set-Content -Path (Join-Path $DocsConfigDir "monitor.json") -Encoding UTF8
 
-    Write-Host "Fetched gh-pages docs into docs/ for local preview."
+    Write-Host "Fetched gh-pages TSV into docs/data for local preview."
 }
 finally {
     Pop-Location

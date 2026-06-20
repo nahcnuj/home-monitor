@@ -3,14 +3,13 @@ param([switch]$All)
 
 $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path $PSScriptRoot -Parent
-$ConfigPath = Join-Path $RepoRoot "config\monitor.json"
+. (Join-Path $PSScriptRoot "Get-MonitorConfig.ps1")
 $DataDir = Join-Path $RepoRoot "data\local"
 $DataFile = Join-Path $DataDir "dns-latency.tsv"
 $LastSyncFile = Join-Path $DataDir ".last-sync"
 
 function Get-DataCutoffTs {
-    $cfg = Get-Content $ConfigPath -Raw | ConvertFrom-Json
-    return [long]$cfg.data_cutoff_ts
+    return [long](Get-MonitorConfig).data_cutoff_ts
 }
 
 function Test-DnsServerKey {

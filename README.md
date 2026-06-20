@@ -6,10 +6,10 @@
 
 | ブランチ | 内容 |
 |----------|------|
-| `master` | ソース（ダッシュボード、スクリプト、ワークフロー、ローカル設定） |
-| `gh-pages` | 公開用ブランチ（`master` + `docs/data` + `docs/config`） |
+| `master` | ソース（ダッシュボード、スクリプト、ワークフロー、`monitor.config.ts`） |
+| `gh-pages` | 公開用ブランチ（`master` + `docs/data`） |
 
-`master` への push で **Merge to gh-pages** が走り、ソースを `gh-pages` にマージします（`docs/` はそのまま残ります）。**Sync DNS Data** は計測データを `gh-pages` の `docs/` に直接書き込みます。いずれも **Deploy Pages** が `gh-pages` からビルドして公開します。
+`master` への push で **Merge to gh-pages** が走り、ソースを `gh-pages` にマージします（`docs/data/` はそのまま残ります）。**Sync DNS Data** は計測データを `gh-pages` の `docs/data/` に直接書き込みます。いずれも **Deploy Pages** が `gh-pages` からビルドして公開します。
 
 GitHub Pages は **GitHub Actions** でデプロイします（Settings → Pages → GitHub Actions）。
 
@@ -17,7 +17,7 @@ GitHub Pages は **GitHub Actions** でデプロイします（Settings → Page
 
 1. **Windows PC** — 1分ごとに `nslookup` を実行し、レイテンシをローカル TSV に記録
 2. **1時間ごと** — `gh workflow run` で未送信データをワークフローへ送信
-3. **GitHub Actions** — `gh-pages` の `docs/` を更新 → Pages デプロイ
+3. **GitHub Actions** — `gh-pages` の `docs/data/` を更新 → Pages デプロイ
 4. **ダッシュボード** — `https://www.nahcnuj.work/home-monitor/` でグラフ表示
 
 ## セットアップ
@@ -83,11 +83,18 @@ GitHub の Actions タブで **Sync DNS Data** ワークフローが起動する
 
 2列目は名前解決に使った DNS サーバーの IP、3列目はクエリ先ドメインです。
 
-[`config/monitor.json`](config/monitor.json) の `data_cutoff_ts`（Unix 秒）より古い行は保存・表示・送信の対象外です。GitHub 上のデータは最大 7 日分保持されます。ダッシュボードの表示範囲（10m / 30m / 1h / 3h / 6h / 12h / 24h / 3d / 7d）は UI から切り替えでき、選択はブラウザに保存されます。`display_hours`（デフォルト 24）は初回表示の初期値のみです。データ同期時に `gh-pages` の `docs/config/monitor.json` へ反映されます。
+[`monitor.config.ts`](monitor.config.ts) の `data_cutoff_ts`（Unix 秒）より古い行は保存・表示・送信の対象外です。GitHub 上のデータは最大 7 日分保持されます。ダッシュボードの表示範囲（10m / 30m / 1h / 3h / 6h / 12h / 24h / 3d / 7d）は UI から切り替えでき、選択はブラウザに保存されます。`display_hours`（デフォルト 24）は初回表示の初期値のみです。
 
 ## 設定
 
-[`config/monitor.json`](config/monitor.json) でクエリ先ドメインと `lookup_timeout_sec`（1ドメインあたりの待ち時間、デフォルト 15 秒）を変更できます。複数ドメインは並列で `nslookup` するため、1分間隔の計測でも全体の所要時間はおおむねタイムアウト値程度です。それ以外（計測間隔・保持期間など）は固定です。
+[`monitor.config.ts`](monitor.config.ts) が唯一の設定ファイルです。ダッシュボードはビルド時に取り込み、PowerShell スクリプトは `npm run read-config` 経由で読み取ります。
+
+- `domains` — クエリ先ドメイン一覧
+- `lookup_timeout_sec` — 1ドメインあたりの待ち時間（デフォルト 15 秒）
+- `data_cutoff_ts` — これより古いデータを除外
+- `display_hours` — ダッシュボード初回表示の時間範囲
+
+複数ドメインは並列で `nslookup` するため、1分間隔の計測でも全体の所要時間はおおむねタイムアウト値程度です。
 
 旧形式・カットオフ以前のデータを削除する場合:
 
@@ -102,37 +109,37 @@ GitHub の Actions タブで **Sync DNS Data** ワークフローが起動する
 
 ```powershell
 npm install
-npm run dev      # data/local と config/monitor.json を参照
+npm run dev      # data/local の TSV を参照（設定は monitor.config.ts）
 npm run build    # dashboard/dist/ に出力
 npm run typecheck
 npm test
 ```
 
-公開データをローカルで確認したい場合:
+公開 TSV をローカルで確認したい場合:
 
 ```powershell
-.\scripts\fetch-data-branch.ps1   # gh-pages の docs/ を取得（gitignore 済み）
+.\scripts\fetch-data-branch.ps1   # gh-pages の docs/data を取得（gitignore 済み）
 ```
 
-UI を `master` に push すると **Merge to gh-pages** → **Deploy Pages** が順に走ります。
+UI や設定を `master` に push すると **Merge to gh-pages** → **Deploy Pages** が順に走ります。
 
 ## ファイル構成
 
 ```
-config/monitor.json       ローカル設定（ドメイン一覧・カットオフなど）
+monitor.config.ts         共通設定（唯一のソース）
 scripts/collect-dns.ps1   計測スクリプト
 scripts/publish-data.ps1  データ送信
+scripts/Get-MonitorConfig.ps1  PS から設定を読むヘルパー
 scripts/merge-gh-pages.sh master → gh-pages マージ
 scripts/install-scheduled-task.ps1  タスク登録
 dashboard/                ダッシュボードソース (Vite + TS)
 data/local/               ローカルデータ (gitignore)
-docs/                     ローカルプレビュー用キャッシュ (gitignore)
+docs/                     ローカルプレビュー用 TSV キャッシュ (gitignore)
 ```
 
 `gh-pages` ブランチ:
 
 ```
-dashboard/ scripts/ config/ package.json ...
+dashboard/ scripts/ monitor.config.ts package.json ...
 docs/data/dns-latency.tsv
-docs/config/monitor.json
 ```
