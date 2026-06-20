@@ -66,6 +66,12 @@ export interface ChartPoint {
   y: number | null;
 }
 
+export interface LatencySamplePoint {
+  x: number;
+  y: number;
+  domain: string | null;
+}
+
 export interface FailurePoint {
   x: number;
   y: number;

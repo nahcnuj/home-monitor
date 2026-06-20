@@ -4,7 +4,6 @@ import {
   type TooltipItem,
 } from "chart.js";
 import { SERVER_COLORS } from "../constants.ts";
-import { latencyValuesAt } from "./latency-data.ts";
 import { buildRollingEnvelope, collectTimelineTimestamps } from "./rolling-envelope.ts";
 import { chartTimeBounds, fmtAxisTick, fmtJst } from "../time.ts";
 import type {
@@ -13,6 +12,7 @@ import type {
   DnsRecord,
   DnsSuccessRecord,
   FailurePoint,
+  LatencySamplePoint,
 } from "../types.ts";
 import { timeoutRanges, timeoutSpansForServer, withAlpha, withGaps } from "../utils.ts";
 
@@ -29,10 +29,7 @@ export function getLatencyChart(): Chart | null {
 }
 
 function isHiddenBand(label: string | undefined): boolean {
-  return !!label?.endsWith(" max")
-    || !!label?.endsWith(" min")
-    || !!label?.endsWith(" q1")
-    || !!label?.endsWith(" q3");
+  return !!label?.endsWith(" q1") || !!label?.endsWith(" q3");
 }
 
 export function latencyTooltipTitle(items: TooltipItem<"line">[]): string {
@@ -42,7 +39,7 @@ export function latencyTooltipTitle(items: TooltipItem<"line">[]): string {
 
 export function buildLatencyChart(
   rawRecords: DnsRecord[],
-  successes: AggregatedSuccess[],
+  _successes: AggregatedSuccess[],
   failures: DnsFailureRecord[],
   dataCutoffTs: number,
 ): void {
@@ -56,30 +53,6 @@ export function buildLatencyChart(
     const spans = timeoutSpansForServer(failures, server);
     const envelope = buildRollingEnvelope(rawRecords, server, timestamps, spans);
 
-    datasets.push({
-      label: `${server} max`,
-      order: 3,
-      data: withGaps(envelope.max, spans),
-      borderColor: withAlpha(color, 0.35),
-      backgroundColor: "transparent",
-      borderWidth: 1,
-      pointRadius: 0,
-      tension: BAND_TENSION,
-      fill: false,
-      spanGaps: false,
-    });
-    datasets.push({
-      label: `${server} min`,
-      order: 3,
-      data: withGaps(envelope.min, spans),
-      borderColor: withAlpha(color, 0.35),
-      backgroundColor: withAlpha(color, 0.1),
-      borderWidth: 1,
-      pointRadius: 0,
-      tension: BAND_TENSION,
-      fill: "-1",
-      spanGaps: false,
-    });
     datasets.push({
       label: `${server} q3`,
       order: 3,
@@ -97,7 +70,7 @@ export function buildLatencyChart(
       order: 3,
       data: withGaps(envelope.q1, spans),
       borderColor: "transparent",
-      backgroundColor: withAlpha(color, 0.22),
+      backgroundColor: withAlpha(color, 0.18),
       borderWidth: 0,
       pointRadius: 0,
       tension: BAND_TENSION,
@@ -105,23 +78,26 @@ export function buildLatencyChart(
       spanGaps: false,
     });
 
-    datasets.push({
-      label: server,
-      order: 2,
-      data: withGaps(
-        successes
-          .filter((r) => r.dns_server === server)
-          .map((r) => ({ x: r.ts, y: r.latency_ms })),
-        spans,
-      ),
-      borderColor: color,
-      backgroundColor: color,
-      pointRadius: 0,
-      borderWidth: 1.5,
-      tension: 0.15,
-      fill: false,
-      spanGaps: false,
-    });
+    const samples = rawRecords.filter(
+      (r): r is DnsSuccessRecord => isSuccess(r) && r.dns_server === server,
+    );
+    if (samples.length) {
+      datasets.push({
+        label: server,
+        type: "scatter",
+        order: 1,
+        data: samples.map((r): LatencySamplePoint => ({
+          x: r.ts,
+          y: r.latency_ms,
+          domain: r.domain,
+        })),
+        borderColor: color,
+        backgroundColor: withAlpha(color, 0.85),
+        pointRadius: 2.5,
+        pointHoverRadius: 4,
+        showLine: false,
+      });
+    }
   });
 
   const failurePoints: FailurePoint[] = failures.map((r) => ({
@@ -192,23 +168,16 @@ export function buildLatencyChart(
           callbacks: {
             title: latencyTooltipTitle,
             label(ctx: TooltipItem<"line">) {
-              const raw = ctx.raw as FailurePoint | { x: number; y: number } | null;
+              const raw = ctx.raw as FailurePoint | LatencySamplePoint | null;
               if (!raw || typeof raw !== "object") return "";
               if ("error" in raw && raw.error) {
                 const domain = raw.domain ? ` / ${raw.domain}` : "";
                 return `${raw.dns_server}${domain}: ${raw.error}`;
               }
-
-              const server = ctx.dataset.label ?? "";
-              const ts = raw.x;
-              const values = latencyValuesAt(rawRecords, server, ts);
-              const avg = Math.round(raw.y);
-              if (values.length >= 2) {
-                const min = Math.min(...values);
-                const max = Math.max(...values);
-                return `${server} 平均: ${avg} ms (${min}–${max})`;
+              if ("domain" in raw && raw.domain) {
+                return `${raw.domain}: ${Math.round(raw.y)} ms`;
               }
-              return `${server} 平均: ${avg} ms`;
+              return `${Math.round(raw.y)} ms`;
             },
           },
         },
