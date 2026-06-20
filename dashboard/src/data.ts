@@ -24,7 +24,7 @@ const ERROR_CODES = new Set([
 ]);
 
 function isDomainColumn(value: string | undefined): value is string {
-  return typeof value === "string" && /[a-zA-Z]/.test(value);
+  return typeof value === "string" && /[a-zA-Z]/.test(value) && !ERROR_CODES.has(value);
 }
 
 function isErrorToken(value: string | undefined): value is string {
