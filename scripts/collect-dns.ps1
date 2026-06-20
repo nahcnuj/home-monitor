@@ -6,7 +6,7 @@ $ConfigPath = Join-Path $RepoRoot "config\monitor.json"
 $DataDir = Join-Path $RepoRoot "data\local"
 $DataFile = Join-Path $DataDir "dns-latency.tsv"
 $QueryTypeStateFile = Join-Path $DataDir ".query-type-state"
-$TimeoutSec = 60
+$DefaultTimeoutSec = 15
 
 $ErrorPatterns = @(
     @{ code = "no_nameserver";  pattern = "Default servers are not available" },
@@ -29,27 +29,59 @@ function Get-QueryType {
     return $types[0]
 }
 
-function Invoke-DnsLookup {
+function Start-DnsLookupJob {
     param([string]$Domain, [string]$QueryType)
 
-    $job = Start-Job -ScriptBlock {
+    return Start-Job -ScriptBlock {
         param($Domain, $QueryType)
-        & nslookup.exe "-type=$QueryType" $Domain 2>&1 | Out-String
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        $output = & nslookup.exe "-type=$QueryType" $Domain 2>&1 | Out-String
+        $sw.Stop()
+        return @{
+            LatencyMs = [int]$sw.ElapsedMilliseconds
+            Output    = $output
+        }
     } -ArgumentList $Domain, $QueryType
+}
 
-    $sw = [System.Diagnostics.Stopwatch]::StartNew()
-    $completed = Wait-Job -Job $job -Timeout $TimeoutSec
-    $sw.Stop()
+function Wait-DnsLookupJobs {
+    param(
+        [hashtable]$JobsByDomain,
+        [int]$TimeoutSec
+    )
 
-    if (-not $completed) {
-        Stop-Job -Job $job -ErrorAction SilentlyContinue
+    $results = @{}
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSec)
+
+    foreach ($domain in ($JobsByDomain.Keys | Sort-Object)) {
+        $job = $JobsByDomain[$domain]
+        $remaining = ($deadline - [DateTime]::UtcNow).TotalSeconds
+        if ($remaining -le 0) {
+            $remaining = 0.01
+        }
+
+        $completed = Wait-Job -Job $job -Timeout $remaining
+        if (-not $completed) {
+            Stop-Job -Job $job -ErrorAction SilentlyContinue
+            Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
+            $results[$domain] = @{
+                LatencyMs = $TimeoutSec * 1000
+                Error     = "timeout"
+                Output    = ""
+            }
+            continue
+        }
+
+        $payload = Receive-Job -Job $job -ErrorAction SilentlyContinue
         Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
-        return @{ LatencyMs = [int]$sw.ElapsedMilliseconds; Error = "timeout"; Output = "" }
+        $results[$domain] = @{
+            LatencyMs = [int]$payload.LatencyMs
+            Error     = $null
+            Output    = [string]$payload.Output
+        }
     }
 
-    $output = Receive-Job -Job $job -ErrorAction SilentlyContinue | Out-String
-    Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
-    return @{ LatencyMs = [int]$sw.ElapsedMilliseconds; Error = $null; Output = $output }
+    return $results
 }
 
 function Get-DnsError {
@@ -84,6 +116,12 @@ function Get-DnsServerAddress {
 }
 
 $config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
+$timeoutSec = if ($null -ne $config.lookup_timeout_sec -and $config.lookup_timeout_sec -gt 0) {
+    [int]$config.lookup_timeout_sec
+} else {
+    $DefaultTimeoutSec
+}
+
 if (-not (Test-Path $DataDir)) { New-Item -ItemType Directory -Path $DataDir -Force | Out-Null }
 
 $queryType = Get-QueryType
@@ -94,9 +132,17 @@ Clear-DnsClientCache -ErrorAction SilentlyContinue
 $ts = [long][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
 if ($ts -le 0) { throw "Invalid timestamp: $ts" }
 
+$domains = @($config.domains | Sort-Object)
+$jobsByDomain = @{}
+foreach ($domain in $domains) {
+    $jobsByDomain[$domain] = Start-DnsLookupJob -Domain $domain -QueryType $queryType
+}
+
+$lookupResults = Wait-DnsLookupJobs -JobsByDomain $jobsByDomain -TimeoutSec $timeoutSec
+
 $lines = New-Object System.Collections.Generic.List[string]
-foreach ($domain in ($config.domains | Sort-Object)) {
-    $result = Invoke-DnsLookup -Domain $domain -QueryType $queryType
+foreach ($domain in $domains) {
+    $result = $lookupResults[$domain]
     $server = Get-DnsServerAddress -Output $result.Output
 
     if ($result.Error -eq "timeout") {

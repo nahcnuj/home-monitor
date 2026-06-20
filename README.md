@@ -76,7 +76,7 @@ GitHub の Actions タブで **Sync DNS Data** ワークフローが起動する
 
 ## 設定
 
-[`config/monitor.json`](config/monitor.json) でクエリ先ドメインのみ変更できます。それ以外（間隔・タイムアウト・保持期間など）は固定です。
+[`config/monitor.json`](config/monitor.json) でクエリ先ドメインと `lookup_timeout_sec`（1ドメインあたりの待ち時間、デフォルト 15 秒）を変更できます。複数ドメインは並列で `nslookup` するため、1分間隔の計測でも全体の所要時間はおおむねタイムアウト値程度です。それ以外（計測間隔・保持期間など）は固定です。
 
 旧形式・カットオフ以前のデータを削除する場合:
 
