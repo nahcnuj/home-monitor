@@ -1,0 +1,69 @@
+name: Sync DNS Data
+
+on:
+  repository_dispatch:
+    types: [dns-data-update]
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Merge incoming TSV data
+        env:
+          DATA_B64: ${{ github.event.client_payload.data_b64 }}
+        run: |
+          python3 << 'PYEOF'
+          import os, base64, gzip
+
+          data_b64 = os.environ.get("DATA_B64", "")
+          if not data_b64:
+              exit(0)
+
+          incoming = gzip.decompress(base64.b64decode(data_b64)).decode("utf-8")
+          incoming_lines = [l for l in incoming.strip().split("\n") if l.strip()]
+
+          path = "docs/data/dns-latency.tsv"
+          existing_lines = []
+          if os.path.exists(path):
+              with open(path, encoding="utf-8") as f:
+                  existing_lines = [l for l in f.read().strip().split("\n") if l.strip()]
+
+          seen = set()
+          merged = []
+          for line in existing_lines + incoming_lines:
+              cols = line.split("\t")
+              if len(cols) < 2:
+                  continue
+              key = (cols[0], cols[1])
+              if key in seen:
+                  continue
+              seen.add(key)
+              merged.append(line)
+
+          cutoff = int(__import__("time").time()) - 7 * 86400
+          merged = sorted(
+              [l for l in merged if int(l.split("\t")[0]) >= cutoff],
+              key=lambda l: int(l.split("\t")[0]),
+          )
+
+          os.makedirs(os.path.dirname(path), exist_ok=True)
+          with open(path, "w", encoding="utf-8") as f:
+              if merged:
+                  f.write("\n".join(merged) + "\n")
+          PYEOF
+
+      - name: Commit and push
+        run: |
+          if git diff --quiet docs/data/dns-latency.tsv; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/data/dns-latency.tsv
+          git commit -m "chore: update dns latency data"
+          git push

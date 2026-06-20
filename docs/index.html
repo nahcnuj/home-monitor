@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DNS Latency Monitor</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>DNS Latency Monitor</h1>
+    <p class="subtitle">自宅回線 DNS 応答レイテンシ（直近7日）</p>
+  </header>
+
+  <main>
+    <p class="last-updated" id="lastUpdated">読み込み中...</p>
+    <section class="stats-grid" id="statsGrid"></section>
+
+    <section class="chart-section">
+      <h2>レイテンシ推移</h2>
+      <div class="chart-container">
+        <canvas id="latencyChart"></canvas>
+      </div>
+    </section>
+
+    <section class="chart-section">
+      <h2>エラー種別内訳</h2>
+      <div class="chart-container chart-container--short">
+        <canvas id="errorChart"></canvas>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
