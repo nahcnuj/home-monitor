@@ -1,13 +1,22 @@
 const PERIOD_HOURS = 168;
-const MAX_GAP_MS = 3 * 60 * 1000; // 計測間隔1分 → 3分以上空いたら線を切る
+const MAX_GAP_SEC = 3 * 60; // 計測間隔1分 → 3分以上空いたら線を切る
 const SERVER_COLORS = ["#5b8def", "#f59e0b", "#4ade80", "#a78bfa", "#f472b6", "#38bdf8"];
+const jstFormatter = new Intl.DateTimeFormat("ja-JP", {
+  timeZone: "Asia/Tokyo",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+});
 
 function withGaps(points) {
   if (points.length < 2) return points;
   const sorted = [...points].sort((a, b) => a.x - b.x);
   const result = [sorted[0]];
   for (let i = 1; i < sorted.length; i++) {
-    if (sorted[i].x - sorted[i - 1].x > MAX_GAP_MS) {
+    if (sorted[i].x - sorted[i - 1].x > MAX_GAP_SEC) {
       result.push({ x: sorted[i - 1].x, y: null });
     }
     result.push(sorted[i]);
@@ -15,17 +24,8 @@ function withGaps(points) {
   return result;
 }
 
-// TSV の ts は Unix 秒（数値の文字列）。×1000 で UTC エポック → JST 表示
-const fmtJst = (unixSec) =>
-  new Date(unixSec * 1000).toLocaleString("ja-JP", {
-    timeZone: "Asia/Tokyo",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
+// TSV の ts は Unix 秒（UTC エポック）。表示は常に JST に変換する
+const fmtJst = (unixSec) => jstFormatter.format(new Date(unixSec * 1000));
 
 let allRecords = [];
 let latencyChart = null;
@@ -113,7 +113,7 @@ function buildLatencyChart(successes, failures) {
     label: server,
     data: withGaps(
       successes.filter((r) => r.dns_server === server)
-        .map((r) => ({ x: r.ts * 1000, y: r.latency_ms }))
+        .map((r) => ({ x: r.ts, y: r.latency_ms }))
     ),
     borderColor: SERVER_COLORS[index % SERVER_COLORS.length],
     backgroundColor: SERVER_COLORS[index % SERVER_COLORS.length],
@@ -121,7 +121,7 @@ function buildLatencyChart(successes, failures) {
   }));
   datasets.push({
     label: "Failures",
-    data: failures.map((r) => ({ x: r.ts * 1000, y: 0, error: r.error, dns_server: r.dns_server })),
+    data: failures.map((r) => ({ x: r.ts, y: 0, error: r.error, dns_server: r.dns_server })),
     borderColor: "#f87171", backgroundColor: "#f87171",
     pointRadius: 5, pointStyle: "crossRot", showLine: false,
   });
@@ -135,12 +135,12 @@ function buildLatencyChart(successes, failures) {
       interaction: { mode: "nearest", intersect: false },
       scales: {
         x: {
-          type: "time",
+          type: "linear",
           grid: { color: "#2a2e3d" },
           ticks: {
             color: "#8b90a0",
             maxTicksLimit: 8,
-            callback: (value) => fmtJst(value / 1000),
+            callback: (value) => fmtJst(value),
           },
         },
         y: { title: { display: true, text: "ms", color: "#8b90a0" }, grid: { color: "#2a2e3d" }, ticks: { color: "#8b90a0" }, min: 0 },
@@ -149,7 +149,7 @@ function buildLatencyChart(successes, failures) {
         legend: { labels: { color: "#e4e6ed" } },
         tooltip: {
           callbacks: {
-            title: (items) => fmtJst(items[0].parsed.x / 1000),
+            title: (items) => fmtJst(items[0].parsed.x),
             label(ctx) {
               const raw = ctx.raw;
               return raw.error ? `${raw.dns_server}: ${raw.error}` : `${ctx.dataset.label}: ${Math.round(raw.y)} ms`;
