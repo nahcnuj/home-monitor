@@ -1,4 +1,5 @@
 #Requires -Version 5.1
+param([switch]$All)
 
 $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path $PSScriptRoot -Parent
@@ -16,10 +17,12 @@ function Compress-GzipBytes {
 }
 
 function Get-UnsentLines {
+    param([switch]$All)
+
     if (-not (Test-Path $DataFile)) { return @() }
     $allLines = Get-Content $DataFile -Encoding UTF8 | Where-Object { $_.Trim() -ne "" }
     if ($allLines.Count -eq 0) { return @() }
-    if (-not (Test-Path $LastSyncFile)) { return $allLines }
+    if ($All -or -not (Test-Path $LastSyncFile)) { return $allLines }
 
     $lastSyncTs = [int](Get-Content $LastSyncFile -Raw).Trim()
     return $allLines | Where-Object { [int]($_ -split "`t")[0] -gt $lastSyncTs }
@@ -36,7 +39,7 @@ try {
         throw "gh is not authenticated. Run: gh auth login"
     }
 
-    $unsentLines = Get-UnsentLines
+    $unsentLines = Get-UnsentLines @PSBoundParameters
     if ($unsentLines.Count -eq 0) { exit 0 }
 
     $bytes = [System.Text.Encoding]::UTF8.GetBytes(($unsentLines -join "`n") + "`n")
@@ -53,7 +56,7 @@ try {
         throw "Cannot determine GitHub repo. Add git remote or use ghq path."
     }
 
-    gh workflow run sync-dns-data.yml --repo $repoSlug -f "data_b64=$dataB64"
+    gh workflow run sync-dns-data.yml --repo $repoSlug -f "data_b64=$dataB64" --wait
     if ($LASTEXITCODE -ne 0) {
         throw "gh workflow run failed"
     }
