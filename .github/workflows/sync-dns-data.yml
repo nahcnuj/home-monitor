@@ -19,7 +19,7 @@ jobs:
 
       - name: Merge incoming TSV data
         env:
-          DATA_B64: ${{ inputs.data_b64 }}
+          DATA_B64: ${{ github.event.inputs.data_b64 }}
         run: |
           python3 << 'PYEOF'
           import os, base64, gzip
