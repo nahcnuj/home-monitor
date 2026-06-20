@@ -79,13 +79,7 @@ export interface TimeoutRange {
   end: number;
 }
 
-export interface ViolinTimeSeries {
-  dns_server: string;
-  color: string;
-  xOffsetSec: number;
-  skipSpans: TimeoutRange[];
-  buckets: { ts: number; values: number[] }[];
-}
+
 
 
 

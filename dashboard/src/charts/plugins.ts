@@ -1,17 +1,10 @@
 import type { Plugin } from "chart.js";
-import { MEASURE_INTERVAL_SEC } from "../constants.ts";
-import type { ViolinTimeSeries } from "../types.ts";
-import { drawViolinSeries } from "./violin-overlay.ts";
 import { readableTextColor } from "../utils.ts";
 
 interface ChartRegionsOptions {
   cutoffEnd?: number;
   xMin?: number;
   timeoutRanges?: { start: number; end: number }[];
-}
-
-interface ViolinTimeSeriesOptions {
-  series?: ViolinTimeSeries[];
 }
 
 interface ErrorBandLabelsOptions {
@@ -57,38 +50,6 @@ export const chartRegionsPlugin: Plugin<"line"> = {
       ctx.fillStyle = "rgba(248, 113, 113, 0.55)";
       ctx.fillRect(left, chartArea.top, 2, chartArea.bottom - chartArea.top);
     }
-
-    ctx.restore();
-  },
-};
-
-export const violinTimeSeriesPlugin: Plugin<"line"> = {
-  id: "violinTimeSeries",
-  beforeDatasetsDraw(chart, _args, opts) {
-    const options = opts as ViolinTimeSeriesOptions | undefined;
-    const { ctx, chartArea, scales } = chart;
-    const xScale = scales.x;
-    const yScale = scales.y;
-    if (!chartArea || !xScale || !yScale) return;
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(chartArea.left, chartArea.top, chartArea.right - chartArea.left, chartArea.bottom - chartArea.top);
-    ctx.clip();
-
-    drawViolinSeries(
-      ctx,
-      options?.series ?? [],
-      (ts) => xScale.getPixelForValue(ts),
-      (y) => yScale.getPixelForValue(y),
-      (ts) => {
-        const ref = xScale.getPixelForValue(ts + MEASURE_INTERVAL_SEC * 0.35);
-        const center = xScale.getPixelForValue(ts);
-        return Math.min(16, Math.abs(ref - center));
-      },
-      chartArea.left,
-      chartArea.right,
-    );
 
     ctx.restore();
   },

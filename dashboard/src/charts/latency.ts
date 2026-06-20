@@ -5,7 +5,7 @@ import {
 } from "chart.js";
 import { SERVER_COLORS } from "../constants.ts";
 import { latencyValuesAt } from "./latency-data.ts";
-import { buildViolinSeries } from "./violin-overlay.ts";
+import { buildRollingEnvelope, collectTimelineTimestamps } from "./rolling-envelope.ts";
 import { chartTimeBounds, fmtAxisTick, fmtJst } from "../time.ts";
 import type {
   AggregatedSuccess,
@@ -14,16 +14,25 @@ import type {
   DnsSuccessRecord,
   FailurePoint,
 } from "../types.ts";
-import { timeoutRanges, timeoutSpansForServer, withGaps } from "../utils.ts";
+import { timeoutRanges, timeoutSpansForServer, withAlpha, withGaps } from "../utils.ts";
 
 function isSuccess(r: DnsRecord): r is DnsSuccessRecord {
   return !r.error;
 }
 
+const BAND_TENSION = 0.42;
+
 let latencyChart: Chart | null = null;
 
 export function getLatencyChart(): Chart | null {
   return latencyChart;
+}
+
+function isHiddenBand(label: string | undefined): boolean {
+  return !!label?.endsWith(" max")
+    || !!label?.endsWith(" min")
+    || !!label?.endsWith(" q1")
+    || !!label?.endsWith(" q3");
 }
 
 export function buildLatencyChart(
@@ -32,14 +41,64 @@ export function buildLatencyChart(
   failures: DnsFailureRecord[],
   dataCutoffTs: number,
 ): void {
+  const xBounds = chartTimeBounds();
+  const timestamps = collectTimelineTimestamps(rawRecords, xBounds.min, xBounds.max);
   const servers = [...new Set(rawRecords.filter(isSuccess).map((r) => r.dns_server))].sort();
   const datasets: ChartConfiguration["data"]["datasets"] = [];
-  const skipSpansByServer = new Map<string, { start: number; end: number }[]>();
 
   servers.forEach((server, index) => {
     const color = SERVER_COLORS[index % SERVER_COLORS.length];
     const spans = timeoutSpansForServer(failures, server);
-    skipSpansByServer.set(server, spans);
+    const envelope = buildRollingEnvelope(rawRecords, server, timestamps, spans);
+
+    datasets.push({
+      label: `${server} max`,
+      order: 3,
+      data: withGaps(envelope.max, spans),
+      borderColor: withAlpha(color, 0.35),
+      backgroundColor: "transparent",
+      borderWidth: 1,
+      pointRadius: 0,
+      tension: BAND_TENSION,
+      fill: false,
+      spanGaps: false,
+    });
+    datasets.push({
+      label: `${server} min`,
+      order: 3,
+      data: withGaps(envelope.min, spans),
+      borderColor: withAlpha(color, 0.35),
+      backgroundColor: withAlpha(color, 0.1),
+      borderWidth: 1,
+      pointRadius: 0,
+      tension: BAND_TENSION,
+      fill: "-1",
+      spanGaps: false,
+    });
+    datasets.push({
+      label: `${server} q3`,
+      order: 3,
+      data: withGaps(envelope.q3, spans),
+      borderColor: "transparent",
+      backgroundColor: "transparent",
+      borderWidth: 0,
+      pointRadius: 0,
+      tension: BAND_TENSION,
+      fill: false,
+      spanGaps: false,
+    });
+    datasets.push({
+      label: `${server} q1`,
+      order: 3,
+      data: withGaps(envelope.q1, spans),
+      borderColor: "transparent",
+      backgroundColor: withAlpha(color, 0.22),
+      borderWidth: 0,
+      pointRadius: 0,
+      tension: BAND_TENSION,
+      fill: "-1",
+      spanGaps: false,
+    });
 
     datasets.push({
       label: server,
@@ -54,7 +113,7 @@ export function buildLatencyChart(
       backgroundColor: color,
       pointRadius: 0,
       borderWidth: 1.5,
-      tension: 0.1,
+      tension: 0.15,
       fill: false,
       spanGaps: false,
     });
@@ -79,7 +138,6 @@ export function buildLatencyChart(
     showLine: false,
   });
 
-  const xBounds = chartTimeBounds();
   const canvas = document.getElementById("latencyChart") as HTMLCanvasElement | null;
   if (!canvas) return;
 
@@ -118,16 +176,14 @@ export function buildLatencyChart(
           cutoffEnd: dataCutoffTs > xBounds.min ? dataCutoffTs : 0,
           timeoutRanges: timeoutRanges(failures),
         },
-        violinTimeSeries: {
-          series: buildViolinSeries(rawRecords, servers, SERVER_COLORS, skipSpansByServer),
-        },
         legend: {
           labels: {
             color: "#e4e6ed",
-            filter: (item: { text: string }) => item.text !== "Failures",
+            filter: (item: { text: string }) => !isHiddenBand(item.text) && item.text !== "Failures",
           },
         },
         tooltip: {
+          filter: (item: TooltipItem<"line">) => !isHiddenBand(item.dataset.label),
           callbacks: {
             title: (items: TooltipItem<"line">[]) => fmtJst(items[0].parsed.x as number),
             label(ctx: TooltipItem<"line">) {
