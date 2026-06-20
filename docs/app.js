@@ -149,7 +149,72 @@ const chartRegionsPlugin = {
   },
 };
 
-Chart.register(chartRegionsPlugin);
+function readableTextColor(hex) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.55 ? "#1a1d27" : "#fff";
+}
+
+const errorBandLabelsPlugin = {
+  id: "errorBandLabels",
+  afterDatasetsDraw(chart, _args, opts) {
+    const { ctx } = chart;
+    if (opts?.empty) {
+      const bar = chart.getDatasetMeta(0)?.data?.[0];
+      if (!bar) return;
+      ctx.save();
+      ctx.font = "11px Segoe UI, system-ui, sans-serif";
+      ctx.fillStyle = "#8b90a0";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("なし", bar.x, bar.y);
+      ctx.restore();
+      return;
+    }
+
+    const total = opts?.total ?? 0;
+    if (!total) return;
+
+    ctx.save();
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    chart.data.datasets.forEach((dataset, index) => {
+      const bar = chart.getDatasetMeta(index)?.data?.[0];
+      if (!bar) return;
+
+      const left = Math.min(bar.x, bar.base);
+      const right = Math.max(bar.x, bar.base);
+      const width = right - left;
+      const count = dataset.data[0];
+      const pct = Math.round((count / total) * 100);
+      const label = dataset.label;
+      const text = width >= 96 ? `${label} ${count} (${pct}%)`
+        : width >= 64 ? `${label} ${count}`
+        : width >= 40 ? label
+        : "";
+
+      if (!text) return;
+
+      const color = dataset.backgroundColor;
+      const fill = typeof color === "string" ? readableTextColor(color) : "#fff";
+      const cx = left + width / 2;
+      const cy = bar.y;
+
+      ctx.font = "600 11px Segoe UI, system-ui, sans-serif";
+      ctx.fillStyle = fill === "#fff" ? "rgba(0, 0, 0, 0.4)" : "rgba(255, 255, 255, 0.35)";
+      ctx.fillText(text, cx + 1, cy + 1);
+      ctx.fillStyle = fill;
+      ctx.fillText(text, cx, cy);
+    });
+
+    ctx.restore();
+  },
+};
+
+Chart.register(chartRegionsPlugin, errorBandLabelsPlugin);
 
 function timeoutRanges(failures) {
   const seen = new Set();
@@ -344,7 +409,7 @@ function buildErrorChart(errors) {
       responsive: true,
       maintainAspectRatio: false,
       indexAxis: "y",
-      datasets: { bar: { barThickness: 28 } },
+      datasets: { bar: { barThickness: 36 } },
       scales: {
         x: {
           stacked: true,
@@ -357,17 +422,11 @@ function buildErrorChart(errors) {
         },
       },
       plugins: {
-        legend: {
-          display: true,
-          position: "bottom",
-          labels: {
-            color: "#e4e6ed",
-            boxWidth: 10,
-            boxHeight: 10,
-            padding: 10,
-            font: { size: 11 },
-          },
+        errorBandLabels: {
+          total,
+          empty: !codes.length,
         },
+        legend: { display: false },
         tooltip: {
           filter: (item) => codes.length > 0,
           callbacks: {
