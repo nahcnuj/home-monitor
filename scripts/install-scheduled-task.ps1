@@ -1,9 +1,9 @@
 #Requires -RunAsAdministrator
 #Requires -Version 5.1
 
-$RepoRoot = Split-Path $PSScriptRoot -Parent
 $CollectScript = Join-Path $PSScriptRoot "collect-dns.ps1"
 $PublishScript = Join-Path $PSScriptRoot "publish-data.ps1"
+$RunAs = "$env:USERDOMAIN\$env:USERNAME"
 
 function Register-MonitorTask {
     param(
@@ -13,16 +13,8 @@ function Register-MonitorTask {
         [string]$Modifier
     )
 
-    # /TR には -File と絶対パスのみ渡す（-Command 内の -LiteralPath 等は schtasks に誤解釈される）
-    $taskRun = "powershell.exe -NoProfile -File ""$ScriptPath"""
-
-    $output = & schtasks.exe /Create /F `
-        /TN $TaskName `
-        /TR $taskRun `
-        /SC $Schedule `
-        /MO $Modifier `
-        /RU "$env:USERDOMAIN\$env:USERNAME" `
-        /RL LIMITED 2>&1
+    $tr = "powershell.exe -NoProfile -File `"$ScriptPath`""
+    $output = schtasks.exe /Create /F /TN $TaskName /TR "$tr" /SC $Schedule /MO $Modifier /RU $RunAs /RL LIMITED 2>&1
 
     if ($LASTEXITCODE -ne 0) {
         throw "schtasks failed for ${TaskName}: $output"
