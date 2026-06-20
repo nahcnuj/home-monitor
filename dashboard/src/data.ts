@@ -11,8 +11,24 @@ function isSuccess(r: DnsRecord): r is DnsSuccessRecord {
   return !r.error;
 }
 
+const ERROR_CODES = new Set([
+  "timeout",
+  "no_response",
+  "no_nameserver",
+  "server_fail",
+  "refused",
+  "nxdomain",
+  "no_record",
+  "resolver_error",
+  "unknown",
+]);
+
 function isDomainColumn(value: string | undefined): value is string {
   return typeof value === "string" && /[a-zA-Z]/.test(value);
+}
+
+function isErrorToken(value: string | undefined): value is string {
+  return typeof value === "string" && ERROR_CODES.has(value);
 }
 
 export function parseTsv(text: string): DnsRecord[] {
@@ -27,16 +43,40 @@ export function parseTsv(text: string): DnsRecord[] {
 
       if (isDomainColumn(cols[2])) {
         const domain = cols[2];
-        if (cols[4]) {
-          const duration_ms = cols[3] ? Number(cols[3]) : undefined;
-          return { ts, dns_server, domain, error: cols[4], duration_ms };
+        if (cols[4] || isErrorToken(cols[3])) {
+          const duration_ms = cols[3] && !isErrorToken(cols[3]) ? Number(cols[3]) : undefined;
+          return {
+            ts,
+            dns_server,
+            domain,
+            error: cols[4] || cols[3]!,
+            duration_ms: Number.isFinite(duration_ms) ? duration_ms : undefined,
+          };
         }
-        return { ts, dns_server, domain, latency_ms: Number(cols[3]) };
+        const latency_ms = Number(cols[3]);
+        if (!Number.isFinite(latency_ms)) {
+          throw new Error(`Invalid latency at ts=${ts}: ${cols[3] ?? ""}`);
+        }
+        return { ts, dns_server, domain, latency_ms };
       }
-      if (cols.length >= 4 && cols[3]) {
-        return { ts, dns_server, domain: null, error: cols[3] };
+      if (cols.length >= 4 && isErrorToken(cols[3])) {
+        const duration_ms = cols[2] && !isErrorToken(cols[2]) ? Number(cols[2]) : undefined;
+        return {
+          ts,
+          dns_server,
+          domain: null,
+          error: cols[3],
+          duration_ms: Number.isFinite(duration_ms) ? duration_ms : undefined,
+        };
       }
-      return { ts, dns_server, domain: null, latency_ms: Number(cols[2]) };
+      if (isErrorToken(cols[2])) {
+        return { ts, dns_server, domain: null, error: cols[2] };
+      }
+      const latency_ms = Number(cols[2]);
+      if (!Number.isFinite(latency_ms)) {
+        throw new Error(`Invalid latency at ts=${ts}: ${cols[3] ?? cols[2] ?? ""}`);
+      }
+      return { ts, dns_server, domain: null, latency_ms };
     });
 }
 

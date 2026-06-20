@@ -1,0 +1,13 @@
+---
+pid: 111472
+cwd: "C:\Users\nahcnuj\ghq\github.com\nahcnuj\home-monitor"
+command: "cd C:\\Users\\nahcnuj\\ghq\\github.com\\nahcnuj\\home-monitor; npm run preview"
+started_at: 2026-06-20T14:06:55.432Z
+running_for_ms: 155005   
+---
+
+> preview
+> vite preview --config dashboard/vite.config.ts
+
+  ➜  Local:   http://localhost:4173/
+  ➜  Network: use --host to expose

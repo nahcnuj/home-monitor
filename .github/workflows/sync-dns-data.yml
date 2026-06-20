@@ -105,6 +105,15 @@ jobs:
           node-version: "22"
           cache: npm
 
+      - if: steps.commit.outputs.data_unchanged != 'true'
+        run: npm ci
+
+      - if: steps.commit.outputs.data_unchanged != 'true'
+        run: npm run typecheck
+
+      - if: steps.commit.outputs.data_unchanged != 'true'
+        run: npm test
+
       - name: Build dashboard and assemble site
         if: steps.commit.outputs.data_unchanged != 'true'
         run: bash scripts/prepare-pages.sh

@@ -9,7 +9,9 @@ on:
       - "docs/data/**"
       - "package.json"
       - "package-lock.json"
+      - "vitest.config.ts"
       - "scripts/prepare-pages.sh"
+      - ".github/workflows/ci.yml"
       - ".github/workflows/deploy-pages.yml"
       - ".github/workflows/sync-dns-data.yml"
   workflow_dispatch:
@@ -36,6 +38,10 @@ jobs:
         with:
           node-version: "22"
           cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
 
       - name: Build dashboard and assemble site
         run: bash scripts/prepare-pages.sh
