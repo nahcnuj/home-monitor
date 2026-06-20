@@ -63,7 +63,11 @@ function Get-DnsError {
 
 function Test-DnsSuccess {
     param([string]$Output)
-    return ($Output -match '(?m)^Name:\s') -and ($Output -match '(?m)^(Address|Addresses):')
+    $jaName = -join ([char]0x540D, [char]0x524D)
+    $jaAddr = -join ([char]0x30A2, [char]0x30C9, [char]0x30EC, [char]0x30B9)
+    $hasName = ($Output -match '(?m)^Name:\s') -or ($Output -match "(?m)^${jaName}:\s")
+    $hasAddress = ($Output -match '(?m)^(Address|Addresses):\s') -or ($Output -match "(?m)^${jaAddr}:\s")
+    return $hasName -and $hasAddress
 }
 
 $config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
@@ -73,10 +77,8 @@ $queryType = Get-QueryType
 Set-Content -Path $QueryTypeStateFile -Value $queryType -NoNewline -Encoding UTF8
 Clear-DnsClientCache -ErrorAction SilentlyContinue
 
-$ts = [int][double]::Parse(
-    (Get-Date -AsUTC).Subtract((Get-Date "1970-01-01Z")).TotalSeconds,
-    [System.Globalization.CultureInfo]::InvariantCulture
-)
+$epoch = [datetime]'1970-01-01T00:00:00Z'
+$ts = [int]([DateTime]::UtcNow - $epoch).TotalSeconds
 
 $lines = New-Object System.Collections.Generic.List[string]
 foreach ($domain in $config.domains) {
@@ -102,5 +104,12 @@ foreach ($domain in $config.domains) {
 }
 
 if ($lines.Count -gt 0) {
-    Add-Content -Path $DataFile -Value ($lines -join "`n") -Encoding UTF8
+    $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+    $content = ($lines -join "`n") + "`n"
+    if (Test-Path $DataFile) {
+        [System.IO.File]::AppendAllText($DataFile, $content, $utf8NoBom)
+    }
+    else {
+        [System.IO.File]::WriteAllText($DataFile, $content, $utf8NoBom)
+    }
 }
