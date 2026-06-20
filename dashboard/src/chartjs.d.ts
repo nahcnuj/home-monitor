@@ -8,6 +8,9 @@ declare module "chart.js" {
       xMin?: number;
       timeoutRanges?: { start: number; end: number }[];
     };
+    violinPlot?: {
+      series?: import("./types.ts").ViolinSeries[];
+    };
     errorBandLabels?: {
       empty?: boolean;
       total?: number;

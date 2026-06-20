@@ -65,12 +65,6 @@ export interface ChartPoint {
   y: number | null;
 }
 
-export interface LatencySamplePoint {
-  x: number;
-  y: number;
-  domain: string | null;
-}
-
 export interface FailurePoint {
   x: number;
   y: number;
@@ -82,5 +76,18 @@ export interface FailurePoint {
 export interface TimeoutRange {
   start: number;
   end: number;
+}
+
+export interface ViolinBucket {
+  ts: number;
+  values: number[];
+}
+
+export interface ViolinSeries {
+  dns_server: string;
+  color: string;
+  xOffsetSec: number;
+  skipTs: Set<number>;
+  buckets: ViolinBucket[];
 }
 

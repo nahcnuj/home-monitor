@@ -1,10 +1,17 @@
 import type { Plugin } from "chart.js";
+import { MEASURE_INTERVAL_SEC } from "../constants.ts";
+import type { ViolinSeries } from "../types.ts";
+import { drawViolin } from "../violin.ts";
 import { readableTextColor } from "../utils.ts";
 
 interface ChartRegionsOptions {
   cutoffEnd?: number;
   xMin?: number;
   timeoutRanges?: { start: number; end: number }[];
+}
+
+interface ViolinPlotOptions {
+  series?: ViolinSeries[];
 }
 
 interface ErrorBandLabelsOptions {
@@ -49,6 +56,39 @@ export const chartRegionsPlugin: Plugin<"line"> = {
 
       ctx.fillStyle = "rgba(248, 113, 113, 0.55)";
       ctx.fillRect(left, chartArea.top, 2, chartArea.bottom - chartArea.top);
+    }
+
+    ctx.restore();
+  },
+};
+
+export const violinPlotPlugin: Plugin<"line"> = {
+  id: "violinPlot",
+  beforeDatasetsDraw(chart, _args, opts) {
+    const options = opts as ViolinPlotOptions | undefined;
+    const { ctx, chartArea, scales } = chart;
+    const xScale = scales.x;
+    const yScale = scales.y;
+    if (!chartArea || !xScale || !yScale) return;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(chartArea.left, chartArea.top, chartArea.right - chartArea.left, chartArea.bottom - chartArea.top);
+    ctx.clip();
+
+    for (const { color, xOffsetSec, skipTs, buckets } of options?.series ?? []) {
+      for (const { ts, values } of buckets) {
+        if (skipTs.has(ts) || values.length < 2) continue;
+
+        const centerTs = ts + xOffsetSec;
+        const centerX = xScale.getPixelForValue(centerTs);
+        if (centerX < chartArea.left - 20 || centerX > chartArea.right + 20) continue;
+
+        const refX = xScale.getPixelForValue(centerTs + MEASURE_INTERVAL_SEC * 0.35);
+        const halfWidthPx = Math.min(16, Math.abs(refX - centerX));
+
+        drawViolin(ctx, centerX, values, (y) => yScale.getPixelForValue(y), halfWidthPx, color);
+      }
     }
 
     ctx.restore();

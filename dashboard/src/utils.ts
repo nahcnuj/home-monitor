@@ -1,9 +1,5 @@
 import { MAX_GAP_SEC, MEASURE_INTERVAL_SEC } from "./constants.ts";
-import type { ChartPoint, DnsRecord, DnsSuccessRecord } from "./types.ts";
-
-function isSuccess(r: DnsRecord): r is DnsSuccessRecord {
-  return !r.error;
-}
+import type { ChartPoint, DnsRecord } from "./types.ts";
 
 export function withAlpha(hex: string, alpha: number): string {
   const r = parseInt(hex.slice(1, 3), 16);
@@ -40,28 +36,6 @@ export function withGaps(points: ChartPoint[], timeoutTs: number[] = []): ChartP
     result.push(sorted[i]);
   }
   return result;
-}
-
-export function latencyRangePoints(
-  rawRecords: DnsRecord[],
-  server: string,
-): { min: ChartPoint[]; max: ChartPoint[] } {
-  const buckets = new Map<number, number[]>();
-
-  for (const r of rawRecords.filter(isSuccess)) {
-    if (r.dns_server !== server) continue;
-    if (!buckets.has(r.ts)) buckets.set(r.ts, []);
-    buckets.get(r.ts)!.push(r.latency_ms);
-  }
-
-  const min: ChartPoint[] = [];
-  const max: ChartPoint[] = [];
-  for (const [ts, values] of [...buckets.entries()].sort((a, b) => a[0] - b[0])) {
-    if (values.length < 2) continue;
-    min.push({ x: ts, y: Math.min(...values) });
-    max.push({ x: ts, y: Math.max(...values) });
-  }
-  return { min, max };
 }
 
 export function timeoutRanges(failures: DnsRecord[]): { start: number; end: number }[] {
