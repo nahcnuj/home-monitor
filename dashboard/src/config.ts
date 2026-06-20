@@ -1,0 +1,1 @@
+export { monitorConfig, type MonitorConfig } from "../../monitor.config.ts";

@@ -6,6 +6,7 @@
     "dev": "vite --config dashboard/vite.config.ts",
     "build": "vite build --config dashboard/vite.config.ts",
     "typecheck": "tsc -p dashboard/tsconfig.json --noEmit",
+    "read-config": "tsx scripts/read-config.ts",
     "test": "vitest run",
     "preview": "vite preview --config dashboard/vite.config.ts"
   },
@@ -15,6 +16,7 @@
   },
   "devDependencies": {
     "happy-dom": "^20.10.6",
+    "tsx": "^4.19.4",
     "typescript": "^5.8.2",
     "vite": "^6.2.0",
     "vitest": "^4.1.9",

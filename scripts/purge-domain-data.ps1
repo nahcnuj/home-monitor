@@ -3,13 +3,12 @@ param([switch]$Republish)
 
 $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path $PSScriptRoot -Parent
-$ConfigPath = Join-Path $RepoRoot "config\monitor.json"
+. (Join-Path $PSScriptRoot "Get-MonitorConfig.ps1")
 $LocalFile = Join-Path $RepoRoot "data\local\dns-latency.tsv"
 $MirrorFile = Join-Path $RepoRoot "docs\data\dns-latency.tsv"
 
 function Get-DataCutoffTs {
-    $cfg = Get-Content $ConfigPath -Raw | ConvertFrom-Json
-    return [long]$cfg.data_cutoff_ts
+    return [long](Get-MonitorConfig).data_cutoff_ts
 }
 
 function Test-DnsServerKey {

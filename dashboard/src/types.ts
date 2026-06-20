@@ -44,11 +44,6 @@ export interface Stats {
   errors: Record<string, number>;
 }
 
-export interface MonitorConfig {
-  data_cutoff_ts?: number;
-  display_hours?: number;
-}
-
 export interface TimeBounds {
   min: number;
   max: number;
