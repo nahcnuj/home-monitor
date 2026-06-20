@@ -161,6 +161,7 @@ function render() {
   renderStats(stats);
   buildLatencyChart(filtered);
   buildErrorChart(stats.errors);
+  requestAnimationFrame(resizeCharts);
 }
 
 async function loadData() {
@@ -177,5 +178,11 @@ async function loadData() {
   }
 }
 
+function resizeCharts() {
+  latencyChart?.resize();
+  errorChart?.resize();
+}
+
 loadData();
 setInterval(loadData, 30 * 60 * 1000);
+window.addEventListener("resize", resizeCharts);
