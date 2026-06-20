@@ -54,9 +54,9 @@ function hourTickStep(rangeSec) {
 
 function chartTimeBounds() {
   const now = Math.floor(Date.now() / 1000);
-  const min = floorToHour(getPeriodCutoff());
+  const min = floorToHour(now - PERIOD_HOURS * HOUR_SEC);
   const max = ceilToHour(now);
-  const range = Math.max(HOUR_SEC, max - min);
+  const range = max - min;
   return { min, max, range, stepHours: hourTickStep(range) };
 }
 
@@ -71,18 +71,31 @@ function fmtAxisHour(unixSec, rangeSec) {
   }).format(new Date(unixSec * 1000));
 }
 
-const timeoutHighlightPlugin = {
-  id: "timeoutHighlight",
+const chartRegionsPlugin = {
+  id: "chartRegions",
   beforeDatasetsDraw(chart, _args, opts) {
-    const ranges = opts?.ranges;
-    if (!ranges?.length) return;
-
     const { ctx, chartArea } = chart;
     const xScale = chart.scales.x;
     if (!chartArea || !xScale) return;
 
     ctx.save();
-    for (const { start, end } of ranges) {
+
+    const cutoffEnd = opts?.cutoffEnd ?? 0;
+    const xMin = opts?.xMin ?? xScale.min;
+    if (cutoffEnd > xMin) {
+      let left = xScale.getPixelForValue(xMin);
+      let right = xScale.getPixelForValue(cutoffEnd);
+      left = Math.max(left, chartArea.left);
+      right = Math.min(right, chartArea.right);
+      if (right > left) {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.32)";
+        ctx.fillRect(left, chartArea.top, right - left, chartArea.bottom - chartArea.top);
+        ctx.fillStyle = "rgba(139, 144, 160, 0.45)";
+        ctx.fillRect(right - 1, chartArea.top, 1, chartArea.bottom - chartArea.top);
+      }
+    }
+
+    for (const { start, end } of opts?.timeoutRanges ?? []) {
       let left = xScale.getPixelForValue(start);
       let right = xScale.getPixelForValue(end);
       left = Math.max(left, chartArea.left);
@@ -96,11 +109,12 @@ const timeoutHighlightPlugin = {
       ctx.fillRect(left, chartArea.top, 2, chartArea.bottom - chartArea.top);
       ctx.fillRect(right - 2, chartArea.top, 2, chartArea.bottom - chartArea.top);
     }
+
     ctx.restore();
   },
 };
 
-Chart.register(timeoutHighlightPlugin);
+Chart.register(chartRegionsPlugin);
 
 function timeoutRanges(failures) {
   const seen = new Set();
@@ -238,7 +252,11 @@ function buildLatencyChart(successes, failures) {
         y: { title: { display: true, text: "ms", color: "#8b90a0" }, grid: { color: "#2a2e3d" }, ticks: { color: "#8b90a0" }, min: 0 },
       },
       plugins: {
-        timeoutHighlight: { ranges: timeoutRanges(failures) },
+        chartRegions: {
+          xMin: xBounds.min,
+          cutoffEnd: dataCutoffTs > xBounds.min ? dataCutoffTs : 0,
+          timeoutRanges: timeoutRanges(failures),
+        },
         legend: { labels: { color: "#e4e6ed" } },
         tooltip: {
           callbacks: {
