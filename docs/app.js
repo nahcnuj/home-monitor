@@ -253,13 +253,22 @@ let latencyChart = null;
 let errorChart = null;
 let rangeSelectorReady = false;
 
+function isDomainColumn(value) {
+  return Boolean(value) && /[a-zA-Z]/.test(value);
+}
+
 function parseTsv(text) {
   return text.trim().split("\n").filter((l) => l.trim()).map((line) => {
     const cols = line.split("\t");
     const ts = parseInt(cols[0], 10);
     const dns_server = cols[1];
-    if (cols.length >= 4 && cols[3]) return { ts, dns_server, error: cols[3] };
-    return { ts, dns_server, latency_ms: Number(cols[2]) };
+    if (isDomainColumn(cols[2])) {
+      const domain = cols[2];
+      if (cols[4]) return { ts, dns_server, domain, error: cols[4] };
+      return { ts, dns_server, domain, latency_ms: Number(cols[3]) };
+    }
+    if (cols.length >= 4 && cols[3]) return { ts, dns_server, domain: null, error: cols[3] };
+    return { ts, dns_server, domain: null, latency_ms: Number(cols[2]) };
   });
 }
 
@@ -348,7 +357,7 @@ function buildLatencyChart(successes, failures) {
   });
   datasets.push({
     label: "Failures",
-    data: failures.map((r) => ({ x: r.ts, y: 0, error: r.error, dns_server: r.dns_server })),
+    data: failures.map((r) => ({ x: r.ts, y: 0, error: r.error, dns_server: r.dns_server, domain: r.domain })),
     borderColor: "#f87171", backgroundColor: "#f87171",
     pointRadius: 5, pointStyle: "crossRot", showLine: false,
   });
@@ -390,7 +399,11 @@ function buildLatencyChart(successes, failures) {
             title: (items) => fmtJst(items[0].parsed.x),
             label(ctx) {
               const raw = ctx.raw;
-              return raw.error ? `${raw.dns_server}: ${raw.error}` : `${ctx.dataset.label}: ${Math.round(raw.y)} ms`;
+              if (raw.error) {
+                const domain = raw.domain ? ` / ${raw.domain}` : "";
+                return `${raw.dns_server}${domain}: ${raw.error}`;
+              }
+              return `${ctx.dataset.label}: ${Math.round(raw.y)} ms`;
             },
           },
         },

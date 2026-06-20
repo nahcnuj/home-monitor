@@ -94,44 +94,27 @@ Clear-DnsClientCache -ErrorAction SilentlyContinue
 $ts = [long][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
 if ($ts -le 0) { throw "Invalid timestamp: $ts" }
 
-$byServer = @{}
-foreach ($domain in $config.domains) {
+$lines = New-Object System.Collections.Generic.List[string]
+foreach ($domain in ($config.domains | Sort-Object)) {
     $result = Invoke-DnsLookup -Domain $domain -QueryType $queryType
     $server = Get-DnsServerAddress -Output $result.Output
-    if (-not $byServer.ContainsKey($server)) {
-        $byServer[$server] = @{ Latencies = New-Object System.Collections.Generic.List[int]; Errors = New-Object System.Collections.Generic.List[string] }
-    }
-    $bucket = $byServer[$server]
 
     if ($result.Error -eq "timeout") {
-        $bucket.Errors.Add($result.Error)
+        $lines.Add(("{0}`t{1}`t{2}`t`t{3}" -f $ts, $server, $domain, $result.Error))
         continue
     }
 
     $dnsError = Get-DnsError -Output $result.Output
     if ($dnsError) {
-        $bucket.Errors.Add($dnsError)
+        $lines.Add(("{0}`t{1}`t{2}`t`t{3}" -f $ts, $server, $domain, $dnsError))
         continue
     }
 
     if (Test-DnsSuccess -Output $result.Output) {
-        $bucket.Latencies.Add($result.LatencyMs)
+        $lines.Add(("{0}`t{1}`t{2}`t{3}" -f $ts, $server, $domain, $result.LatencyMs))
     }
     else {
-        $bucket.Errors.Add("unknown")
-    }
-}
-
-$lines = New-Object System.Collections.Generic.List[string]
-foreach ($server in ($byServer.Keys | Sort-Object)) {
-    $bucket = $byServer[$server]
-    if ($bucket.Errors.Count -gt 0) {
-        $lines.Add(("{0}`t{1}`t`t{2}" -f $ts, $server, $bucket.Errors[0]))
-        continue
-    }
-    if ($bucket.Latencies.Count -gt 0) {
-        $avg = [int](($bucket.Latencies | Measure-Object -Average).Average)
-        $lines.Add(("{0}`t{1}`t{2}" -f $ts, $server, $avg))
+        $lines.Add(("{0}`t{1}`t{2}`t`t{3}" -f $ts, $server, $domain, "unknown"))
     }
 }
 

@@ -37,6 +37,12 @@ jobs:
                   return True
               return bool(IPV4.match(key) or IPV6.match(key))
 
+          def row_key(cols: list[str]) -> tuple[str, str, str]:
+              domain = ""
+              if len(cols) >= 4 and cols[2] and not cols[2].isdigit():
+                  domain = cols[2]
+              return (cols[0], cols[1], domain)
+
           with open("config/monitor.json", encoding="utf-8") as f:
               data_cutoff = int(json.load(f).get("data_cutoff_ts", 0))
           rolling_cutoff = int(time.time()) - 7 * 86400
@@ -63,7 +69,7 @@ jobs:
                   continue
               if not is_dns_server_key(cols[1]):
                   continue
-              key = (cols[0], cols[1])
+              key = row_key(cols)
               if key in seen:
                   continue
               seen.add(key)
