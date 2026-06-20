@@ -1,4 +1,5 @@
 const PERIOD_HOURS = 168;
+const HOUR_SEC = 3600;
 const MEASURE_INTERVAL_SEC = 60;
 const MAX_GAP_SEC = 3 * 60; // 計測間隔1分 → 3分以上空いたら線を切る
 const SERVER_COLORS = ["#5b8def", "#f59e0b", "#4ade80", "#a78bfa", "#f472b6", "#38bdf8"];
@@ -27,6 +28,48 @@ function withGaps(points) {
 
 // TSV の ts は Unix 秒（UTC エポック）。表示は常に JST に変換する
 const fmtJst = (unixSec) => jstFormatter.format(new Date(unixSec * 1000));
+
+function getPeriodCutoff() {
+  const rolling = Math.floor(Date.now() / 1000) - PERIOD_HOURS * HOUR_SEC;
+  return Math.max(rolling, dataCutoffTs);
+}
+
+function floorToHour(unixSec) {
+  return Math.floor(unixSec / HOUR_SEC) * HOUR_SEC;
+}
+
+function ceilToHour(unixSec) {
+  return Math.ceil(unixSec / HOUR_SEC) * HOUR_SEC;
+}
+
+function hourTickStep(rangeSec) {
+  const hours = rangeSec / HOUR_SEC;
+  const targetTicks = 8;
+  const raw = Math.max(1, Math.ceil(hours / targetTicks));
+  for (const step of [1, 2, 3, 4, 6, 8, 12, 24]) {
+    if (step >= raw) return step;
+  }
+  return 24;
+}
+
+function chartTimeBounds() {
+  const now = Math.floor(Date.now() / 1000);
+  const min = floorToHour(getPeriodCutoff());
+  const max = ceilToHour(now);
+  const range = Math.max(HOUR_SEC, max - min);
+  return { min, max, range, stepHours: hourTickStep(range) };
+}
+
+function fmtAxisHour(unixSec, rangeSec) {
+  const showDate = rangeSec > 2 * 86400;
+  return new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    ...(showDate ? { month: "2-digit", day: "2-digit" } : {}),
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(unixSec * 1000));
+}
 
 const timeoutHighlightPlugin = {
   id: "timeoutHighlight",
@@ -114,9 +157,7 @@ function aggregateByServer(records) {
 }
 
 function filterByPeriod(records) {
-  const rolling = Math.floor(Date.now() / 1000) - PERIOD_HOURS * 3600;
-  const cutoff = Math.max(rolling, dataCutoffTs);
-  return records.filter((r) => r.ts >= cutoff);
+  return records.filter((r) => r.ts >= getPeriodCutoff());
 }
 
 function percentile(values, p) {
@@ -171,6 +212,8 @@ function buildLatencyChart(successes, failures) {
     pointRadius: 5, pointStyle: "crossRot", showLine: false,
   });
 
+  const xBounds = chartTimeBounds();
+
   if (latencyChart) latencyChart.destroy();
   latencyChart = new Chart(document.getElementById("latencyChart"), {
     type: "line",
@@ -181,11 +224,15 @@ function buildLatencyChart(successes, failures) {
       scales: {
         x: {
           type: "linear",
+          min: xBounds.min,
+          max: xBounds.max,
           grid: { color: "#2a2e3d" },
           ticks: {
             color: "#8b90a0",
-            maxTicksLimit: 8,
-            callback: (value) => fmtJst(value),
+            stepSize: xBounds.stepHours * HOUR_SEC,
+            autoSkip: false,
+            maxRotation: 0,
+            callback: (value) => fmtAxisHour(value, xBounds.range),
           },
         },
         y: { title: { display: true, text: "ms", color: "#8b90a0" }, grid: { color: "#2a2e3d" }, ticks: { color: "#8b90a0" }, min: 0 },
