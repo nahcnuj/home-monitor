@@ -56,9 +56,19 @@ try {
         throw "Cannot determine GitHub repo. Add git remote or use ghq path."
     }
 
-    gh workflow run sync-dns-data.yml --repo $repoSlug -f "data_b64=$dataB64" --wait
+    gh workflow run sync-dns-data.yml --repo $repoSlug -f "data_b64=$dataB64"
     if ($LASTEXITCODE -ne 0) {
         throw "gh workflow run failed"
+    }
+
+    Start-Sleep -Seconds 3
+    $runId = gh run list --repo $repoSlug --workflow sync-dns-data.yml -L 1 --json databaseId -q ".[0].databaseId"
+    if (-not $runId) {
+        throw "Could not find workflow run id"
+    }
+    gh run watch $runId --repo $repoSlug --exit-status
+    if ($LASTEXITCODE -ne 0) {
+        throw "gh run watch failed"
     }
 
     $maxTs = ($unsentLines | ForEach-Object { [int]($_ -split "`t")[0] } | Measure-Object -Maximum).Maximum
