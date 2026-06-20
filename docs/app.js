@@ -1,4 +1,13 @@
 const DEFAULT_DISPLAY_HOURS = 24;
+const STORAGE_KEY = "dns-monitor-display-hours";
+const RANGE_PRESETS = [
+  { hours: 3, label: "3h" },
+  { hours: 6, label: "6h" },
+  { hours: 12, label: "12h" },
+  { hours: 24, label: "24h" },
+  { hours: 72, label: "3d" },
+  { hours: 168, label: "7d" },
+];
 const HOUR_SEC = 3600;
 const DAY_SEC = 86400;
 const JST_OFFSET = 9 * HOUR_SEC;
@@ -48,15 +57,32 @@ function ceilToHour(unixSec) {
   return Math.ceil(unixSec / HOUR_SEC) * HOUR_SEC;
 }
 
+function chartTickStep(hours) {
+  if (hours <= 6) return HOUR_SEC;
+  if (hours <= 12) return 2 * HOUR_SEC;
+  if (hours <= 24) return 3 * HOUR_SEC;
+  if (hours <= 72) return 12 * HOUR_SEC;
+  return DAY_SEC;
+}
+
 function chartTimeBounds() {
   const now = Math.floor(Date.now() / 1000);
   const rangeSec = displayHours * HOUR_SEC;
+  const tickStep = chartTickStep(displayHours);
   if (rangeSec > DAY_SEC) {
     const max = nextJstDay(now);
-    return { min: max - rangeSec, max, range: rangeSec, tickStep: DAY_SEC };
+    return { min: max - rangeSec, max, range: rangeSec, tickStep };
   }
   const max = ceilToHour(now);
-  return { min: max - rangeSec, max, range: rangeSec, tickStep: 3 * HOUR_SEC };
+  return { min: max - rangeSec, max, range: rangeSec, tickStep };
+}
+
+function rangeLabel(hours) {
+  return RANGE_PRESETS.find((p) => p.hours === hours)?.label ?? `${hours}h`;
+}
+
+function isValidDisplayHours(hours) {
+  return RANGE_PRESETS.some((p) => p.hours === hours);
 }
 
 function fmtAxisTick(unixSec, tickStep) {
@@ -130,6 +156,7 @@ let displayHours = DEFAULT_DISPLAY_HOURS;
 let allRecords = [];
 let latencyChart = null;
 let errorChart = null;
+let rangeSelectorReady = false;
 
 function parseTsv(text) {
   return text.trim().split("\n").filter((l) => l.trim()).map((line) => {
@@ -291,6 +318,38 @@ function buildErrorChart(errors) {
   });
 }
 
+function updateRangeUi() {
+  document.getElementById("subtitle").textContent =
+    `自宅回線の DNS 応答レイテンシ — DNS サーバー別（直近 ${rangeLabel(displayHours)} / データ保持 7 日）`;
+  document.querySelectorAll(".range-btn").forEach((btn) => {
+    btn.classList.toggle("active", Number(btn.dataset.hours) === displayHours);
+  });
+}
+
+function setDisplayHours(hours) {
+  if (!isValidDisplayHours(hours) || hours === displayHours) return;
+  displayHours = hours;
+  localStorage.setItem(STORAGE_KEY, String(hours));
+  updateRangeUi();
+  render();
+}
+
+function initRangeSelector() {
+  const el = document.getElementById("rangeSelector");
+  if (!rangeSelectorReady) {
+    el.innerHTML = RANGE_PRESETS.map(
+      (p) => `<button type="button" class="range-btn" data-hours="${p.hours}">${p.label}</button>`
+    ).join("");
+    el.addEventListener("click", (e) => {
+      const btn = e.target.closest(".range-btn");
+      if (!btn) return;
+      setDisplayHours(Number(btn.dataset.hours));
+    });
+    rangeSelectorReady = true;
+  }
+  updateRangeUi();
+}
+
 function render() {
   const filtered = filterByPeriod(allRecords);
   const { successes, failures } = aggregateByServer(filtered);
@@ -302,21 +361,29 @@ function render() {
 }
 
 async function loadConfig() {
+  let configDefault = DEFAULT_DISPLAY_HOURS;
   try {
     const res = await fetch(`config/monitor.json?t=${Date.now()}`);
     if (res.ok) {
       const cfg = await res.json();
       dataCutoffTs = cfg.data_cutoff_ts || 0;
-      displayHours = cfg.display_hours || DEFAULT_DISPLAY_HOURS;
+      configDefault = cfg.display_hours || DEFAULT_DISPLAY_HOURS;
     }
   } catch {
     dataCutoffTs = 0;
   }
+
+  const stored = Number(localStorage.getItem(STORAGE_KEY));
+  displayHours = isValidDisplayHours(stored)
+    ? stored
+    : (isValidDisplayHours(configDefault) ? configDefault : DEFAULT_DISPLAY_HOURS);
 }
 
 async function loadData() {
   try {
     await loadConfig();
+    initRangeSelector();
+
     const res = await fetch(`data/dns-latency.tsv?t=${Date.now()}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     allRecords = parseTsv(await res.text());

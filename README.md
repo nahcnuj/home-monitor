@@ -70,7 +70,7 @@ GitHub の Actions タブで **Sync DNS Data** ワークフローが起動する
 
 2列目は名前解決に使った DNS サーバーの IP アドレスです。複数ドメインを計測した場合は同一サーバーごとに平均レイテンシを記録します。
 
-[`config/monitor.json`](config/monitor.json) の `data_cutoff_ts`（Unix 秒）より古い行は保存・表示・送信の対象外です。`display_hours`（デフォルト 24）でダッシュボードの表示範囲を指定します。`docs/config/monitor.json` も同じ値に揃えてください。
+[`config/monitor.json`](config/monitor.json) の `data_cutoff_ts`（Unix 秒）より古い行は保存・表示・送信の対象外です。GitHub 上のデータは最大 7 日分保持されます。ダッシュボードの表示範囲（3h / 6h / 12h / 24h / 3d / 7d）は UI から切り替えでき、選択はブラウザに保存されます。`display_hours`（デフォルト 24）は初回表示の初期値のみです。`docs/config/monitor.json` も同じ値に揃えてください。
 
 ## 設定
 

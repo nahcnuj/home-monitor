@@ -9,8 +9,13 @@
 </head>
 <body>
   <header>
-    <h1>DNS Latency Monitor</h1>
-    <p class="subtitle">自宅回線の DNS 応答レイテンシ — DNS サーバー別（直近24時間）</p>
+    <div class="header-row">
+      <div class="header-title">
+        <h1>DNS Latency Monitor</h1>
+        <p class="subtitle" id="subtitle">自宅回線の DNS 応答レイテンシ — DNS サーバー別</p>
+      </div>
+      <div class="range-selector" id="rangeSelector" role="group" aria-label="表示範囲"></div>
+    </div>
   </header>
 
   <main>
