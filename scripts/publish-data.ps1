@@ -25,38 +25,43 @@ function Get-UnsentLines {
     return $allLines | Where-Object { [int]($_ -split "`t")[0] -gt $lastSyncTs }
 }
 
-$token = $env:GITHUB_TOKEN
-if (-not $token) { throw "GITHUB_TOKEN is not set" }
-
-$remoteUrl = git -C $RepoRoot remote get-url origin 2>$null
-if ($remoteUrl -match 'github\.com[:/](.+?)/(.+?)(?:\.git)?$') {
-    $owner = $Matches[1]
-    $repo = $Matches[2]
-}
-else {
-    throw "Cannot parse owner/repo from git remote"
+if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
+    throw "gh CLI is not installed. See https://cli.github.com/"
 }
 
-$unsentLines = Get-UnsentLines
-if ($unsentLines.Count -eq 0) { exit 0 }
+Push-Location $RepoRoot
+try {
+    gh auth status 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "gh is not authenticated. Run: gh auth login"
+    }
 
-$bytes = [System.Text.Encoding]::UTF8.GetBytes(($unsentLines -join "`n") + "`n")
-$dataB64 = [Convert]::ToBase64String((Compress-GzipBytes -Data $bytes))
+    $unsentLines = Get-UnsentLines
+    if ($unsentLines.Count -eq 0) { exit 0 }
 
-$headers = @{
-    Authorization          = "Bearer $token"
-    Accept                 = "application/vnd.github+json"
-    "X-GitHub-Api-Version" = "2022-11-28"
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes(($unsentLines -join "`n") + "`n")
+    $dataB64 = [Convert]::ToBase64String((Compress-GzipBytes -Data $bytes))
+
+    $repoSlug = $null
+    if ($RepoRoot -match 'github\.com[/\\]([^/\\]+)[/\\]([^/\\]+)$') {
+        $repoSlug = "$($Matches[1])/$($Matches[2])"
+    }
+    if (-not $repoSlug) {
+        $repoSlug = gh repo view --json nameWithOwner -q .nameWithOwner 2>$null
+    }
+    if (-not $repoSlug) {
+        throw "Cannot determine GitHub repo. Add git remote or use ghq path."
+    }
+
+    gh workflow run sync-dns-data.yml --repo $repoSlug -f "data_b64=$dataB64"
+    if ($LASTEXITCODE -ne 0) {
+        throw "gh workflow run failed"
+    }
+
+    $maxTs = ($unsentLines | ForEach-Object { [int]($_ -split "`t")[0] } | Measure-Object -Maximum).Maximum
+    if (-not (Test-Path $DataDir)) { New-Item -ItemType Directory -Path $DataDir -Force | Out-Null }
+    Set-Content -Path $LastSyncFile -Value $maxTs -NoNewline -Encoding UTF8
 }
-$body = @{
-    event_type     = "dns-data-update"
-    client_payload = @{ data_b64 = $dataB64 }
-} | ConvertTo-Json -Depth 3 -Compress
-
-Invoke-RestMethod `
-    -Uri "https://api.github.com/repos/$owner/$repo/dispatches" `
-    -Method POST -Headers $headers -Body $body -TimeoutSec 60 -ContentType "application/json"
-
-$maxTs = ($unsentLines | ForEach-Object { [int]($_ -split "`t")[0] } | Measure-Object -Maximum).Maximum
-if (-not (Test-Path $DataDir)) { New-Item -ItemType Directory -Path $DataDir -Force | Out-Null }
-Set-Content -Path $LastSyncFile -Value $maxTs -NoNewline -Encoding UTF8
+finally {
+    Pop-Location
+}

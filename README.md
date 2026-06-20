@@ -5,7 +5,7 @@
 ## 仕組み
 
 1. **Windows PC** — 1分ごとに `nslookup` を実行し、レイテンシをローカル TSV に記録
-2. **6時間ごと** — GitHub API で `repository_dispatch` を発火し、未送信データをワークフローへ送信
+2. **6時間ごと** — `gh workflow run` で未送信データをワークフローへ送信
 3. **GitHub Actions** — 受信データを `docs/data/dns-latency.tsv` にマージし、Pages をデプロイ
 4. **ダッシュボード** — `https://nahcnuj.github.io/home-monitor/` でグラフ表示
 
@@ -20,17 +20,12 @@ git push -u origin master
 
 GitHub の **Settings → Pages → Build and deployment → GitHub Actions** を有効化してください。
 
-### 2. Personal Access Token
+### 2. GitHub CLI
 
-fine-grained PAT を作成し、以下の権限を付与:
-
-- **Contents**: Read and write
-- **Actions**: Read and write
-
-Windows のユーザー環境変数に設定:
+[GitHub CLI](https://cli.github.com/) をインストールし、認証:
 
 ```powershell
-[System.Environment]::SetEnvironmentVariable("GITHUB_TOKEN", "ghp_xxxx", "User")
+gh auth login
 ```
 
 ### 3. タスクスケジューラ登録
@@ -53,7 +48,7 @@ cd C:\Users\nahcnuj\ghq\github.com\nahcnuj\home-monitor
 # 計測テスト
 .\scripts\collect-dns.ps1
 
-# 送信テスト（GITHUB_TOKEN 設定後）
+# 送信テスト（gh auth login 後）
 .\scripts\publish-data.ps1
 ```
 

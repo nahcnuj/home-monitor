@@ -1,8 +1,12 @@
 name: Sync DNS Data
 
 on:
-  repository_dispatch:
-    types: [dns-data-update]
+  workflow_dispatch:
+    inputs:
+      data_b64:
+        description: Gzip+base64 encoded TSV delta
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -15,7 +19,7 @@ jobs:
 
       - name: Merge incoming TSV data
         env:
-          DATA_B64: ${{ github.event.client_payload.data_b64 }}
+          DATA_B64: ${{ inputs.data_b64 }}
         run: |
           python3 << 'PYEOF'
           import os, base64, gzip
