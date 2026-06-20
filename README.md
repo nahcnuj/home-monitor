@@ -5,7 +5,7 @@
 ## 仕組み
 
 1. **Windows PC** — 1分ごとに `nslookup` を実行し、レイテンシをローカル TSV に記録
-2. **6時間ごと** — `gh workflow run` で未送信データをワークフローへ送信
+2. **1時間ごと** — `gh workflow run` で未送信データをワークフローへ送信
 3. **GitHub Actions** — 受信データを `docs/data/dns-latency.tsv` にマージし、Pages をデプロイ
 4. **ダッシュボード** — `https://nahcnuj.github.io/home-monitor/` でグラフ表示
 
@@ -40,7 +40,7 @@ cd C:\Users\nahcnuj\ghq\github.com\nahcnuj\home-monitor
 | タスク名 | 間隔 | 内容 |
 |----------|------|------|
 | `HomeMonitor-DNS-Collect` | 1分 | nslookup 計測 |
-| `HomeMonitor-DNS-Publish` | 6時間 | GitHub へデータ送信 |
+| `HomeMonitor-DNS-Publish` | 1時間 | GitHub へデータ送信 |
 
 ### 4. 動作確認
 
@@ -85,6 +85,19 @@ GitHub の Actions タブで **Sync DNS Data** ワークフローが起動する
 .\scripts\purge-domain-data.ps1 -Republish  # 整理後に GitHub へ全件再送
 ```
 
+## ダッシュボード開発 (Vite + TypeScript)
+
+ソースは `dashboard/src/`。ビルド成果物は `dashboard/dist/` に出力され、**master の `docs/` には含めません**（GitHub Actions がデプロイ時に組み立てます）。
+
+```powershell
+npm install
+npm run dev      # ローカル開発（docs/data, docs/config を参照）
+npm run build    # dashboard/dist/ に出力
+npm run typecheck
+```
+
+`docs/` に置くのは `data/` と `config/` のみです。UI を変えたら push すると `Deploy Pages` ワークフローがビルドして公開します。
+
 ## ファイル構成
 
 ```
@@ -92,6 +105,8 @@ config/monitor.json       設定
 scripts/collect-dns.ps1   計測スクリプト
 scripts/publish-data.ps1  データ送信
 scripts/install-scheduled-task.ps1  タスク登録
-docs/                     GitHub Pages ダッシュボード
+dashboard/                ダッシュボードソース (Vite + TS)
+docs/                     Pages 用データ（data/, config/ のみ）
+dashboard/dist/           ビルド成果物（gitignore、CI がデプロイ）
 data/local/               ローカルデータ (gitignore)
 ```

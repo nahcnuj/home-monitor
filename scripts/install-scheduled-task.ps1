@@ -28,11 +28,11 @@ function Register-MonitorTask {
 }
 
 Register-MonitorTask -TaskName "HomeMonitor-DNS-Collect" -VbsPath $RunCollectVbs -Schedule "MINUTE" -Modifier "1"
-Register-MonitorTask -TaskName "HomeMonitor-DNS-Publish" -VbsPath $RunPublishVbs -Schedule "HOURLY" -Modifier "6"
+Register-MonitorTask -TaskName "HomeMonitor-DNS-Publish" -VbsPath $RunPublishVbs -Schedule "HOURLY" -Modifier "1"
 
 Write-Host ""
 Write-Host "Setup complete."
 Write-Host "  Collect: every 1 minute (hidden)"
-Write-Host "  Publish: every 6 hours (hidden)"
+Write-Host "  Publish: every 1 hour (hidden)"
 Write-Host ""
 Write-Host "Ensure gh CLI is installed and authenticated (gh auth login) before publishing."

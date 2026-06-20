@@ -1,0 +1,18 @@
+{
+  "name": "home-monitor",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --config dashboard/vite.config.ts",
+    "build": "vite build --config dashboard/vite.config.ts",
+    "typecheck": "tsc -p dashboard/tsconfig.json --noEmit",
+    "preview": "vite preview --config dashboard/vite.config.ts"
+  },
+  "dependencies": {
+    "chart.js": "^4.4.7"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.2",
+    "vite": "^6.2.0"
+  }
+}
