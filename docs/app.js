@@ -162,7 +162,6 @@ const chartRegionsPlugin = {
 
       ctx.fillStyle = "rgba(248, 113, 113, 0.55)";
       ctx.fillRect(left, chartArea.top, 2, chartArea.bottom - chartArea.top);
-      ctx.fillRect(right - 2, chartArea.top, 2, chartArea.bottom - chartArea.top);
     }
 
     ctx.restore();
