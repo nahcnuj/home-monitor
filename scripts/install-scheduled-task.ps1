@@ -4,34 +4,56 @@
 $ScriptDir = $PSScriptRoot
 $RunCollectVbs = Join-Path $ScriptDir "run-collect-hidden.vbs"
 $RunPublishVbs = Join-Path $ScriptDir "run-publish-hidden.vbs"
-$Wscript = Join-Path $env:SystemRoot "System32\wscript.exe"
 $RunAs = "$env:USERDOMAIN\$env:USERNAME"
+$RepDuration = New-TimeSpan -Days 31
 
 function Register-MonitorTask {
     param(
         [string]$TaskName,
         [string]$VbsPath,
-        [string]$Schedule,
-        [string]$Modifier
+        [TimeSpan]$Interval
     )
 
-    # //B 等は schtasks のオプションと誤解釈されるため使わない（VBS 側で非表示起動）
-    $tr = "`"$Wscript`" `"$VbsPath`""
-    $output = schtasks.exe /Create /F /TN $TaskName /TR "$tr" /SC $Schedule /MO $Modifier /RU $RunAs /RL LIMITED 2>&1
+    $action = New-ScheduledTaskAction `
+        -Execute "wscript.exe" `
+        -Argument "`"$VbsPath`"" `
+        -WorkingDirectory $ScriptDir
 
-    if ($LASTEXITCODE -ne 0) {
-        throw "schtasks failed for ${TaskName}: $output"
-    }
+    $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) `
+        -RepetitionInterval $Interval `
+        -RepetitionDuration $RepDuration
+
+    $settings = New-ScheduledTaskSettingsSet `
+        -AllowStartIfOnBatteries `
+        -DontStopIfGoingOnBatteries `
+        -StartWhenAvailable `
+        -Hidden `
+        -RestartCount 3 `
+        -RestartInterval (New-TimeSpan -Minutes 1)
+
+    $principal = New-ScheduledTaskPrincipal `
+        -UserId $RunAs `
+        -LogonType Interactive `
+        -RunLevel Limited
+
+    Register-ScheduledTask `
+        -TaskName $TaskName `
+        -Action $action `
+        -Trigger $trigger `
+        -Settings $settings `
+        -Principal $principal `
+        -Force -ErrorAction Stop | Out-Null
 
     Write-Host "Registered: $TaskName"
 }
 
-Register-MonitorTask -TaskName "HomeMonitor-DNS-Collect" -VbsPath $RunCollectVbs -Schedule "MINUTE" -Modifier "1"
-Register-MonitorTask -TaskName "HomeMonitor-DNS-Publish" -VbsPath $RunPublishVbs -Schedule "HOURLY" -Modifier "6"
+Register-MonitorTask -TaskName "HomeMonitor-DNS-Collect" -VbsPath $RunCollectVbs -Interval (New-TimeSpan -Minutes 1)
+Register-MonitorTask -TaskName "HomeMonitor-DNS-Publish" -VbsPath $RunPublishVbs -Interval (New-TimeSpan -Hours 6)
 
 Write-Host ""
 Write-Host "Setup complete."
 Write-Host "  Collect: every 1 minute (hidden)"
 Write-Host "  Publish: every 6 hours (hidden)"
+Write-Host "  Note: re-run this script monthly (repeats for 31 days per registration)"
 Write-Host ""
 Write-Host "Ensure gh CLI is installed and authenticated (gh auth login) before publishing."
