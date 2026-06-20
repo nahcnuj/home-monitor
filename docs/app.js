@@ -1,5 +1,7 @@
 const PERIOD_HOURS = 168;
 const HOUR_SEC = 3600;
+const DAY_SEC = 86400;
+const JST_OFFSET = 9 * HOUR_SEC;
 const MEASURE_INTERVAL_SEC = 60;
 const MAX_GAP_SEC = 3 * 60; // 計測間隔1分 → 3分以上空いたら線を切る
 const SERVER_COLORS = ["#5b8def", "#f59e0b", "#4ade80", "#a78bfa", "#f472b6", "#38bdf8"];
@@ -34,40 +36,26 @@ function getPeriodCutoff() {
   return Math.max(rolling, dataCutoffTs);
 }
 
-function floorToHour(unixSec) {
-  return Math.floor(unixSec / HOUR_SEC) * HOUR_SEC;
+function floorToJstDay(unixSec) {
+  return Math.floor((unixSec + JST_OFFSET) / DAY_SEC) * DAY_SEC - JST_OFFSET;
 }
 
-function ceilToHour(unixSec) {
-  return Math.ceil(unixSec / HOUR_SEC) * HOUR_SEC;
-}
-
-function hourTickStep(rangeSec) {
-  const hours = rangeSec / HOUR_SEC;
-  const targetTicks = 8;
-  const raw = Math.max(1, Math.ceil(hours / targetTicks));
-  for (const step of [1, 2, 3, 4, 6, 8, 12, 24]) {
-    if (step >= raw) return step;
-  }
-  return 24;
+function nextJstDay(unixSec) {
+  return floorToJstDay(unixSec) + DAY_SEC;
 }
 
 function chartTimeBounds() {
   const now = Math.floor(Date.now() / 1000);
-  const min = floorToHour(now - PERIOD_HOURS * HOUR_SEC);
-  const max = ceilToHour(now);
-  const range = max - min;
-  return { min, max, range, stepHours: hourTickStep(range) };
+  const max = nextJstDay(now);
+  const min = max - PERIOD_HOURS * HOUR_SEC;
+  return { min, max, range: max - min };
 }
 
-function fmtAxisHour(unixSec, rangeSec) {
-  const showDate = rangeSec > 2 * 86400;
+function fmtAxisDay(unixSec) {
   return new Intl.DateTimeFormat("ja-JP", {
     timeZone: "Asia/Tokyo",
-    ...(showDate ? { month: "2-digit", day: "2-digit" } : {}),
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
+    month: "2-digit",
+    day: "2-digit",
   }).format(new Date(unixSec * 1000));
 }
 
@@ -243,10 +231,10 @@ function buildLatencyChart(successes, failures) {
           grid: { color: "#2a2e3d" },
           ticks: {
             color: "#8b90a0",
-            stepSize: xBounds.stepHours * HOUR_SEC,
+            stepSize: DAY_SEC,
             autoSkip: false,
             maxRotation: 0,
-            callback: (value) => fmtAxisHour(value, xBounds.range),
+            callback: (value) => fmtAxisDay(value),
           },
         },
         y: { title: { display: true, text: "ms", color: "#8b90a0" }, grid: { color: "#2a2e3d" }, ticks: { color: "#8b90a0" }, min: 0 },
