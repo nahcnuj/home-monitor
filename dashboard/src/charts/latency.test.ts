@@ -5,9 +5,12 @@ import { chartRegionsPlugin, errorBandLabelsPlugin } from "./plugins.ts";
 import {
   buildFailurePoints,
   buildLatencyChart,
+  buildTooltipLines,
+  collectActiveElementsAtBatch,
   formatFailureLabel,
   getLatencyChart,
-  latencyTooltipTitle,
+  isTooltipDataset,
+  nearestBatchTs,
 } from "./latency.ts";
 import { buildErrorChart } from "./error.ts";
 import { sampleTsv } from "../test/fixtures.ts";
@@ -17,9 +20,65 @@ import { DAY_SEC, HOUR_SEC } from "../constants.ts";
 
 Chart.register(...registerables, chartRegionsPlugin, errorBandLabelsPlugin);
 
-describe("latencyTooltipTitle", () => {
-  it("returns empty string when tooltip items are filtered out", () => {
-    expect(latencyTooltipTitle([])).toBe("");
+beforeAll(() => {
+  document.body.innerHTML = `
+    <canvas id="latencyChart" width="800" height="400"></canvas>
+    <canvas id="errorChart" width="800" height="200"></canvas>
+  `;
+});
+
+describe("nearestBatchTs", () => {
+  it("snaps hover to the nearest measurement batch timestamp", () => {
+    const batches = [1000, 1060, 1120];
+    expect(nearestBatchTs(batches, 1000)).toBe(1000);
+    expect(nearestBatchTs(batches, 1029)).toBe(1000);
+    expect(nearestBatchTs(batches, 1031)).toBe(1060);
+  });
+});
+
+describe("buildTooltipLines", () => {
+  it("lists every domain at the same batch timestamp", () => {
+    const records = parseTsv([
+      "1782003423\t203.165.31.152\tamazon.co.jp\t\ttimeout",
+      "1782003423\t203.165.31.152\tgoogle.com\t\ttimeout",
+      "1782003423\t203.165.31.152\tline.me\t188",
+      "1782003483\t203.165.31.152\tyahoo.co.jp\t201",
+    ].join("\n"));
+
+    expect(buildTooltipLines(records, 1782003423)).toEqual([
+      "line.me: 188 ms",
+      "203.165.31.152 / amazon.co.jp: timeout",
+      "203.165.31.152 / google.com: timeout",
+    ]);
+    expect(buildTooltipLines(records, 1782003483)).toEqual(["yahoo.co.jp: 201 ms"]);
+  });
+});
+
+describe("collectActiveElementsAtBatch", () => {
+  it("selects server and failure points at the same timestamp", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(1782003500 * 1000));
+    setDisplayRangeSec(24 * 3600);
+    setDataCutoffTs(0);
+
+    const records = parseTsv([
+      "1782003423\t203.165.31.152\tamazon.co.jp\t\ttimeout",
+      "1782003423\t203.165.31.152\tline.me\t188",
+    ].join("\n"));
+    const filtered = filterByPeriod(records, 0);
+    const { successes, failures } = aggregateByServer(filtered);
+
+    buildLatencyChart(filtered, successes, failures, 0);
+    const chart = getLatencyChart();
+    expect(chart).not.toBeNull();
+
+    const active = collectActiveElementsAtBatch(chart!, 1782003423);
+    expect(active).toHaveLength(2);
+    expect(isTooltipDataset("203.165.31.152")).toBe(true);
+    expect(isTooltipDataset("Failures")).toBe(true);
+    expect(isTooltipDataset("203.165.31.152 q1")).toBe(false);
+
+    vi.useRealTimers();
   });
 });
 
@@ -40,10 +99,6 @@ describe("buildFailurePoints", () => {
 
 describe("buildLatencyChart", () => {
   beforeAll(() => {
-    document.body.innerHTML = `
-      <canvas id="latencyChart" width="800" height="400"></canvas>
-      <canvas id="errorChart" width="800" height="200"></canvas>
-    `;
     setDisplayRangeSec(3600);
     setDataCutoffTs(1781967600);
   });
