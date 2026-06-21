@@ -2,7 +2,13 @@ import { Chart, registerables } from "chart.js";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { aggregateByServer, filterByPeriod, parseTsv } from "../data.ts";
 import { chartRegionsPlugin, errorBandLabelsPlugin } from "./plugins.ts";
-import { buildLatencyChart, getLatencyChart, latencyTooltipTitle } from "./latency.ts";
+import {
+  buildFailurePoints,
+  buildLatencyChart,
+  formatFailureLabel,
+  getLatencyChart,
+  latencyTooltipTitle,
+} from "./latency.ts";
 import { buildErrorChart } from "./error.ts";
 import { sampleTsv } from "../test/fixtures.ts";
 import { setDataCutoffTs, setDisplayRangeSec } from "../state.ts";
@@ -14,6 +20,21 @@ Chart.register(...registerables, chartRegionsPlugin, errorBandLabelsPlugin);
 describe("latencyTooltipTitle", () => {
   it("returns empty string when tooltip items are filtered out", () => {
     expect(latencyTooltipTitle([])).toBe("");
+  });
+});
+
+describe("buildFailurePoints", () => {
+  it("keeps every failure domain at the same timestamp", () => {
+    const records = parseTsv([
+      "1782003423\t203.165.31.152\tamazon.co.jp\t\ttimeout",
+      "1782003423\t203.165.31.152\tgoogle.com\t\ttimeout",
+      "1782003423\t203.165.31.152\tline.me\t188",
+    ].join("\n"));
+
+    const points = buildFailurePoints(records);
+    expect(points).toHaveLength(2);
+    expect(points.map((point) => point.domain).sort()).toEqual(["amazon.co.jp", "google.com"]);
+    expect(formatFailureLabel(points[0])).toBe("203.165.31.152 / amazon.co.jp: timeout");
   });
 });
 

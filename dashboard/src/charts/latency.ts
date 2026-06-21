@@ -20,6 +20,25 @@ function isSuccess(r: DnsRecord): r is DnsSuccessRecord {
   return !r.error;
 }
 
+function listFailures(records: DnsRecord[]): DnsFailureRecord[] {
+  return records.filter((r): r is DnsFailureRecord => Boolean(r.error));
+}
+
+export function buildFailurePoints(records: DnsRecord[]): FailurePoint[] {
+  return listFailures(records).map((r) => ({
+    x: r.ts,
+    y: 0,
+    error: r.error,
+    dns_server: r.dns_server,
+    domain: r.domain,
+  }));
+}
+
+export function formatFailureLabel(point: FailurePoint): string {
+  const domain = point.domain ? ` / ${point.domain}` : "";
+  return `${point.dns_server}${domain}: ${point.error}`;
+}
+
 const BAND_TENSION = 0.42;
 
 let latencyChart: Chart | null = null;
@@ -40,9 +59,10 @@ export function latencyTooltipTitle(items: TooltipItem<"line">[]): string {
 export function buildLatencyChart(
   rawRecords: DnsRecord[],
   _successes: AggregatedSuccess[],
-  failures: DnsFailureRecord[],
+  _failures: DnsFailureRecord[],
   dataCutoffTs: number,
 ): void {
+  const allFailures = listFailures(rawRecords);
   const latestDataTs = rawRecords.length ? Math.max(...rawRecords.map((r) => r.ts)) : null;
   const xBounds = chartTimeBounds(undefined, latestDataTs);
   const timestamps = collectTimelineTimestamps(rawRecords, xBounds.min, xBounds.max);
@@ -51,7 +71,7 @@ export function buildLatencyChart(
 
   servers.forEach((server, index) => {
     const color = SERVER_COLORS[index % SERVER_COLORS.length];
-    const spans = timeoutSpansForServer(failures, server);
+    const spans = timeoutSpansForServer(allFailures, server);
     const envelope = buildRollingEnvelope(rawRecords, server, timestamps, spans);
 
     datasets.push({
@@ -101,13 +121,7 @@ export function buildLatencyChart(
     }
   });
 
-  const failurePoints: FailurePoint[] = failures.map((r) => ({
-    x: r.ts,
-    y: 0,
-    error: r.error,
-    dns_server: r.dns_server,
-    domain: r.domain,
-  }));
+  const failurePoints = buildFailurePoints(rawRecords);
 
   datasets.push({
     label: "Failures",
@@ -130,7 +144,7 @@ export function buildLatencyChart(
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      interaction: { mode: "nearest", intersect: false },
+      interaction: { mode: "x", intersect: false },
       scales: {
         x: {
           type: "linear",
@@ -156,7 +170,7 @@ export function buildLatencyChart(
         chartRegions: {
           xMin: xBounds.min,
           cutoffEnd: dataCutoffTs > xBounds.min ? dataCutoffTs : 0,
-          timeoutRanges: timeoutRanges(failures),
+          timeoutRanges: timeoutRanges(allFailures),
         },
         legend: {
           labels: {
@@ -172,8 +186,11 @@ export function buildLatencyChart(
               const raw = ctx.raw as FailurePoint | LatencySamplePoint | null;
               if (!raw || typeof raw !== "object") return "";
               if ("error" in raw && raw.error) {
-                const domain = raw.domain ? ` / ${raw.domain}` : "";
-                return `${raw.dns_server}${domain}: ${raw.error}`;
+                const ts = raw.x;
+                const failuresAtTs = failurePoints.filter((point) => point.x === ts);
+                const firstIndex = failurePoints.findIndex((point) => point.x === ts);
+                if (ctx.dataIndex !== firstIndex) return "";
+                return failuresAtTs.map(formatFailureLabel);
               }
               if ("domain" in raw && raw.domain) {
                 return `${raw.domain}: ${Math.round(raw.y)} ms`;
