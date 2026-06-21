@@ -104,7 +104,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git fetch origin master
+          git fetch origin
           git merge origin/master --no-edit -m "merge master into gh-pages"
 
           if [[ -d docs/config ]]; then
@@ -119,4 +119,4 @@ jobs:
           if ! git diff --cached --quiet; then
             git commit -m "chore: update dns latency data"
           fi
-          git push
+          git push -f origin gh-pages
