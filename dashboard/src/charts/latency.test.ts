@@ -82,7 +82,7 @@ describe("collectActiveElementsAtBatch", () => {
     expect(active).toHaveLength(8);
     expect(isTooltipDataset("203.165.31.152")).toBe(true);
     expect(isTooltipDataset("Failures")).toBe(true);
-    expect(isTooltipDataset("203.165.31.152 q1")).toBe(false);
+    expect(isTooltipDataset("203.165.31.152 min")).toBe(false);
 
     vi.useRealTimers();
   });

@@ -3,7 +3,7 @@ import { displayRangeSec } from "../state.ts";
 import type { ChartPoint, DnsRecord, DnsSuccessRecord } from "../types.ts";
 import type { TimeoutSpan } from "../utils.ts";
 
-const MIN_SAMPLES = 4;
+const MIN_SAMPLES = 2;
 
 function isSuccess(r: DnsRecord): r is DnsSuccessRecord {
   return !r.error;
@@ -41,13 +41,13 @@ export interface RollingEnvelope {
   q3: ChartPoint[];
 }
 
+/** Per-measurement batch (same ts, all domains). Band uses min/max; q1/q3 kept for tests. */
 export function buildRollingEnvelope(
   rawRecords: DnsRecord[],
   server: string,
   timestamps: number[],
   spans: TimeoutSpan[],
 ): RollingEnvelope {
-  const half = rollingWindowSec() / 2;
   const successes = rawRecords.filter(
     (r): r is DnsSuccessRecord => isSuccess(r) && r.dns_server === server,
   );
@@ -61,7 +61,7 @@ export function buildRollingEnvelope(
     if (spansCoverTs(spans, ts)) continue;
 
     const values = successes
-      .filter((r) => r.ts >= ts - half && r.ts <= ts + half)
+      .filter((r) => r.ts === ts)
       .map((r) => r.latency_ms);
     if (values.length < MIN_SAMPLES) continue;
 
