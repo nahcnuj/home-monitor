@@ -11,12 +11,13 @@ import {
   getLatencyChart,
   isTooltipDataset,
   nearestBatchTs,
+  shouldShowLatencyPoints,
 } from "./latency.ts";
 import { buildErrorChart } from "./error.ts";
 import { sampleTsv } from "../test/fixtures.ts";
 import { setDataCutoffTs, setDisplayRangeSec } from "../state.ts";
 import { chartTimeBounds, isJstOnTheHour } from "../time.ts";
-import { DAY_SEC, HOUR_SEC } from "../constants.ts";
+import { DAY_SEC, HIDE_LATENCY_POINTS_RANGE_SEC, HOUR_SEC } from "../constants.ts";
 
 Chart.register(...registerables, chartRegionsPlugin, errorBandLabelsPlugin);
 
@@ -83,8 +84,17 @@ describe("collectActiveElementsAtBatch", () => {
     expect(isTooltipDataset("203.165.31.152")).toBe(true);
     expect(isTooltipDataset("Failures")).toBe(true);
     expect(isTooltipDataset("203.165.31.152 min")).toBe(false);
+    expect(isTooltipDataset("203.165.31.152 q1")).toBe(false);
 
     vi.useRealTimers();
+  });
+});
+
+describe("shouldShowLatencyPoints", () => {
+  it("hides scatter points at 6h range and above", () => {
+    expect(shouldShowLatencyPoints(3 * HOUR_SEC)).toBe(true);
+    expect(shouldShowLatencyPoints(HIDE_LATENCY_POINTS_RANGE_SEC)).toBe(false);
+    expect(shouldShowLatencyPoints(DAY_SEC)).toBe(false);
   });
 });
 
