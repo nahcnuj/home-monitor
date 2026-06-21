@@ -11,7 +11,10 @@ interface ErrorBarDataset {
   borderRadius: BorderRadius;
 }
 
-type TooltipBarElement = { x: number; base: number };
+type TooltipBarElement = { x: number; base: number; y: number; height: number };
+
+const ERROR_TOOLTIP_GAP = 8;
+const ERROR_TOOLTIP_PADDING_BOTTOM = 72;
 
 let errorChart: Chart<"bar"> | null = null;
 let errorBarPositionerRegistered = false;
@@ -20,13 +23,13 @@ type BorderRadius = number | { topLeft: number; bottomLeft: number; topRight: nu
 
 export function errorTooltipAnchor(
   bar: TooltipBarElement,
-  chartAreaBottom: number,
+  gap = ERROR_TOOLTIP_GAP,
 ): { x: number; y: number } {
   const left = Math.min(bar.x, bar.base);
   const right = Math.max(bar.x, bar.base);
   return {
     x: (left + right) / 2,
-    y: chartAreaBottom + 8,
+    y: bar.y + bar.height / 2 + gap,
   };
 }
 
@@ -38,9 +41,8 @@ function registerErrorBarTooltipPositioner(): void {
     _eventPosition: { x: number; y: number },
   ) => {
     if (!items.length) return false;
-    const chart = items[0].chart;
     const bar = items[0].element as unknown as TooltipBarElement;
-    return errorTooltipAnchor(bar, chart.chartArea.bottom);
+    return errorTooltipAnchor(bar);
   };
 
   errorBarPositionerRegistered = true;
@@ -91,6 +93,11 @@ export function buildErrorChart(errors: Record<string, number>): void {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      layout: {
+        padding: {
+          bottom: ERROR_TOOLTIP_PADDING_BOTTOM,
+        },
+      },
       indexAxis: "y",
       datasets: { bar: { barThickness: 36 } },
       scales: {
