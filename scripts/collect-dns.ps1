@@ -2,7 +2,9 @@
 
 $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path $PSScriptRoot -Parent
+Set-Location $RepoRoot
 . (Join-Path $PSScriptRoot "Get-MonitorConfig.ps1")
+. (Join-Path $PSScriptRoot "TaskLog.ps1")
 $DataDir = Join-Path $RepoRoot "data\local"
 $DataFile = Join-Path $DataDir "dns-latency.tsv"
 $QueryTypeStateFile = Join-Path $DataDir ".query-type-state"
@@ -115,7 +117,13 @@ function Get-DnsServerAddress {
     return "unknown"
 }
 
-$config = Get-MonitorConfig
+try {
+    $config = Get-MonitorConfig
+}
+catch {
+    Write-TaskLog -TaskName "collect" -Message "failed: $_"
+    throw
+}
 $timeoutSec = if ($null -ne $config.lookup_timeout_sec -and $config.lookup_timeout_sec -gt 0) {
     [int]$config.lookup_timeout_sec
 } else {
