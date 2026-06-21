@@ -5,9 +5,10 @@ import { chartRegionsPlugin, errorBandLabelsPlugin } from "./plugins.ts";
 import {
   buildFailurePoints,
   buildLatencyChart,
+  buildTooltipLines,
   formatFailureLabel,
   getLatencyChart,
-  latencyTooltipTitle,
+  nearestBatchTs,
 } from "./latency.ts";
 import { buildErrorChart } from "./error.ts";
 import { sampleTsv } from "../test/fixtures.ts";
@@ -17,9 +18,30 @@ import { DAY_SEC, HOUR_SEC } from "../constants.ts";
 
 Chart.register(...registerables, chartRegionsPlugin, errorBandLabelsPlugin);
 
-describe("latencyTooltipTitle", () => {
-  it("returns empty string when tooltip items are filtered out", () => {
-    expect(latencyTooltipTitle([])).toBe("");
+describe("nearestBatchTs", () => {
+  it("snaps hover to the nearest measurement batch timestamp", () => {
+    const batches = [1000, 1060, 1120];
+    expect(nearestBatchTs(batches, 1000)).toBe(1000);
+    expect(nearestBatchTs(batches, 1029)).toBe(1000);
+    expect(nearestBatchTs(batches, 1031)).toBe(1060);
+  });
+});
+
+describe("buildTooltipLines", () => {
+  it("lists every domain at the same batch timestamp", () => {
+    const records = parseTsv([
+      "1782003423\t203.165.31.152\tamazon.co.jp\t\ttimeout",
+      "1782003423\t203.165.31.152\tgoogle.com\t\ttimeout",
+      "1782003423\t203.165.31.152\tline.me\t188",
+      "1782003483\t203.165.31.152\tyahoo.co.jp\t201",
+    ].join("\n"));
+
+    expect(buildTooltipLines(records, 1782003423)).toEqual([
+      "line.me: 188 ms",
+      "203.165.31.152 / amazon.co.jp: timeout",
+      "203.165.31.152 / google.com: timeout",
+    ]);
+    expect(buildTooltipLines(records, 1782003483)).toEqual(["yahoo.co.jp: 201 ms"]);
   });
 });
 

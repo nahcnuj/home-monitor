@@ -39,6 +39,66 @@ export function formatFailureLabel(point: FailurePoint): string {
   return `${point.dns_server}${domain}: ${point.error}`;
 }
 
+export function collectBatchTimestamps(records: DnsRecord[]): number[] {
+  return [...new Set(records.map((r) => r.ts))].sort((a, b) => a - b);
+}
+
+export function nearestBatchTs(batchTimestamps: readonly number[], hoverValue: number): number | null {
+  if (!batchTimestamps.length) return null;
+
+  let best = batchTimestamps[0];
+  let bestDist = Math.abs(best - hoverValue);
+  for (let i = 1; i < batchTimestamps.length; i++) {
+    const ts = batchTimestamps[i];
+    const dist = Math.abs(ts - hoverValue);
+    if (dist < bestDist) {
+      best = ts;
+      bestDist = dist;
+    }
+  }
+  return best;
+}
+
+function compareDomain(a: string | null, b: string | null): number {
+  return (a ?? "").localeCompare(b ?? "");
+}
+
+export function buildTooltipLines(records: DnsRecord[], ts: number): string[] {
+  const batch = records.filter((r) => r.ts === ts);
+  const lines: string[] = [];
+
+  for (const record of batch.filter(isSuccess).sort((a, b) => compareDomain(a.domain, b.domain))) {
+    const name = record.domain ?? record.dns_server;
+    lines.push(`${name}: ${Math.round(record.latency_ms)} ms`);
+  }
+
+  for (const record of listFailures(batch).sort((a, b) => compareDomain(a.domain, b.domain))) {
+    lines.push(formatFailureLabel({
+      x: record.ts,
+      y: 0,
+      error: record.error,
+      dns_server: record.dns_server,
+      domain: record.domain,
+    }));
+  }
+
+  return lines;
+}
+
+export function resolveTooltipBatchTs(
+  chart: Chart,
+  batchTimestamps: readonly number[],
+): number | null {
+  const scale = chart.scales.x;
+  const caretX = chart.tooltip?.caretX;
+  if (!scale || caretX == null) return null;
+
+  const hoverValue = scale.getValueForPixel(caretX);
+  if (hoverValue == null || Number.isNaN(Number(hoverValue))) return null;
+
+  return nearestBatchTs(batchTimestamps, Number(hoverValue));
+}
+
 const BAND_TENSION = 0.42;
 
 let latencyChart: Chart | null = null;
@@ -51,9 +111,15 @@ function isHiddenBand(label: string | undefined): boolean {
   return !!label?.endsWith(" q1") || !!label?.endsWith(" q3");
 }
 
-export function latencyTooltipTitle(items: TooltipItem<"line">[]): string {
-  const x = items[0]?.parsed?.x;
-  return x == null || Number.isNaN(Number(x)) ? "" : fmtJst(Number(x));
+export function latencyTooltipTitle(
+  items: TooltipItem<"line">[],
+  batchTimestamps: readonly number[],
+): string {
+  const chart = items[0]?.chart;
+  if (!chart) return "";
+
+  const ts = resolveTooltipBatchTs(chart, batchTimestamps);
+  return ts == null ? "" : fmtJst(ts);
 }
 
 export function buildLatencyChart(
@@ -63,6 +129,7 @@ export function buildLatencyChart(
   dataCutoffTs: number,
 ): void {
   const allFailures = listFailures(rawRecords);
+  const batchTimestamps = collectBatchTimestamps(rawRecords);
   const latestDataTs = rawRecords.length ? Math.max(...rawRecords.map((r) => r.ts)) : null;
   const xBounds = chartTimeBounds(undefined, latestDataTs);
   const timestamps = collectTimelineTimestamps(rawRecords, xBounds.min, xBounds.max);
@@ -144,7 +211,7 @@ export function buildLatencyChart(
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      interaction: { mode: "x", intersect: false },
+      interaction: { mode: "nearest", axis: "x", intersect: false },
       scales: {
         x: {
           type: "linear",
@@ -181,21 +248,13 @@ export function buildLatencyChart(
         tooltip: {
           filter: (item: TooltipItem<"line">) => !isHiddenBand(item.dataset.label),
           callbacks: {
-            title: latencyTooltipTitle,
-            label(ctx: TooltipItem<"line">) {
-              const raw = ctx.raw as FailurePoint | LatencySamplePoint | null;
-              if (!raw || typeof raw !== "object") return "";
-              if ("error" in raw && raw.error) {
-                const ts = raw.x;
-                const failuresAtTs = failurePoints.filter((point) => point.x === ts);
-                const firstIndex = failurePoints.findIndex((point) => point.x === ts);
-                if (ctx.dataIndex !== firstIndex) return "";
-                return failuresAtTs.map(formatFailureLabel);
-              }
-              if ("domain" in raw && raw.domain) {
-                return `${raw.domain}: ${Math.round(raw.y)} ms`;
-              }
-              return `${Math.round(raw.y)} ms`;
+            title: (items: TooltipItem<"line">[]) => latencyTooltipTitle(items, batchTimestamps),
+            label: () => "",
+            afterBody: (items: TooltipItem<"line">[]) => {
+              const chart = items[0]?.chart;
+              if (!chart) return [];
+              const ts = resolveTooltipBatchTs(chart, batchTimestamps);
+              return ts == null ? [] : buildTooltipLines(rawRecords, ts);
             },
           },
         },
