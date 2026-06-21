@@ -266,8 +266,8 @@ export function buildLatencyChart(
         })),
         borderColor: color,
         backgroundColor: withAlpha(color, 0.85),
-        pointRadius: 2.5,
-        pointHoverRadius: 4,
+        pointRadius: 1.25,
+        pointHoverRadius: 2.5,
         showLine: false,
       });
     }
@@ -282,7 +282,7 @@ export function buildLatencyChart(
     data: failurePoints,
     borderColor: "#f87171",
     backgroundColor: "#f87171",
-    pointRadius: 5,
+    pointRadius: 3.5,
     pointStyle: "crossRot",
     showLine: false,
   });
