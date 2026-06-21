@@ -31,56 +31,88 @@ function Get-QueryType {
     return $types[0]
 }
 
+function Get-DnsResolverAddresses {
+    $skipPattern = "^(Loopback|vEthernet|isatap|Teredo|6to4|Bluetooth)"
+    $addresses = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+
+    foreach ($entry in Get-DnsClientServerAddress -AddressFamily IPv4) {
+        if ($entry.InterfaceAlias -match $skipPattern) { continue }
+        foreach ($addr in $entry.ServerAddresses) {
+            if ($addr -and $addr -notmatch ":") {
+                [void]$addresses.Add($addr)
+            }
+        }
+    }
+
+    return @($addresses | Sort-Object)
+}
+
 function Start-DnsLookupJob {
-    param([string]$Domain, [string]$QueryType)
+    param(
+        [string]$Domain,
+        [string]$QueryType,
+        [string]$Resolver
+    )
 
     return Start-Job -ScriptBlock {
-        param($Domain, $QueryType)
+        param($Domain, $QueryType, $Resolver)
+        $ts = [long][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
         $sw = [System.Diagnostics.Stopwatch]::StartNew()
-        $output = & nslookup.exe "-type=$QueryType" $Domain 2>&1 | Out-String
+        $output = & nslookup.exe "-type=$QueryType" $Domain $Resolver 2>&1 | Out-String
         $sw.Stop()
         return @{
+            Ts        = $ts
             LatencyMs = [int]$sw.ElapsedMilliseconds
             Output    = $output
         }
-    } -ArgumentList $Domain, $QueryType
+    } -ArgumentList $Domain, $QueryType, $Resolver
 }
 
 function Wait-DnsLookupJobs {
     param(
-        [hashtable]$JobsByDomain,
+        [array]$JobEntries,
         [int]$TimeoutSec
     )
 
-    $results = @{}
+    $results = New-Object System.Collections.Generic.List[object]
     $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSec)
 
-    foreach ($domain in ($JobsByDomain.Keys | Sort-Object)) {
-        $job = $JobsByDomain[$domain]
+    foreach ($entry in ($JobEntries | Sort-Object Key)) {
         $remaining = ($deadline - [DateTime]::UtcNow).TotalSeconds
         if ($remaining -le 0) {
             $remaining = 0.01
         }
 
-        $completed = Wait-Job -Job $job -Timeout $remaining
+        $completed = Wait-Job -Job $entry.Job -Timeout $remaining
         if (-not $completed) {
-            Stop-Job -Job $job -ErrorAction SilentlyContinue
-            Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
-            $results[$domain] = @{
+            Stop-Job -Job $entry.Job -ErrorAction SilentlyContinue
+            $payload = Receive-Job -Job $entry.Job -ErrorAction SilentlyContinue
+            Remove-Job -Job $entry.Job -Force -ErrorAction SilentlyContinue
+            $ts = if ($payload -and $payload.Ts) { [long]$payload.Ts } else { [long]$entry.QueuedAt }
+            $results.Add([PSCustomObject]@{
+                Key       = $entry.Key
+                Ts        = $ts
+                Resolver  = $entry.Resolver
+                Domain    = $entry.Domain
                 LatencyMs = $TimeoutSec * 1000
                 Error     = "timeout"
                 Output    = ""
-            }
+            })
             continue
         }
 
-        $payload = Receive-Job -Job $job -ErrorAction SilentlyContinue
-        Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
-        $results[$domain] = @{
+        $payload = Receive-Job -Job $entry.Job -ErrorAction SilentlyContinue
+        Remove-Job -Job $entry.Job -Force -ErrorAction SilentlyContinue
+        $ts = if ($payload -and $payload.Ts) { [long]$payload.Ts } else { [long]$entry.QueuedAt }
+        $results.Add([PSCustomObject]@{
+            Key       = $entry.Key
+            Ts        = $ts
+            Resolver  = $entry.Resolver
+            Domain    = $entry.Domain
             LatencyMs = [int]$payload.LatencyMs
             Error     = $null
             Output    = [string]$payload.Output
-        }
+        })
     }
 
     return $results
@@ -104,19 +136,6 @@ function Test-DnsSuccess {
     return $hasName -and $hasAddress
 }
 
-function Get-DnsServerAddress {
-    param([string]$Output)
-    $jaServer = -join ([char]0x30B5, [char]0x30FC, [char]0x30D0, [char]0x30FC)
-    $jaAddr = -join ([char]0x30A2, [char]0x30C9, [char]0x30EC, [char]0x30B9)
-    if ($Output -match "(?ms)^(?:Server|${jaServer}):\s.*?\r?\n(?:Address|${jaAddr}):\s+(\S+)") {
-        return $Matches[1]
-    }
-    if ($Output -match "(?m)^(?:Address|${jaAddr}):\s+(\S+)") {
-        return $Matches[1]
-    }
-    return "unknown"
-}
-
 try {
     $config = Get-MonitorConfig
 }
@@ -136,39 +155,48 @@ $queryType = Get-QueryType
 Set-Content -Path $QueryTypeStateFile -Value $queryType -NoNewline -Encoding UTF8
 Clear-DnsClientCache -ErrorAction SilentlyContinue
 
-# Use DateTimeOffset; [DateTime]::UtcNow minus epoch is wrong by 9h on PS 5.1 + JST.
-$ts = [long][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-if ($ts -le 0) { throw "Invalid timestamp: $ts" }
-
-$domains = @($config.domains | Sort-Object)
-$jobsByDomain = @{}
-foreach ($domain in $domains) {
-    $jobsByDomain[$domain] = Start-DnsLookupJob -Domain $domain -QueryType $queryType
+$resolvers = Get-DnsResolverAddresses
+if ($resolvers.Count -eq 0) {
+    throw "No IPv4 DNS resolvers configured on active interfaces"
 }
 
-$lookupResults = Wait-DnsLookupJobs -JobsByDomain $jobsByDomain -TimeoutSec $timeoutSec
+$domains = @($config.domains | Sort-Object)
+$jobEntries = New-Object System.Collections.Generic.List[object]
+foreach ($resolver in $resolvers) {
+    foreach ($domain in $domains) {
+        $queuedAt = [long][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+        $jobEntries.Add([PSCustomObject]@{
+            Key      = ("{0}`0{1}" -f $resolver, $domain)
+            Job      = (Start-DnsLookupJob -Domain $domain -QueryType $queryType -Resolver $resolver)
+            QueuedAt = $queuedAt
+            Resolver = $resolver
+            Domain   = $domain
+        })
+    }
+}
+
+$lookupResults = Wait-DnsLookupJobs -JobEntries $jobEntries -TimeoutSec $timeoutSec
 
 $lines = New-Object System.Collections.Generic.List[string]
-foreach ($domain in $domains) {
-    $result = $lookupResults[$domain]
-    $server = Get-DnsServerAddress -Output $result.Output
+foreach ($result in ($lookupResults | Sort-Object Ts, Resolver, Domain)) {
+    if ($result.Ts -le 0) { throw "Invalid timestamp: $($result.Ts)" }
 
     if ($result.Error -eq "timeout") {
-        $lines.Add(("{0}`t{1}`t{2}`t{3}`t{4}" -f $ts, $server, $domain, $result.LatencyMs, $result.Error))
+        $lines.Add(("{0}`t{1}`t{2}`t{3}`t{4}" -f $result.Ts, $result.Resolver, $result.Domain, $result.LatencyMs, $result.Error))
         continue
     }
 
     $dnsError = Get-DnsError -Output $result.Output
     if ($dnsError) {
-        $lines.Add(("{0}`t{1}`t{2}`t`t{3}" -f $ts, $server, $domain, $dnsError))
+        $lines.Add(("{0}`t{1}`t{2}`t`t{3}" -f $result.Ts, $result.Resolver, $result.Domain, $dnsError))
         continue
     }
 
     if (Test-DnsSuccess -Output $result.Output) {
-        $lines.Add(("{0}`t{1}`t{2}`t{3}" -f $ts, $server, $domain, $result.LatencyMs))
+        $lines.Add(("{0}`t{1}`t{2}`t{3}" -f $result.Ts, $result.Resolver, $result.Domain, $result.LatencyMs))
     }
     else {
-        $lines.Add(("{0}`t{1}`t{2}`t`t{3}" -f $ts, $server, $domain, "unknown"))
+        $lines.Add(("{0}`t{1}`t{2}`t`t{3}" -f $result.Ts, $result.Resolver, $result.Domain, "unknown"))
     }
 }
 
