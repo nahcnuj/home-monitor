@@ -4,7 +4,8 @@ import {
   type Plugin,
   type TooltipItem,
 } from "chart.js";
-import { SERVER_COLORS } from "../constants.ts";
+import { HIDE_LATENCY_POINTS_RANGE_SEC, SERVER_COLORS } from "../constants.ts";
+import { displayRangeSec } from "../state.ts";
 import { buildRollingEnvelope, collectTimelineTimestamps } from "./rolling-envelope.ts";
 import { chartTimeBounds, fmtAxisTick, fmtJst } from "../time.ts";
 import type {
@@ -178,6 +179,12 @@ function createBatchTooltipPlugin(batchTimestamps: readonly number[]): Plugin<"l
 }
 
 const BAND_TENSION = 0.42;
+const IQR_BAND_ALPHA = 0.18;
+const MINMAX_BAND_ALPHA = 0.07;
+
+export function shouldShowLatencyPoints(rangeSec: number = displayRangeSec): boolean {
+  return rangeSec < HIDE_LATENCY_POINTS_RANGE_SEC;
+}
 
 let latencyChart: Chart | null = null;
 
@@ -186,7 +193,10 @@ export function getLatencyChart(): Chart | null {
 }
 
 function isHiddenBand(label: string | undefined): boolean {
-  return !!label?.endsWith(" min") || !!label?.endsWith(" max");
+  return !!label?.endsWith(" min")
+    || !!label?.endsWith(" max")
+    || !!label?.endsWith(" q1")
+    || !!label?.endsWith(" q3");
 }
 
 export function latencyTooltipTitle(items: TooltipItem<"line">[]): string {
@@ -220,6 +230,7 @@ export function buildLatencyChart(
   const timestamps = collectTimelineTimestamps(rawRecords, xBounds.min, xBounds.max);
   const servers = [...new Set(rawRecords.filter(isSuccess).map((r) => r.dns_server))].sort();
   const datasets: ChartConfiguration["data"]["datasets"] = [];
+  const showPoints = shouldShowLatencyPoints();
 
   servers.forEach((server, index) => {
     const color = SERVER_COLORS[index % SERVER_COLORS.length];
@@ -243,7 +254,31 @@ export function buildLatencyChart(
       order: 3,
       data: withGaps(envelope.min, spans),
       borderColor: "transparent",
-      backgroundColor: withAlpha(color, 0.18),
+      backgroundColor: withAlpha(color, MINMAX_BAND_ALPHA),
+      borderWidth: 0,
+      pointRadius: 0,
+      tension: BAND_TENSION,
+      fill: "-1",
+      spanGaps: false,
+    });
+    datasets.push({
+      label: `${server} q3`,
+      order: 3,
+      data: withGaps(envelope.q3, spans),
+      borderColor: "transparent",
+      backgroundColor: "transparent",
+      borderWidth: 0,
+      pointRadius: 0,
+      tension: BAND_TENSION,
+      fill: false,
+      spanGaps: false,
+    });
+    datasets.push({
+      label: `${server} q1`,
+      order: 3,
+      data: withGaps(envelope.q1, spans),
+      borderColor: "transparent",
+      backgroundColor: withAlpha(color, IQR_BAND_ALPHA),
       borderWidth: 0,
       pointRadius: 0,
       tension: BAND_TENSION,
@@ -266,8 +301,8 @@ export function buildLatencyChart(
         })),
         borderColor: color,
         backgroundColor: withAlpha(color, 0.85),
-        pointRadius: 1.25,
-        pointHoverRadius: 2.5,
+        pointRadius: showPoints ? 1.25 : 0,
+        pointHoverRadius: showPoints ? 2.5 : 0,
         showLine: false,
       });
     }
@@ -282,7 +317,8 @@ export function buildLatencyChart(
     data: failurePoints,
     borderColor: "#f87171",
     backgroundColor: "#f87171",
-    pointRadius: 3.5,
+    pointRadius: showPoints ? 3.5 : 0,
+    pointHoverRadius: showPoints ? 4 : 0,
     pointStyle: "crossRot",
     showLine: false,
   });

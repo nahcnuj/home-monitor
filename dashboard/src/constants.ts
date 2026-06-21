@@ -17,6 +17,7 @@ export const RANGE_PRESETS: RangePreset[] = [
 ];
 
 export const HOUR_SEC = 3600;
+export const HIDE_LATENCY_POINTS_RANGE_SEC = 6 * HOUR_SEC;
 export const MIN_SEC = 60;
 export const DAY_SEC = 86400;
 export const JST_OFFSET = 9 * HOUR_SEC;
