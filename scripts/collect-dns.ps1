@@ -56,12 +56,10 @@ function Start-DnsLookupJob {
 
     return Start-Job -ScriptBlock {
         param($Domain, $QueryType, $Resolver)
-        $ts = [long][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
         $sw = [System.Diagnostics.Stopwatch]::StartNew()
         $output = & nslookup.exe "-type=$QueryType" $Domain $Resolver 2>&1 | Out-String
         $sw.Stop()
         return @{
-            Ts        = $ts
             LatencyMs = [int]$sw.ElapsedMilliseconds
             Output    = $output
         }
@@ -88,10 +86,9 @@ function Wait-DnsLookupJobs {
             Stop-Job -Job $entry.Job -ErrorAction SilentlyContinue
             $payload = Receive-Job -Job $entry.Job -ErrorAction SilentlyContinue
             Remove-Job -Job $entry.Job -Force -ErrorAction SilentlyContinue
-            $ts = if ($payload -and $payload.Ts) { [long]$payload.Ts } else { [long]$entry.QueuedAt }
             $results.Add([PSCustomObject]@{
                 Key       = $entry.Key
-                Ts        = $ts
+                Ts        = [long]$entry.BatchTs
                 Resolver  = $entry.Resolver
                 Domain    = $entry.Domain
                 LatencyMs = $TimeoutSec * 1000
@@ -103,10 +100,9 @@ function Wait-DnsLookupJobs {
 
         $payload = Receive-Job -Job $entry.Job -ErrorAction SilentlyContinue
         Remove-Job -Job $entry.Job -Force -ErrorAction SilentlyContinue
-        $ts = if ($payload -and $payload.Ts) { [long]$payload.Ts } else { [long]$entry.QueuedAt }
         $results.Add([PSCustomObject]@{
             Key       = $entry.Key
-            Ts        = $ts
+            Ts        = [long]$entry.BatchTs
             Resolver  = $entry.Resolver
             Domain    = $entry.Domain
             LatencyMs = [int]$payload.LatencyMs
@@ -155,20 +151,24 @@ $queryType = Get-QueryType
 Set-Content -Path $QueryTypeStateFile -Value $queryType -NoNewline -Encoding UTF8
 Clear-DnsClientCache -ErrorAction SilentlyContinue
 
-$resolvers = Get-DnsResolverAddresses
+# One resolver list for the whole batch; re-read only on the next scheduled run.
+$resolvers = @(Get-DnsResolverAddresses)
 if ($resolvers.Count -eq 0) {
     throw "No IPv4 DNS resolvers configured on active interfaces"
 }
+
+# Batch timestamp: when this measurement cycle starts (before parallel lookups).
+$batchTs = [long][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+if ($batchTs -le 0) { throw "Invalid timestamp: $batchTs" }
 
 $domains = @($config.domains | Sort-Object)
 $jobEntries = New-Object System.Collections.Generic.List[object]
 foreach ($resolver in $resolvers) {
     foreach ($domain in $domains) {
-        $queuedAt = [long][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
         $jobEntries.Add([PSCustomObject]@{
             Key      = ("{0}`0{1}" -f $resolver, $domain)
             Job      = (Start-DnsLookupJob -Domain $domain -QueryType $queryType -Resolver $resolver)
-            QueuedAt = $queuedAt
+            BatchTs  = $batchTs
             Resolver = $resolver
             Domain   = $domain
         })
