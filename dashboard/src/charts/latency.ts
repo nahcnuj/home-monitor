@@ -186,7 +186,7 @@ export function getLatencyChart(): Chart | null {
 }
 
 function isHiddenBand(label: string | undefined): boolean {
-  return !!label?.endsWith(" q1") || !!label?.endsWith(" q3");
+  return !!label?.endsWith(" min") || !!label?.endsWith(" max");
 }
 
 export function latencyTooltipTitle(items: TooltipItem<"line">[]): string {
@@ -227,9 +227,9 @@ export function buildLatencyChart(
     const envelope = buildRollingEnvelope(rawRecords, server, timestamps, spans);
 
     datasets.push({
-      label: `${server} q3`,
+      label: `${server} max`,
       order: 3,
-      data: withGaps(envelope.q3, spans),
+      data: withGaps(envelope.max, spans),
       borderColor: "transparent",
       backgroundColor: "transparent",
       borderWidth: 0,
@@ -239,9 +239,9 @@ export function buildLatencyChart(
       spanGaps: false,
     });
     datasets.push({
-      label: `${server} q1`,
+      label: `${server} min`,
       order: 3,
-      data: withGaps(envelope.q1, spans),
+      data: withGaps(envelope.min, spans),
       borderColor: "transparent",
       backgroundColor: withAlpha(color, 0.18),
       borderWidth: 0,
