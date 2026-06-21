@@ -1,4 +1,5 @@
 import { boxplot } from "@sgratzl/boxplots";
+import { DAY_SEC, HIDE_LATENCY_POINTS_RANGE_SEC, HOUR_SEC, MIN_SEC } from "../constants.ts";
 import { displayRangeSec } from "../state.ts";
 import type { ChartPoint, DnsRecord, DnsSuccessRecord } from "../types.ts";
 import type { TimeoutSpan } from "../utils.ts";
@@ -13,13 +14,26 @@ function spansCoverTs(spans: TimeoutSpan[], ts: number): boolean {
   return spans.some((span) => ts >= span.start && ts < span.end);
 }
 
-export function rollingWindowSec(): number {
-  const range = displayRangeSec;
-  if (range <= 3600) return 10 * 60;
-  if (range <= 6 * 3600) return 20 * 60;
-  if (range <= 24 * 3600) return 30 * 60;
-  if (range <= 72 * 3600) return 60 * 60;
-  return 2 * 60 * 60;
+export function envelopeWindowSec(rangeSec: number = displayRangeSec): number {
+  if (rangeSec < HIDE_LATENCY_POINTS_RANGE_SEC) return 0;
+  if (rangeSec <= 6 * HOUR_SEC) return 10 * MIN_SEC;
+  if (rangeSec <= 24 * HOUR_SEC) return HOUR_SEC;
+  return DAY_SEC;
+}
+
+function latencyValuesInWindow(
+  successes: DnsSuccessRecord[],
+  anchorTs: number,
+  windowSec: number,
+): number[] {
+  if (windowSec <= 0) {
+    return successes.filter((r) => r.ts === anchorTs).map((r) => r.latency_ms);
+  }
+
+  const half = windowSec / 2;
+  return successes
+    .filter((r) => r.ts >= anchorTs - half && r.ts <= anchorTs + half)
+    .map((r) => r.latency_ms);
 }
 
 export function collectTimelineTimestamps(records: DnsRecord[], min: number, max: number): number[] {
@@ -41,13 +55,14 @@ export interface RollingEnvelope {
   q3: ChartPoint[];
 }
 
-/** Per-measurement batch (same ts, all domains). Band uses min/max; q1/q3 kept for tests. */
 export function buildRollingEnvelope(
   rawRecords: DnsRecord[],
   server: string,
   timestamps: number[],
   spans: TimeoutSpan[],
+  rangeSec: number = displayRangeSec,
 ): RollingEnvelope {
+  const windowSec = envelopeWindowSec(rangeSec);
   const successes = rawRecords.filter(
     (r): r is DnsSuccessRecord => isSuccess(r) && r.dns_server === server,
   );
@@ -60,9 +75,7 @@ export function buildRollingEnvelope(
   for (const ts of timestamps) {
     if (spansCoverTs(spans, ts)) continue;
 
-    const values = successes
-      .filter((r) => r.ts === ts)
-      .map((r) => r.latency_ms);
+    const values = latencyValuesInWindow(successes, ts, windowSec);
     if (values.length < MIN_SAMPLES) continue;
 
     const stats = boxplot(values);
