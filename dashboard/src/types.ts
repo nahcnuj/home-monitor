@@ -39,7 +39,7 @@ export interface AggregatedSuccess {
 
 export interface Stats {
   total: number;
-  failureRate: number;
+  uptime: number;
   avg: number;
   p95: number;
   max: number;

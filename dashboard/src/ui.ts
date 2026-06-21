@@ -25,9 +25,9 @@ export function renderStats(stats: Stats): void {
     { label: "P95 (ms)", value: stats.p95 ? Math.round(stats.p95) : "-" },
     { label: "最大 (ms)", value: stats.max || "-" },
     {
-      label: "失敗率",
-      value: stats.total ? `${stats.failureRate.toFixed(1)}%` : "-",
-      cls: stats.failureRate > 5 ? "error-rate" : "ok",
+      label: "Uptime",
+      value: stats.total ? `${stats.uptime.toFixed(1)}%` : "-",
+      cls: stats.uptime < 95 ? "error-rate" : "ok",
     },
   ]
     .map(

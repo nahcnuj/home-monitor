@@ -118,7 +118,7 @@ export function computeStats(records: DnsRecord[]): Stats {
   const total = records.length;
   return {
     total,
-    failureRate: total ? (failures.length / total) * 100 : 0,
+    uptime: total ? (successes.length / total) * 100 : 0,
     avg: latencies.length ? latencies.reduce((a, b) => a + b, 0) / latencies.length : 0,
     p95: percentile(latencies, 95),
     max: latencies.length ? Math.max(...latencies) : 0,
