@@ -1,4 +1,6 @@
 export type DnsErrorCode =
+  | "job_timeout"
+  | "dns_timeout"
   | "timeout"
   | "no_response"
   | "no_nameserver"

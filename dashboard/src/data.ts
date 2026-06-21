@@ -1,3 +1,4 @@
+import { DNS_ERROR_CODES } from "./errors.ts";
 import { getDisplayCutoff } from "./time.ts";
 import type {
   AggregatedSuccess,
@@ -11,24 +12,12 @@ function isSuccess(r: DnsRecord): r is DnsSuccessRecord {
   return !r.error;
 }
 
-const ERROR_CODES = new Set([
-  "timeout",
-  "no_response",
-  "no_nameserver",
-  "server_fail",
-  "refused",
-  "nxdomain",
-  "no_record",
-  "resolver_error",
-  "unknown",
-]);
-
 function isDomainColumn(value: string | undefined): value is string {
-  return typeof value === "string" && /[a-zA-Z]/.test(value) && !ERROR_CODES.has(value);
+  return typeof value === "string" && /[a-zA-Z]/.test(value) && !DNS_ERROR_CODES.has(value);
 }
 
 function isErrorToken(value: string | undefined): value is string {
-  return typeof value === "string" && ERROR_CODES.has(value);
+  return typeof value === "string" && DNS_ERROR_CODES.has(value);
 }
 
 export function parseTsv(text: string): DnsRecord[] {

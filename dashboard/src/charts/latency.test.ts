@@ -48,8 +48,8 @@ describe("buildTooltipLines", () => {
 
     expect(buildTooltipLines(records, 1782003423)).toEqual([
       "203.165.31.152 / line.me: 188 ms",
-      "203.165.31.152 / amazon.co.jp: timeout",
-      "203.165.31.152 / google.com: timeout",
+      "203.165.31.152 / amazon.co.jp: タイムアウト（旧）",
+      "203.165.31.152 / google.com: タイムアウト（旧）",
     ]);
     expect(buildTooltipLines(records, 1782003483)).toEqual(["203.165.31.152 / yahoo.co.jp: 201 ms"]);
   });
@@ -94,7 +94,8 @@ describe("collectActiveElementsAtBatch", () => {
     const active = collectActiveElementsAtBatch(chart!, 1782008823);
     expect(active).toHaveLength(8);
     expect(isTooltipDataset("203.165.31.152")).toBe(true);
-    expect(isTooltipDataset("Failures")).toBe(true);
+    expect(isTooltipDataset("timeout")).toBe(true);
+    expect(isTooltipDataset("no_response")).toBe(true);
     expect(isTooltipDataset("203.165.31.152 min")).toBe(false);
     expect(isTooltipDataset("203.165.31.152 q1")).toBe(false);
 
@@ -121,7 +122,7 @@ describe("buildFailurePoints", () => {
     const points = buildFailurePoints(records);
     expect(points).toHaveLength(2);
     expect(points.map((point) => point.domain).sort()).toEqual(["amazon.co.jp", "google.com"]);
-    expect(formatFailureLabel(points[0])).toBe("203.165.31.152 / amazon.co.jp: timeout");
+    expect(formatFailureLabel(points[0])).toBe("203.165.31.152 / amazon.co.jp: タイムアウト（旧）");
   });
 });
 

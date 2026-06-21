@@ -1,4 +1,5 @@
 import { MAX_GAP_SEC, MEASURE_INTERVAL_SEC } from "./constants.ts";
+import { isTimeoutError } from "./errors.ts";
 import type { ChartPoint, DnsFailureRecord, DnsRecord } from "./types.ts";
 
 export function withAlpha(hex: string, alpha: number): string {
@@ -58,7 +59,7 @@ function timeoutDurationSec(failure: DnsFailureRecord): number {
 export function timeoutRanges(failures: DnsRecord[]): TimeoutSpan[] {
   const buckets = new Map<string, TimeoutSpan>();
   for (const f of failures) {
-    if (!("error" in f) || f.error !== "timeout") continue;
+    if (!("error" in f) || !f.error || !isTimeoutError(f.error)) continue;
     const key = `${f.dns_server}\0${f.ts}`;
     const durationSec = timeoutDurationSec(f as DnsFailureRecord);
     const existing = buckets.get(key);
