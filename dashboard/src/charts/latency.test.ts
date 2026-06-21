@@ -6,8 +6,10 @@ import {
   buildFailurePoints,
   buildLatencyChart,
   buildTooltipLines,
+  collectActiveElementsAtBatch,
   formatFailureLabel,
   getLatencyChart,
+  isTooltipDataset,
   nearestBatchTs,
 } from "./latency.ts";
 import { buildErrorChart } from "./error.ts";
@@ -17,6 +19,13 @@ import { chartTimeBounds, isJstOnTheHour } from "../time.ts";
 import { DAY_SEC, HOUR_SEC } from "../constants.ts";
 
 Chart.register(...registerables, chartRegionsPlugin, errorBandLabelsPlugin);
+
+beforeAll(() => {
+  document.body.innerHTML = `
+    <canvas id="latencyChart" width="800" height="400"></canvas>
+    <canvas id="errorChart" width="800" height="200"></canvas>
+  `;
+});
 
 describe("nearestBatchTs", () => {
   it("snaps hover to the nearest measurement batch timestamp", () => {
@@ -45,6 +54,34 @@ describe("buildTooltipLines", () => {
   });
 });
 
+describe("collectActiveElementsAtBatch", () => {
+  it("selects server and failure points at the same timestamp", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(1782003500 * 1000));
+    setDisplayRangeSec(24 * 3600);
+    setDataCutoffTs(0);
+
+    const records = parseTsv([
+      "1782003423\t203.165.31.152\tamazon.co.jp\t\ttimeout",
+      "1782003423\t203.165.31.152\tline.me\t188",
+    ].join("\n"));
+    const filtered = filterByPeriod(records, 0);
+    const { successes, failures } = aggregateByServer(filtered);
+
+    buildLatencyChart(filtered, successes, failures, 0);
+    const chart = getLatencyChart();
+    expect(chart).not.toBeNull();
+
+    const active = collectActiveElementsAtBatch(chart!, 1782003423);
+    expect(active).toHaveLength(2);
+    expect(isTooltipDataset("203.165.31.152")).toBe(true);
+    expect(isTooltipDataset("Failures")).toBe(true);
+    expect(isTooltipDataset("203.165.31.152 q1")).toBe(false);
+
+    vi.useRealTimers();
+  });
+});
+
 describe("buildFailurePoints", () => {
   it("keeps every failure domain at the same timestamp", () => {
     const records = parseTsv([
@@ -62,10 +99,6 @@ describe("buildFailurePoints", () => {
 
 describe("buildLatencyChart", () => {
   beforeAll(() => {
-    document.body.innerHTML = `
-      <canvas id="latencyChart" width="800" height="400"></canvas>
-      <canvas id="errorChart" width="800" height="200"></canvas>
-    `;
     setDisplayRangeSec(3600);
     setDataCutoffTs(1781967600);
   });

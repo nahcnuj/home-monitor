@@ -1,6 +1,7 @@
 import {
   Chart,
   type ChartConfiguration,
+  type Plugin,
   type TooltipItem,
 } from "chart.js";
 import { SERVER_COLORS } from "../constants.ts";
@@ -85,18 +86,76 @@ export function buildTooltipLines(records: DnsRecord[], ts: number): string[] {
   return lines;
 }
 
-export function resolveTooltipBatchTs(
+export function resolveTooltipBatchTsFromPixel(
   chart: Chart,
   batchTimestamps: readonly number[],
+  pixelX: number,
 ): number | null {
   const scale = chart.scales.x;
-  const caretX = chart.tooltip?.caretX;
-  if (!scale || caretX == null) return null;
+  if (!scale) return null;
 
-  const hoverValue = scale.getValueForPixel(caretX);
+  const hoverValue = scale.getValueForPixel(pixelX);
   if (hoverValue == null || Number.isNaN(Number(hoverValue))) return null;
 
   return nearestBatchTs(batchTimestamps, Number(hoverValue));
+}
+
+export function isTooltipDataset(label: string | undefined): boolean {
+  return !!label && !isHiddenBand(label);
+}
+
+export function collectActiveElementsAtBatch(
+  chart: Chart,
+  ts: number,
+): { datasetIndex: number; index: number }[] {
+  const active: { datasetIndex: number; index: number }[] = [];
+
+  chart.data.datasets.forEach((dataset, datasetIndex) => {
+    if (!isTooltipDataset(dataset.label)) return;
+
+    dataset.data.forEach((point, index) => {
+      const x = typeof point === "object" && point !== null && "x" in point
+        ? point.x
+        : null;
+      if (x === ts) {
+        active.push({ datasetIndex, index });
+      }
+    });
+  });
+
+  return active;
+}
+
+function createBatchTooltipPlugin(batchTimestamps: readonly number[]): Plugin<"line"> {
+  let lastKey = "";
+
+  return {
+    id: "batchTooltip",
+    afterEvent(chart, args) {
+      const event = args.event;
+      if (event.type === "mouseout" || !args.inChartArea) {
+        lastKey = "";
+        chart.setActiveElements([]);
+        return;
+      }
+      if (event.type !== "mousemove") return;
+
+      const pixelX = event.x;
+      if (pixelX == null) return;
+
+      const ts = resolveTooltipBatchTsFromPixel(chart, batchTimestamps, pixelX);
+      if (ts == null) return;
+
+      const active = collectActiveElementsAtBatch(chart, ts);
+      if (!active.length) return;
+
+      const key = `${ts}:${active.map((item) => `${item.datasetIndex}:${item.index}`).join(",")}`;
+      if (key === lastKey) return;
+      lastKey = key;
+
+      chart.setActiveElements(active);
+    },
+  };
 }
 
 const BAND_TENSION = 0.42;
@@ -111,15 +170,22 @@ function isHiddenBand(label: string | undefined): boolean {
   return !!label?.endsWith(" q1") || !!label?.endsWith(" q3");
 }
 
-export function latencyTooltipTitle(
-  items: TooltipItem<"line">[],
-  batchTimestamps: readonly number[],
-): string {
-  const chart = items[0]?.chart;
-  if (!chart) return "";
+export function latencyTooltipTitle(items: TooltipItem<"line">[]): string {
+  const raw = items[0]?.raw as { x?: number } | null;
+  const x = raw?.x ?? items[0]?.parsed?.x;
+  return x == null || Number.isNaN(Number(x)) ? "" : fmtJst(Number(x));
+}
 
-  const ts = resolveTooltipBatchTs(chart, batchTimestamps);
-  return ts == null ? "" : fmtJst(ts);
+function latencyTooltipLabel(ctx: TooltipItem<"line">): string {
+  const raw = ctx.raw as FailurePoint | LatencySamplePoint | null;
+  if (!raw || typeof raw !== "object") return "";
+  if ("error" in raw && raw.error) {
+    return formatFailureLabel(raw);
+  }
+  if ("domain" in raw && raw.domain) {
+    return `${raw.domain}: ${Math.round(raw.y)} ms`;
+  }
+  return `${Math.round(raw.y)} ms`;
 }
 
 export function buildLatencyChart(
@@ -207,6 +273,7 @@ export function buildLatencyChart(
   latencyChart?.destroy();
   const config = {
     type: "line",
+    plugins: [createBatchTooltipPlugin(batchTimestamps)],
     data: { datasets },
     options: {
       responsive: true,
@@ -246,16 +313,16 @@ export function buildLatencyChart(
           },
         },
         tooltip: {
-          filter: (item: TooltipItem<"line">) => !isHiddenBand(item.dataset.label),
+          filter: (item: TooltipItem<"line">) => isTooltipDataset(item.dataset.label),
+          itemSort: (a: TooltipItem<"line">, b: TooltipItem<"line">) => {
+            const aFail = a.dataset.label === "Failures";
+            const bFail = b.dataset.label === "Failures";
+            if (aFail !== bFail) return aFail ? 1 : -1;
+            return String(a.label).localeCompare(String(b.label));
+          },
           callbacks: {
-            title: (items: TooltipItem<"line">[]) => latencyTooltipTitle(items, batchTimestamps),
-            label: () => "",
-            afterBody: (items: TooltipItem<"line">[]) => {
-              const chart = items[0]?.chart;
-              if (!chart) return [];
-              const ts = resolveTooltipBatchTs(chart, batchTimestamps);
-              return ts == null ? [] : buildTooltipLines(rawRecords, ts);
-            },
+            title: latencyTooltipTitle,
+            label: latencyTooltipLabel,
           },
         },
       },
