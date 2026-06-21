@@ -1,3 +1,5 @@
+import { monitorConfig } from "./config.ts";
+
 export const DNS_ERROR_CODES = new Set([
   "job_timeout",
   "dns_timeout",
@@ -26,19 +28,6 @@ export const ERROR_LABELS: Record<string, string> = {
   unknown: "不明",
 };
 
-export const ERROR_DESCRIPTIONS: Record<string, string> = {
-  job_timeout: "計測側の待ち時間を超えて打ち切った。nslookup プロセスが終わらなかった。",
-  dns_timeout: "nslookup が DNS 応答のタイムアウトを報告した。リゾルバまたは経路側の遅延・無応答。",
-  no_response: "リゾルバから DNS 応答が返らなかった（UDP 53 の無応答）。",
-  no_nameserver: "Windows に利用可能な DNS サーバーが設定されていない。",
-  server_fail: "リゾルバがサーバーエラー（SERVFAIL 等）を返した。",
-  refused: "リゾルバがクエリを拒否した。",
-  nxdomain: "ドメインが存在しない（NXDOMAIN）。",
-  no_record: "ドメインはあるが、問い合わせたレコード種別（A/AAAA 等）がない。",
-  resolver_error: "指定したリゾルバ IP の名前解決に失敗した。",
-  unknown: "上記のいずれにも当てはまらない nslookup エラー。",
-};
-
 export function isDnsErrorCode(code: string | undefined): code is string {
   return typeof code === "string" && DNS_ERROR_CODES.has(code);
 }
@@ -51,6 +40,21 @@ export function formatErrorCode(code: string): string {
   return ERROR_LABELS[code] ?? code;
 }
 
+const ERROR_DESCRIPTIONS: Record<string, string> = {
+  dns_timeout: "nslookup が DNS 応答 timeout を返した",
+  no_response: "リゾルバから応答なし",
+  no_nameserver: "利用可能な DNS サーバー未設定",
+  server_fail: "SERVFAIL 等のサーバーエラー",
+  refused: "クエリ拒否",
+  nxdomain: "ドメイン不存在",
+  no_record: "該当レコードなし（A/AAAA 等）",
+  resolver_error: "リゾルバ IP の名前解決失敗",
+  unknown: "分類不能なエラー",
+};
+
 export function formatErrorDescription(code: string): string | undefined {
+  if (code === "job_timeout") {
+    return `設定 ${monitorConfig.lookup_timeout_sec}秒で打ち切り（nslookup 未完了）`;
+  }
   return ERROR_DESCRIPTIONS[code];
 }
