@@ -1,6 +1,15 @@
 import { Chart } from "chart.js";
 import { ERROR_COLORS, SERVER_COLORS } from "../constants.ts";
-import { formatErrorCode } from "../errors.ts";
+import { formatErrorCode, formatErrorDescription } from "../errors.ts";
+
+interface ErrorBarDataset {
+  label: string;
+  errorCode: string;
+  data: number[];
+  backgroundColor: string;
+  borderWidth: number;
+  borderRadius: BorderRadius;
+}
 
 let errorChart: Chart<"bar"> | null = null;
 
@@ -25,9 +34,10 @@ export function buildErrorChart(errors: Record<string, number>): void {
 
   errorChart?.destroy();
 
-  const datasets = codes.length
+  const datasets: ErrorBarDataset[] = codes.length
     ? codes.map((code, index) => ({
         label: formatErrorCode(code),
+        errorCode: code,
         data: [errors[code]],
         backgroundColor: ERROR_COLORS[code] || SERVER_COLORS[index % SERVER_COLORS.length],
         borderWidth: 0,
@@ -35,6 +45,7 @@ export function buildErrorChart(errors: Record<string, number>): void {
       }))
     : [{
         label: "なし",
+        errorCode: "",
         data: [1],
         backgroundColor: "#2a2e3d",
         borderWidth: 0,
@@ -70,9 +81,13 @@ export function buildErrorChart(errors: Record<string, number>): void {
           filter: () => codes.length > 0,
           callbacks: {
             label(ctx) {
+              const dataset = ctx.dataset as ErrorBarDataset;
               const count = ctx.raw as number;
               const pct = total ? ((count / total) * 100).toFixed(1) : "0.0";
-              return `${ctx.dataset.label}: ${count} (${pct}%)`;
+              const lines = [`${dataset.label}: ${count} (${pct}%)`];
+              const description = formatErrorDescription(dataset.errorCode);
+              if (description) lines.push(description);
+              return lines;
             },
           },
         },
