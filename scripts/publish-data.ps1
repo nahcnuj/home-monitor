@@ -3,8 +3,11 @@ param([switch]$All)
 
 $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path $PSScriptRoot -Parent
+Set-Location $RepoRoot
 . (Join-Path $PSScriptRoot "Get-MonitorConfig.ps1")
+. (Join-Path $PSScriptRoot "TaskLog.ps1")
 $DataDir = Join-Path $RepoRoot "data\local"
+$GhExe = Get-GhExe
 $DataFile = Join-Path $DataDir "dns-latency.tsv"
 $LastSyncFile = Join-Path $DataDir ".last-sync"
 
@@ -51,19 +54,20 @@ function Get-UnsentLines {
     return $allLines | Where-Object { [int]($_ -split "`t")[0] -gt $lastSyncTs }
 }
 
-if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
-    throw "gh CLI is not installed. See https://cli.github.com/"
-}
-
 Push-Location $RepoRoot
 try {
-    gh auth status 2>&1 | Out-Null
+    Write-TaskLog -TaskName "publish" -Message "started"
+
+    & $GhExe auth status 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) {
         throw "gh is not authenticated. Run: gh auth login"
     }
 
     $unsentLines = Get-UnsentLines @PSBoundParameters
-    if ($unsentLines.Count -eq 0) { exit 0 }
+    if ($unsentLines.Count -eq 0) {
+        Write-TaskLog -TaskName "publish" -Message "skipped (no unsent lines)"
+        exit 0
+    }
 
     $bytes = [System.Text.Encoding]::UTF8.GetBytes(($unsentLines -join "`n") + "`n")
     $dataB64 = [Convert]::ToBase64String((Compress-GzipBytes -Data $bytes))
@@ -73,23 +77,23 @@ try {
         $repoSlug = "$($Matches[1])/$($Matches[2])"
     }
     if (-not $repoSlug) {
-        $repoSlug = gh repo view --json nameWithOwner -q .nameWithOwner 2>$null
+        $repoSlug = & $GhExe repo view --json nameWithOwner -q .nameWithOwner 2>$null
     }
     if (-not $repoSlug) {
         throw "Cannot determine GitHub repo. Add git remote or use ghq path."
     }
 
-    gh workflow run sync-dns-data.yml --repo $repoSlug -f "data_b64=$dataB64"
+    & $GhExe workflow run sync-dns-data.yml --repo $repoSlug -f "data_b64=$dataB64"
     if ($LASTEXITCODE -ne 0) {
         throw "gh workflow run failed"
     }
 
     Start-Sleep -Seconds 3
-    $runId = gh run list --repo $repoSlug --workflow sync-dns-data.yml -L 1 --json databaseId -q ".[0].databaseId"
+    $runId = & $GhExe run list --repo $repoSlug --workflow sync-dns-data.yml -L 1 --json databaseId -q ".[0].databaseId"
     if (-not $runId) {
         throw "Could not find workflow run id"
     }
-    gh run watch $runId --repo $repoSlug --exit-status
+    & $GhExe run watch $runId --repo $repoSlug --exit-status
     if ($LASTEXITCODE -ne 0) {
         throw "gh run watch failed"
     }
@@ -98,6 +102,11 @@ try {
     if (-not (Test-Path $DataDir)) { New-Item -ItemType Directory -Path $DataDir -Force | Out-Null }
     $utf8NoBom = New-Object System.Text.UTF8Encoding $false
     [System.IO.File]::WriteAllText($LastSyncFile, "$maxTs", $utf8NoBom)
+    Write-TaskLog -TaskName "publish" -Message "ok (lines=$($unsentLines.Count), max_ts=$maxTs)"
+}
+catch {
+    Write-TaskLog -TaskName "publish" -Message "failed: $_"
+    throw
 }
 finally {
     Pop-Location

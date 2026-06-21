@@ -65,6 +65,8 @@ cd C:\Users\nahcnuj\ghq\github.com\nahcnuj\home-monitor
 
 GitHub の Actions タブで **Sync DNS Data** ワークフローが起動することを確認してください。
 
+タスクスケジューラから送信されない場合は `data/local/publish.log` を確認してください（`monitor.config.ts` 読み込みや `gh` の PATH 問題などが記録されます）。
+
 ## データ形式 (TSV)
 
 1行 = 1回の nslookup（ドメイン単位の生データ）。集計はダッシュボード（JS）側で行います。
