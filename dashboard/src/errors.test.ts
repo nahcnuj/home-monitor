@@ -20,10 +20,10 @@ describe("error codes", () => {
     expect(isTimeoutError("no_response")).toBe(false);
   });
 
-  it("describes current error codes but not legacy timeout", () => {
-    expect(formatErrorDescription("job_timeout")).toContain("計測側");
-    expect(formatErrorDescription("dns_timeout")).toContain("nslookup");
-    expect(formatErrorDescription("no_response")).toBeTruthy();
+  it("describes current error codes in one line but not legacy timeout", () => {
+    expect(formatErrorDescription("job_timeout")).toBe("設定 15秒で打ち切り（nslookup 未完了）");
+    expect(formatErrorDescription("dns_timeout")).toBe("nslookup が DNS 応答 timeout を返した");
+    expect(formatErrorDescription("no_response")).toBe("リゾルバから応答なし");
     expect(formatErrorDescription("timeout")).toBeUndefined();
   });
 
