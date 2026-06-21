@@ -180,7 +180,11 @@ function createBatchTooltipPlugin(batchTimestamps: readonly number[]): Plugin<"l
 
 const BAND_TENSION = 0.42;
 const IQR_BAND_ALPHA = 0.18;
+const IQR_BAND_ALPHA_LONG = 0.32;
 const MINMAX_BAND_ALPHA = 0.07;
+const MINMAX_BAND_ALPHA_LONG = 0.12;
+const TIMEOUT_EDGE_WIDTH = 2;
+const TIMEOUT_EDGE_WIDTH_LONG = 1;
 
 export function shouldShowLatencyPoints(rangeSec: number = displayRangeSec): boolean {
   return rangeSec < HIDE_LATENCY_POINTS_RANGE_SEC;
@@ -231,6 +235,8 @@ export function buildLatencyChart(
   const servers = [...new Set(rawRecords.filter(isSuccess).map((r) => r.dns_server))].sort();
   const datasets: ChartConfiguration["data"]["datasets"] = [];
   const showPoints = shouldShowLatencyPoints();
+  const iqrBandAlpha = showPoints ? IQR_BAND_ALPHA : IQR_BAND_ALPHA_LONG;
+  const minMaxBandAlpha = showPoints ? MINMAX_BAND_ALPHA : MINMAX_BAND_ALPHA_LONG;
 
   servers.forEach((server, index) => {
     const color = SERVER_COLORS[index % SERVER_COLORS.length];
@@ -254,7 +260,7 @@ export function buildLatencyChart(
       order: 3,
       data: withGaps(envelope.min, spans),
       borderColor: "transparent",
-      backgroundColor: withAlpha(color, MINMAX_BAND_ALPHA),
+      backgroundColor: withAlpha(color, minMaxBandAlpha),
       borderWidth: 0,
       pointRadius: 0,
       tension: BAND_TENSION,
@@ -278,7 +284,7 @@ export function buildLatencyChart(
       order: 3,
       data: withGaps(envelope.q1, spans),
       borderColor: "transparent",
-      backgroundColor: withAlpha(color, IQR_BAND_ALPHA),
+      backgroundColor: withAlpha(color, iqrBandAlpha),
       borderWidth: 0,
       pointRadius: 0,
       tension: BAND_TENSION,
@@ -361,6 +367,7 @@ export function buildLatencyChart(
           xMin: xBounds.min,
           cutoffEnd: dataCutoffTs > xBounds.min ? dataCutoffTs : 0,
           timeoutRanges: timeoutRanges(allFailures),
+          timeoutEdgeWidth: showPoints ? TIMEOUT_EDGE_WIDTH : TIMEOUT_EDGE_WIDTH_LONG,
         },
         legend: {
           labels: {

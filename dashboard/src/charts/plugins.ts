@@ -5,6 +5,7 @@ interface ChartRegionsOptions {
   cutoffEnd?: number;
   xMin?: number;
   timeoutRanges?: { start: number; end: number }[];
+  timeoutEdgeWidth?: number;
 }
 
 interface ErrorBandLabelsOptions {
@@ -37,6 +38,8 @@ export const chartRegionsPlugin: Plugin<"line"> = {
       }
     }
 
+    const timeoutEdgeWidth = options?.timeoutEdgeWidth ?? 2;
+
     for (const { start, end } of options?.timeoutRanges ?? []) {
       let left = xScale.getPixelForValue(start);
       let right = xScale.getPixelForValue(end);
@@ -48,7 +51,7 @@ export const chartRegionsPlugin: Plugin<"line"> = {
       ctx.fillRect(left, chartArea.top, right - left, chartArea.bottom - chartArea.top);
 
       ctx.fillStyle = "rgba(248, 113, 113, 0.55)";
-      ctx.fillRect(left, chartArea.top, 2, chartArea.bottom - chartArea.top);
+      ctx.fillRect(left, chartArea.top, timeoutEdgeWidth, chartArea.bottom - chartArea.top);
     }
 
     ctx.restore();
