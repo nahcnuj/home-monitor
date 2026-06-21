@@ -16,7 +16,7 @@ import type {
   FailurePoint,
   LatencySamplePoint,
 } from "../types.ts";
-import { timeoutRanges, timeoutSpansForServer, withAlpha, withGaps } from "../utils.ts";
+import { timeoutRanges, withAlpha, withGaps } from "../utils.ts";
 
 function isSuccess(r: DnsRecord): r is DnsSuccessRecord {
   return !r.error;
@@ -184,7 +184,6 @@ const IQR_BAND_ALPHA_LONG = 0.32;
 const MINMAX_BAND_ALPHA = 0.07;
 const MINMAX_BAND_ALPHA_LONG = 0.12;
 const TIMEOUT_EDGE_WIDTH = 2;
-const TIMEOUT_EDGE_WIDTH_LONG = 1;
 
 export function shouldShowLatencyPoints(rangeSec: number = displayRangeSec): boolean {
   return rangeSec < HIDE_LATENCY_POINTS_RANGE_SEC;
@@ -240,13 +239,12 @@ export function buildLatencyChart(
 
   servers.forEach((server, index) => {
     const color = SERVER_COLORS[index % SERVER_COLORS.length];
-    const spans = timeoutSpansForServer(allFailures, server);
-    const envelope = buildRollingEnvelope(rawRecords, server, timestamps, spans);
+    const envelope = buildRollingEnvelope(rawRecords, server, timestamps);
 
     datasets.push({
       label: `${server} max`,
       order: 3,
-      data: withGaps(envelope.max, spans),
+      data: withGaps(envelope.max),
       borderColor: "transparent",
       backgroundColor: "transparent",
       borderWidth: 0,
@@ -258,7 +256,7 @@ export function buildLatencyChart(
     datasets.push({
       label: `${server} min`,
       order: 3,
-      data: withGaps(envelope.min, spans),
+      data: withGaps(envelope.min),
       borderColor: "transparent",
       backgroundColor: withAlpha(color, minMaxBandAlpha),
       borderWidth: 0,
@@ -270,7 +268,7 @@ export function buildLatencyChart(
     datasets.push({
       label: `${server} q3`,
       order: 3,
-      data: withGaps(envelope.q3, spans),
+      data: withGaps(envelope.q3),
       borderColor: "transparent",
       backgroundColor: "transparent",
       borderWidth: 0,
@@ -282,7 +280,7 @@ export function buildLatencyChart(
     datasets.push({
       label: `${server} q1`,
       order: 3,
-      data: withGaps(envelope.q1, spans),
+      data: withGaps(envelope.q1),
       borderColor: "transparent",
       backgroundColor: withAlpha(color, iqrBandAlpha),
       borderWidth: 0,
@@ -367,7 +365,7 @@ export function buildLatencyChart(
           xMin: xBounds.min,
           cutoffEnd: dataCutoffTs > xBounds.min ? dataCutoffTs : 0,
           timeoutRanges: timeoutRanges(allFailures),
-          timeoutEdgeWidth: showPoints ? TIMEOUT_EDGE_WIDTH : TIMEOUT_EDGE_WIDTH_LONG,
+          timeoutEdgeWidth: showPoints ? TIMEOUT_EDGE_WIDTH : 0,
         },
         legend: {
           labels: {

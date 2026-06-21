@@ -50,8 +50,10 @@ export const chartRegionsPlugin: Plugin<"line"> = {
       ctx.fillStyle = "rgba(248, 113, 113, 0.28)";
       ctx.fillRect(left, chartArea.top, right - left, chartArea.bottom - chartArea.top);
 
-      ctx.fillStyle = "rgba(248, 113, 113, 0.55)";
-      ctx.fillRect(left, chartArea.top, timeoutEdgeWidth, chartArea.bottom - chartArea.top);
+      if (timeoutEdgeWidth > 0) {
+        ctx.fillStyle = "rgba(248, 113, 113, 0.55)";
+        ctx.fillRect(left, chartArea.top, timeoutEdgeWidth, chartArea.bottom - chartArea.top);
+      }
     }
 
     ctx.restore();

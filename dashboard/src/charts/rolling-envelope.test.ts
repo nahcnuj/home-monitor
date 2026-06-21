@@ -25,7 +25,7 @@ describe("buildRollingEnvelope", () => {
       `${ts}\t203.165.31.152\tline.me\t290`,
     ].join("\n"));
 
-    const envelope = buildRollingEnvelope(records, "203.165.31.152", [ts], []);
+    const envelope = buildRollingEnvelope(records, "203.165.31.152", [ts]);
     const max = envelope.max.find((point) => point.x === ts);
     const q3 = envelope.q3.find((point) => point.x === ts);
 
@@ -43,7 +43,7 @@ describe("buildRollingEnvelope", () => {
       `${ts + 60}\t203.165.31.152\td.com\t520`,
     ].join("\n"));
 
-    const envelope = buildRollingEnvelope(records, "203.165.31.152", [ts], []);
+    const envelope = buildRollingEnvelope(records, "203.165.31.152", [ts]);
     const max = envelope.max.find((point) => point.x === ts);
 
     expect(max?.y).toBe(210);
@@ -59,9 +59,37 @@ describe("buildRollingEnvelope", () => {
       `${ts + 5 * 60}\t203.165.31.152\td.com\t520`,
     ].join("\n"));
 
-    const envelope = buildRollingEnvelope(records, "203.165.31.152", [ts + 5 * 60], []);
+    const envelope = buildRollingEnvelope(records, "203.165.31.152", [ts + 5 * 60]);
     const max = envelope.max.find((point) => point.x === ts + 5 * 60);
 
     expect(max?.y).toBe(520);
+  });
+
+  it("keeps band points when some domains time out in the same batch", () => {
+    setDisplayRangeSec(HOUR_SEC);
+    const ts = 1000;
+    const records = parseTsv([
+      `${ts}\t203.165.31.152\ta.com\t200`,
+      `${ts}\t203.165.31.152\tb.com\t210`,
+      `${ts}\t203.165.31.152\tc.com\t\ttimeout`,
+    ].join("\n"));
+
+    const envelope = buildRollingEnvelope(records, "203.165.31.152", [ts]);
+    expect(envelope.max.find((point) => point.x === ts)?.y).toBe(210);
+  });
+
+  it("keeps band points at timeout timestamps when the window has enough successes", () => {
+    setDisplayRangeSec(6 * HOUR_SEC);
+    const ts = 1000;
+    const records = parseTsv([
+      `${ts}\t203.165.31.152\ta.com\t200`,
+      `${ts}\t203.165.31.152\tb.com\t210`,
+      `${ts}\t203.165.31.152\tfail.com\t\ttimeout`,
+      `${ts + 5 * 60}\t203.165.31.152\tc.com\t500`,
+      `${ts + 5 * 60}\t203.165.31.152\td.com\t520`,
+    ].join("\n"));
+
+    const envelope = buildRollingEnvelope(records, "203.165.31.152", [ts]);
+    expect(envelope.max.find((point) => point.x === ts)?.y).toBe(520);
   });
 });

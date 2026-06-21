@@ -2,16 +2,10 @@ import { boxplot } from "@sgratzl/boxplots";
 import { DAY_SEC, HIDE_LATENCY_POINTS_RANGE_SEC, HOUR_SEC, MIN_SEC } from "../constants.ts";
 import { displayRangeSec } from "../state.ts";
 import type { ChartPoint, DnsRecord, DnsSuccessRecord } from "../types.ts";
-import type { TimeoutSpan } from "../utils.ts";
-
 const MIN_SAMPLES = 2;
 
 function isSuccess(r: DnsRecord): r is DnsSuccessRecord {
   return !r.error;
-}
-
-function spansCoverTs(spans: TimeoutSpan[], ts: number): boolean {
-  return spans.some((span) => ts >= span.start && ts < span.end);
 }
 
 export function envelopeWindowSec(rangeSec: number = displayRangeSec): number {
@@ -59,7 +53,6 @@ export function buildRollingEnvelope(
   rawRecords: DnsRecord[],
   server: string,
   timestamps: number[],
-  spans: TimeoutSpan[],
   rangeSec: number = displayRangeSec,
 ): RollingEnvelope {
   const windowSec = envelopeWindowSec(rangeSec);
@@ -73,8 +66,6 @@ export function buildRollingEnvelope(
   const q3: ChartPoint[] = [];
 
   for (const ts of timestamps) {
-    if (spansCoverTs(spans, ts)) continue;
-
     const values = latencyValuesInWindow(successes, ts, windowSec);
     if (values.length < MIN_SAMPLES) continue;
 
