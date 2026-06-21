@@ -39,6 +39,18 @@ describe("parseTsv", () => {
   });
 });
 
+describe("computeStats", () => {
+  it("reports uptime as the success share of measurements", () => {
+    const records = parseTsv([
+      "1000\t203.165.31.152\tgoogle.com\t100",
+      "1000\t203.165.31.152\tline.me\t\ttimeout",
+      "1060\t203.165.31.152\tyahoo.co.jp\t120",
+    ].join("\n"));
+
+    expect(computeStats(records).uptime).toBeCloseTo(66.7, 1);
+  });
+});
+
 describe("dashboard pipeline", () => {
   it("aggregates and filters published data", () => {
     setDisplayRangeSec(24 * 3600);
@@ -55,6 +67,8 @@ describe("dashboard pipeline", () => {
     const stats = computeStats(filtered);
     expect(stats.total).toBeGreaterThan(0);
     expect(Number.isFinite(stats.avg)).toBe(true);
+    expect(stats.uptime).toBeGreaterThan(0);
+    expect(stats.uptime).toBeLessThanOrEqual(100);
     expect(failures.length).toBeGreaterThan(0);
   });
 });
