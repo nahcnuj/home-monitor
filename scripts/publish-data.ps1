@@ -15,6 +15,23 @@ function Get-DataCutoffTs {
     return [long](Get-MonitorConfig).data_cutoff_ts
 }
 
+function Get-PublishSettings {
+    $config = Get-MonitorConfig
+    $maxAttempts = if ($null -ne $config.publish_max_attempts -and $config.publish_max_attempts -gt 0) {
+        [int]$config.publish_max_attempts
+    } else {
+        3
+    }
+    $delays = @($config.publish_retry_delays_sec | Where-Object { $_ -gt 0 })
+    if ($delays.Count -eq 0) {
+        $delays = @(30, 60, 120)
+    }
+    return @{
+        MaxAttempts = $maxAttempts
+        RetryDelaysSec = $delays
+    }
+}
+
 function Test-DnsServerKey {
     param([string]$Key)
     if ($Key -eq "unknown") { return $true }
@@ -54,6 +71,70 @@ function Get-UnsentLines {
     return $allLines | Where-Object { [int]($_ -split "`t")[0] -gt $lastSyncTs }
 }
 
+function Get-RepoSlug {
+    $repoSlug = $null
+    if ($RepoRoot -match 'github\.com[/\\]([^/\\]+)[/\\]([^/\\]+)$') {
+        $repoSlug = "$($Matches[1])/$($Matches[2])"
+    }
+    if (-not $repoSlug) {
+        $repoSlug = & $GhExe repo view --json nameWithOwner -q .nameWithOwner 2>$null
+    }
+    if (-not $repoSlug) {
+        throw "Cannot determine GitHub repo. Add git remote or use ghq path."
+    }
+    return $repoSlug
+}
+
+function Invoke-SyncDnsWorkflow {
+    param(
+        [string]$RepoSlug,
+        [string]$DataB64
+    )
+
+    $null = & $GhExe workflow run sync-dns-data.yml --repo $RepoSlug -f "data_b64=$DataB64"
+    if ($LASTEXITCODE -ne 0) {
+        throw "gh workflow run failed"
+    }
+
+    Start-Sleep -Seconds 3
+    $runId = & $GhExe run list --repo $RepoSlug --workflow sync-dns-data.yml -L 1 --json databaseId -q ".[0].databaseId"
+    if (-not $runId) {
+        throw "Could not find workflow run id"
+    }
+
+    $null = & $GhExe run watch $runId --repo $RepoSlug --exit-status 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "gh run watch failed (run_id=$runId)"
+    }
+}
+
+function Invoke-PublishWithRetry {
+    param(
+        [string]$RepoSlug,
+        [string]$DataB64,
+        [int]$MaxAttempts,
+        [int[]]$RetryDelaysSec
+    )
+
+    $attempt = 0
+    while ($true) {
+        $attempt++
+        try {
+            Invoke-SyncDnsWorkflow -RepoSlug $RepoSlug -DataB64 $DataB64 | Out-Null
+            return $attempt
+        }
+        catch {
+            if ($attempt -ge $MaxAttempts) {
+                throw
+            }
+            $delayIndex = [Math]::Min($attempt - 1, $RetryDelaysSec.Length - 1)
+            $delaySec = $RetryDelaysSec[$delayIndex]
+            Write-TaskLog -TaskName "publish" -Message "retry ${attempt}/${MaxAttempts} in ${delaySec}s: $_"
+            Start-Sleep -Seconds $delaySec
+        }
+    }
+}
+
 Push-Location $RepoRoot
 try {
     Write-TaskLog -TaskName "publish" -Message "started"
@@ -69,40 +150,20 @@ try {
         exit 0
     }
 
+    $settings = Get-PublishSettings
     $bytes = [System.Text.Encoding]::UTF8.GetBytes(($unsentLines -join "`n") + "`n")
     $dataB64 = [Convert]::ToBase64String((Compress-GzipBytes -Data $bytes))
-
-    $repoSlug = $null
-    if ($RepoRoot -match 'github\.com[/\\]([^/\\]+)[/\\]([^/\\]+)$') {
-        $repoSlug = "$($Matches[1])/$($Matches[2])"
-    }
-    if (-not $repoSlug) {
-        $repoSlug = & $GhExe repo view --json nameWithOwner -q .nameWithOwner 2>$null
-    }
-    if (-not $repoSlug) {
-        throw "Cannot determine GitHub repo. Add git remote or use ghq path."
-    }
-
-    & $GhExe workflow run sync-dns-data.yml --repo $repoSlug -f "data_b64=$dataB64"
-    if ($LASTEXITCODE -ne 0) {
-        throw "gh workflow run failed"
-    }
-
-    Start-Sleep -Seconds 3
-    $runId = & $GhExe run list --repo $repoSlug --workflow sync-dns-data.yml -L 1 --json databaseId -q ".[0].databaseId"
-    if (-not $runId) {
-        throw "Could not find workflow run id"
-    }
-    & $GhExe run watch $runId --repo $repoSlug --exit-status
-    if ($LASTEXITCODE -ne 0) {
-        throw "gh run watch failed"
-    }
+    $repoSlug = Get-RepoSlug
+    $attemptsUsed = Invoke-PublishWithRetry -RepoSlug $repoSlug -DataB64 $dataB64 `
+        -MaxAttempts $settings.MaxAttempts -RetryDelaysSec $settings.RetryDelaysSec
 
     $maxTs = ($unsentLines | ForEach-Object { [int]($_ -split "`t")[0] } | Measure-Object -Maximum).Maximum
     if (-not (Test-Path $DataDir)) { New-Item -ItemType Directory -Path $DataDir -Force | Out-Null }
     $utf8NoBom = New-Object System.Text.UTF8Encoding $false
     [System.IO.File]::WriteAllText($LastSyncFile, "$maxTs", $utf8NoBom)
-    Write-TaskLog -TaskName "publish" -Message "ok (lines=$($unsentLines.Count), max_ts=$maxTs)"
+
+    $retryNote = if ($attemptsUsed -gt 1) { ", attempts=$attemptsUsed" } else { "" }
+    Write-TaskLog -TaskName "publish" -Message "ok (lines=$($unsentLines.Count), max_ts=$maxTs$retryNote)"
 }
 catch {
     Write-TaskLog -TaskName "publish" -Message "failed: $_"

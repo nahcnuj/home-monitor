@@ -16,7 +16,7 @@ GitHub Pages は **GitHub Actions** でデプロイします（Settings → Page
 ## 仕組み
 
 1. **Windows PC** — 1分ごとに `nslookup` を実行し、レイテンシをローカル TSV に記録
-2. **1時間ごと** — `gh workflow run` で未送信データをワークフローへ送信
+2. **10分ごと** — `gh workflow run` で未送信データをワークフローへ送信（失敗時は自動リトライ）
 3. **GitHub Actions** — `gh-pages` の `docs/data/` を更新 → Pages デプロイ
 4. **ダッシュボード** — `https://www.nahcnuj.work/home-monitor/` でグラフ表示
 
@@ -51,7 +51,7 @@ cd C:\Users\nahcnuj\ghq\github.com\nahcnuj\home-monitor
 | タスク名 | 間隔 | 内容 |
 |----------|------|------|
 | `HomeMonitor-DNS-Collect` | 1分 | nslookup 計測 |
-| `HomeMonitor-DNS-Publish` | 1時間 | GitHub へデータ送信 |
+| `HomeMonitor-DNS-Publish` | 10分 | GitHub へデータ送信 |
 
 ### 4. 動作確認
 
@@ -95,6 +95,9 @@ GitHub の Actions タブで **Sync DNS Data** ワークフローが起動する
 - `lookup_timeout_sec` — 1ドメインあたりの待ち時間（デフォルト 15 秒）
 - `data_cutoff_ts` — これより古いデータを除外
 - `display_hours` — ダッシュボード初回表示の時間範囲
+- `publish_interval_min` — データ送信間隔（分、タスク再登録が必要）
+- `publish_max_attempts` — 送信失敗時の最大試行回数
+- `publish_retry_delays_sec` — リトライ待ち時間（秒）の配列
 
 複数ドメインは並列で `nslookup` するため、1分間隔の計測でも全体の所要時間はおおむねタイムアウト値程度です。
 
