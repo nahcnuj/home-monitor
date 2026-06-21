@@ -41,6 +41,15 @@ export function formatFailureLabel(point: FailurePoint): string {
   return `${point.dns_server}${domain}: ${point.error}`;
 }
 
+export function formatSuccessLabel(
+  dnsServer: string,
+  domain: string | null,
+  latencyMs: number,
+): string {
+  const target = domain ? ` / ${domain}` : "";
+  return `${dnsServer}${target}: ${Math.round(latencyMs)} ms`;
+}
+
 export function collectBatchTimestamps(records: DnsRecord[]): number[] {
   return [...new Set(records.map((r) => r.ts))].sort((a, b) => a - b);
 }
@@ -69,9 +78,11 @@ export function buildTooltipLines(records: DnsRecord[], ts: number): string[] {
   const batch = records.filter((r) => r.ts === ts);
   const lines: string[] = [];
 
-  for (const record of batch.filter(isSuccess).sort((a, b) => compareDomain(a.domain, b.domain))) {
-    const name = record.domain ?? record.dns_server;
-    lines.push(`${name}: ${Math.round(record.latency_ms)} ms`);
+  for (const record of batch.filter(isSuccess).sort((a, b) => {
+    const byServer = a.dns_server.localeCompare(b.dns_server);
+    return byServer !== 0 ? byServer : compareDomain(a.domain, b.domain);
+  })) {
+    lines.push(formatSuccessLabel(record.dns_server, record.domain, record.latency_ms));
   }
 
   for (const record of listFailures(batch).sort((a, b) => compareDomain(a.domain, b.domain))) {
@@ -214,10 +225,11 @@ function latencyTooltipLabel(ctx: TooltipItem<"line">): string {
   if ("error" in raw && raw.error) {
     return formatFailureLabel(raw);
   }
-  if ("domain" in raw && raw.domain) {
-    return `${raw.domain}: ${Math.round(raw.y)} ms`;
+  const dnsServer = ctx.dataset.label;
+  if (dnsServer && dnsServer !== "Failures") {
+    return formatSuccessLabel(dnsServer, raw.domain ?? null, raw.y);
   }
-  return `${Math.round(raw.y)} ms`;
+  return formatSuccessLabel("unknown", raw.domain ?? null, raw.y);
 }
 
 export function buildLatencyChart(

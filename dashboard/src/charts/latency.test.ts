@@ -47,11 +47,23 @@ describe("buildTooltipLines", () => {
     ].join("\n"));
 
     expect(buildTooltipLines(records, 1782003423)).toEqual([
-      "line.me: 188 ms",
+      "203.165.31.152 / line.me: 188 ms",
       "203.165.31.152 / amazon.co.jp: timeout",
       "203.165.31.152 / google.com: timeout",
     ]);
-    expect(buildTooltipLines(records, 1782003483)).toEqual(["yahoo.co.jp: 201 ms"]);
+    expect(buildTooltipLines(records, 1782003483)).toEqual(["203.165.31.152 / yahoo.co.jp: 201 ms"]);
+  });
+
+  it("lists each resolver separately at the same batch timestamp", () => {
+    const records = parseTsv([
+      "1782003423\t203.165.31.152\tline.me\t188",
+      "1782003423\t122.197.254.136\tline.me\t210",
+    ].join("\n"));
+
+    expect(buildTooltipLines(records, 1782003423)).toEqual([
+      "122.197.254.136 / line.me: 210 ms",
+      "203.165.31.152 / line.me: 188 ms",
+    ]);
   });
 });
 
