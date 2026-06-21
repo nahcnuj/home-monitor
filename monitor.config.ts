@@ -17,6 +17,6 @@ export const monitorConfig = {
     "line.me",
   ],
   lookup_timeout_sec: 15,
-  data_cutoff_ts: 1781967600,
+  data_cutoff_ts: 1782000000, // 2026-06-21 09:00 JST
   display_hours: 24,
 } as const satisfies MonitorConfig;
