@@ -18,7 +18,7 @@ $ErrorPatterns = @(
     @{ code = "nxdomain";       pattern = "Non-existent domain" },
     @{ code = "no_record";      pattern = "No (internal type|address)" },
     @{ code = "resolver_error"; pattern = "Can't find server name for address" },
-    @{ code = "timeout";        pattern = "(timed-out|DNS request timed out)" }
+    @{ code = "dns_timeout";    pattern = "(timed-out|DNS request timed out)" }
 )
 
 function Get-QueryType {
@@ -92,7 +92,7 @@ function Wait-DnsLookupJobs {
                 Resolver  = $entry.Resolver
                 Domain    = $entry.Domain
                 LatencyMs = $TimeoutSec * 1000
-                Error     = "timeout"
+                Error     = "job_timeout"
                 Output    = ""
             })
             continue
@@ -181,7 +181,7 @@ $lines = New-Object System.Collections.Generic.List[string]
 foreach ($result in ($lookupResults | Sort-Object Ts, Resolver, Domain)) {
     if ($result.Ts -le 0) { throw "Invalid timestamp: $($result.Ts)" }
 
-    if ($result.Error -eq "timeout") {
+    if ($result.Error -eq "job_timeout") {
         $lines.Add(("{0}`t{1}`t{2}`t{3}`t{4}" -f $result.Ts, $result.Resolver, $result.Domain, $result.LatencyMs, $result.Error))
         continue
     }

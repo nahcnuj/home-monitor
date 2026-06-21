@@ -1,5 +1,6 @@
 import { Chart } from "chart.js";
 import { ERROR_COLORS, SERVER_COLORS } from "../constants.ts";
+import { formatErrorCode } from "../errors.ts";
 
 let errorChart: Chart<"bar"> | null = null;
 
@@ -26,7 +27,7 @@ export function buildErrorChart(errors: Record<string, number>): void {
 
   const datasets = codes.length
     ? codes.map((code, index) => ({
-        label: code,
+        label: formatErrorCode(code),
         data: [errors[code]],
         backgroundColor: ERROR_COLORS[code] || SERVER_COLORS[index % SERVER_COLORS.length],
         borderWidth: 0,

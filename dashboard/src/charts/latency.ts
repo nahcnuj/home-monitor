@@ -4,7 +4,8 @@ import {
   type Plugin,
   type TooltipItem,
 } from "chart.js";
-import { HIDE_LATENCY_POINTS_RANGE_SEC, SERVER_COLORS } from "../constants.ts";
+import { ERROR_COLORS, HIDE_LATENCY_POINTS_RANGE_SEC, SERVER_COLORS } from "../constants.ts";
+import { formatErrorCode, isDnsErrorCode } from "../errors.ts";
 import { displayRangeSec } from "../state.ts";
 import { buildRollingEnvelope, collectTimelineTimestamps } from "./rolling-envelope.ts";
 import { chartTimeBounds, fmtAxisTick, fmtJst } from "../time.ts";
@@ -38,7 +39,7 @@ export function buildFailurePoints(records: DnsRecord[]): FailurePoint[] {
 
 export function formatFailureLabel(point: FailurePoint): string {
   const domain = point.domain ? ` / ${point.domain}` : "";
-  return `${point.dns_server}${domain}: ${point.error}`;
+  return `${point.dns_server}${domain}: ${formatErrorCode(point.error)}`;
 }
 
 export function formatSuccessLabel(
@@ -226,7 +227,7 @@ function latencyTooltipLabel(ctx: TooltipItem<"line">): string {
     return formatFailureLabel(raw);
   }
   const dnsServer = ctx.dataset.label;
-  if (dnsServer && dnsServer !== "Failures") {
+  if (dnsServer && !isDnsErrorCode(dnsServer)) {
     return formatSuccessLabel(dnsServer, raw.domain ?? null, raw.y);
   }
   return formatSuccessLabel("unknown", raw.domain ?? null, raw.y);
@@ -325,19 +326,25 @@ export function buildLatencyChart(
   });
 
   const failurePoints = buildFailurePoints(rawRecords);
+  const failureCodes = [...new Set(failurePoints.map((point) => point.error))].sort((a, b) =>
+    formatErrorCode(a).localeCompare(formatErrorCode(b), "ja"),
+  );
 
-  datasets.push({
-    label: "Failures",
-    type: "scatter",
-    order: 0,
-    data: failurePoints,
-    borderColor: "#f87171",
-    backgroundColor: "#f87171",
-    pointRadius: showPoints ? 3.5 : 0,
-    pointHoverRadius: showPoints ? 4 : 0,
-    pointStyle: "crossRot",
-    showLine: false,
-  });
+  for (const code of failureCodes) {
+    const color = ERROR_COLORS[code] ?? "#8b90a0";
+    datasets.push({
+      label: code,
+      type: "scatter",
+      order: 0,
+      data: failurePoints.filter((point) => point.error === code),
+      borderColor: color,
+      backgroundColor: color,
+      pointRadius: showPoints ? 3.5 : 0,
+      pointHoverRadius: showPoints ? 4 : 0,
+      pointStyle: "crossRot",
+      showLine: false,
+    });
+  }
 
   const canvas = document.getElementById("latencyChart") as HTMLCanvasElement | null;
   if (!canvas) return;
@@ -382,14 +389,14 @@ export function buildLatencyChart(
         legend: {
           labels: {
             color: "#e4e6ed",
-            filter: (item: { text: string }) => !isHiddenBand(item.text) && item.text !== "Failures",
+            filter: (item: { text: string }) => !isHiddenBand(item.text) && !isDnsErrorCode(item.text),
           },
         },
         tooltip: {
           filter: (item: TooltipItem<"line">) => isTooltipDataset(item.dataset.label),
           itemSort: (a: TooltipItem<"line">, b: TooltipItem<"line">) => {
-            const aFail = a.dataset.label === "Failures";
-            const bFail = b.dataset.label === "Failures";
+            const aFail = isDnsErrorCode(a.dataset.label);
+            const bFail = isDnsErrorCode(b.dataset.label);
             if (aFail !== bFail) return aFail ? 1 : -1;
             return String(a.label).localeCompare(String(b.label));
           },

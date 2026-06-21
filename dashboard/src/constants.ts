@@ -34,7 +34,9 @@ export const SERVER_COLORS = [
 ] as const;
 
 export const ERROR_COLORS: Record<string, string> = {
-  timeout: "#ef4444",
+  job_timeout: "#ef4444",
+  dns_timeout: "#dc2626",
+  timeout: "#f87171",
   no_response: "#f97316",
   no_nameserver: "#f59e0b",
   server_fail: "#eab308",
