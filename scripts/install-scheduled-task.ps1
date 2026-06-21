@@ -30,6 +30,10 @@ function Register-MonitorTask {
 Register-MonitorTask -TaskName "HomeMonitor-DNS-Collect" -VbsPath $RunCollectVbs -Schedule "MINUTE" -Modifier "1"
 Register-MonitorTask -TaskName "HomeMonitor-DNS-Publish" -VbsPath $RunPublishVbs -Schedule "HOURLY" -Modifier "1"
 
+# First hourly slot may be up to ~1h away; publish pending data now.
+schtasks.exe /Run /TN "HomeMonitor-DNS-Publish" | Out-Null
+Write-Host "Triggered initial publish run."
+
 Write-Host ""
 Write-Host "Setup complete."
 Write-Host "  Collect: every 1 minute (hidden)"
