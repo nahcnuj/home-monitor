@@ -21,21 +21,14 @@ export interface TimeoutSpan {
   end: number;
 }
 
-function segmentCrossesTimeout(prevX: number, nextX: number, spans: TimeoutSpan[]): boolean {
-  for (const { start, end } of spans) {
-    if (start < nextX && end > prevX) return true;
-  }
-  return false;
-}
-
-export function withGaps(points: ChartPoint[], spans: TimeoutSpan[] = []): ChartPoint[] {
+export function withGaps(points: ChartPoint[]): ChartPoint[] {
   if (points.length < 2) return points;
   const sorted = [...points].sort((a, b) => a.x - b.x);
   const result: ChartPoint[] = [sorted[0]];
   for (let i = 1; i < sorted.length; i++) {
     const prevX = sorted[i - 1].x;
     const nextX = sorted[i].x;
-    if (nextX - prevX > MAX_GAP_SEC || segmentCrossesTimeout(prevX, nextX, spans)) {
+    if (nextX - prevX > MAX_GAP_SEC) {
       result.push({ x: prevX, y: null });
     }
     result.push(sorted[i]);
@@ -48,19 +41,6 @@ function timeoutDurationSec(failure: DnsFailureRecord): number {
     return failure.duration_ms / 1000;
   }
   return MEASURE_INTERVAL_SEC;
-}
-
-export function timeoutSpansForServer(failures: DnsFailureRecord[], server: string): TimeoutSpan[] {
-  const buckets = new Map<number, number>();
-  for (const f of failures) {
-    if (f.dns_server !== server || f.error !== "timeout") continue;
-    const durationSec = timeoutDurationSec(f);
-    buckets.set(f.ts, Math.max(buckets.get(f.ts) ?? 0, durationSec));
-  }
-  return [...buckets.entries()].map(([start, durationSec]) => ({
-    start,
-    end: start + durationSec,
-  }));
 }
 
 export function timeoutRanges(failures: DnsRecord[]): TimeoutSpan[] {
