@@ -1,4 +1,5 @@
-import { MAX_GAP_SEC, MEASURE_INTERVAL_SEC } from "./constants.ts";
+import { monitorConfig } from "./config.ts";
+import { MAX_GAP_SEC } from "./constants.ts";
 import { isTimeoutError } from "./errors.ts";
 import type { ChartPoint, DnsFailureRecord, DnsRecord } from "./types.ts";
 
@@ -49,11 +50,11 @@ export function withGaps(points: ChartPoint[], breakTimestamps: readonly number[
   return result;
 }
 
-function timeoutDurationSec(failure: DnsFailureRecord): number {
+export function timeoutDurationSec(failure: DnsFailureRecord): number {
   if (failure.duration_ms && failure.duration_ms > 0) {
     return failure.duration_ms / 1000;
   }
-  return MEASURE_INTERVAL_SEC;
+  return monitorConfig.lookup_timeout_sec;
 }
 
 export function timeoutRanges(failures: DnsRecord[]): TimeoutSpan[] {
