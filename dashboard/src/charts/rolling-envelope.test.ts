@@ -92,4 +92,25 @@ describe("buildRollingEnvelope", () => {
     const envelope = buildRollingEnvelope(records, "203.165.31.152", [ts]);
     expect(envelope.max.find((point) => point.x === ts)?.y).toBe(520);
   });
+
+  it("marks timestamps with zero successes for band gaps", () => {
+    setDisplayRangeSec(HOUR_SEC);
+    const ts = 1000;
+    const records = parseTsv([
+      `${ts}\t203.165.31.152\ta.com\t200`,
+      `${ts + 60}\t203.165.31.152\tb.com\t\ttimeout`,
+      `${ts + 60}\t203.165.31.152\tc.com\t\ttimeout`,
+      `${ts + 120}\t203.165.31.152\td.com\t220`,
+      `${ts + 120}\t203.165.31.152\te.com\t230`,
+    ].join("\n"));
+
+    const envelope = buildRollingEnvelope(
+      records,
+      "203.165.31.152",
+      [ts, ts + 60, ts + 120],
+    );
+
+    expect(envelope.emptyTimestamps).toEqual([ts + 60]);
+    expect(envelope.max.some((point) => point.x === ts + 60)).toBe(false);
+  });
 });

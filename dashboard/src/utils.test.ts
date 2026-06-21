@@ -22,4 +22,17 @@ describe("withGaps", () => {
       { x: 400, y: 20 },
     ]);
   });
+
+  it("inserts a gap when a zero-success timestamp sits between points", () => {
+    const points = [
+      { x: 100, y: 10 },
+      { x: 160, y: 20 },
+    ];
+    const result = withGaps(points, [130]);
+    expect(result).toEqual([
+      { x: 100, y: 10 },
+      { x: 100, y: null },
+      { x: 160, y: 20 },
+    ]);
+  });
 });

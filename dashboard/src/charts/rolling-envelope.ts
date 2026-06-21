@@ -47,6 +47,7 @@ export interface RollingEnvelope {
   max: ChartPoint[];
   q1: ChartPoint[];
   q3: ChartPoint[];
+  emptyTimestamps: number[];
 }
 
 export function buildRollingEnvelope(
@@ -64,9 +65,14 @@ export function buildRollingEnvelope(
   const max: ChartPoint[] = [];
   const q1: ChartPoint[] = [];
   const q3: ChartPoint[] = [];
+  const emptyTimestamps: number[] = [];
 
   for (const ts of timestamps) {
     const values = latencyValuesInWindow(successes, ts, windowSec);
+    if (values.length === 0) {
+      emptyTimestamps.push(ts);
+      continue;
+    }
     if (values.length < MIN_SAMPLES) continue;
 
     const stats = boxplot(values);
@@ -76,5 +82,5 @@ export function buildRollingEnvelope(
     q3.push({ x: ts, y: stats.q3 });
   }
 
-  return { min, max, q1, q3 };
+  return { min, max, q1, q3, emptyTimestamps };
 }
