@@ -123,6 +123,24 @@ function Get-DnsError {
     return $null
 }
 
+function Add-FailureLine {
+    param(
+        [System.Collections.Generic.List[string]]$Lines,
+        [long]$Ts,
+        [string]$Resolver,
+        [string]$Domain,
+        [int]$LatencyMs,
+        [string]$ErrorCode
+    )
+
+    if ($LatencyMs -gt 0) {
+        $Lines.Add(("{0}`t{1}`t{2}`t{3}`t{4}" -f $Ts, $Resolver, $Domain, $LatencyMs, $ErrorCode))
+    }
+    else {
+        $Lines.Add(("{0}`t{1}`t{2}`t`t{3}" -f $Ts, $Resolver, $Domain, $ErrorCode))
+    }
+}
+
 function Test-DnsSuccess {
     param([string]$Output)
     $jaName = -join ([char]0x540D, [char]0x524D)
@@ -182,13 +200,15 @@ foreach ($result in ($lookupResults | Sort-Object Ts, Resolver, Domain)) {
     if ($result.Ts -le 0) { throw "Invalid timestamp: $($result.Ts)" }
 
     if ($result.Error -eq "job_timeout") {
-        $lines.Add(("{0}`t{1}`t{2}`t{3}`t{4}" -f $result.Ts, $result.Resolver, $result.Domain, $result.LatencyMs, $result.Error))
+        Add-FailureLine -Lines $lines -Ts $result.Ts -Resolver $result.Resolver -Domain $result.Domain `
+            -LatencyMs $result.LatencyMs -ErrorCode $result.Error
         continue
     }
 
     $dnsError = Get-DnsError -Output $result.Output
     if ($dnsError) {
-        $lines.Add(("{0}`t{1}`t{2}`t`t{3}" -f $result.Ts, $result.Resolver, $result.Domain, $dnsError))
+        Add-FailureLine -Lines $lines -Ts $result.Ts -Resolver $result.Resolver -Domain $result.Domain `
+            -LatencyMs $result.LatencyMs -ErrorCode $dnsError
         continue
     }
 
@@ -196,7 +216,8 @@ foreach ($result in ($lookupResults | Sort-Object Ts, Resolver, Domain)) {
         $lines.Add(("{0}`t{1}`t{2}`t{3}" -f $result.Ts, $result.Resolver, $result.Domain, $result.LatencyMs))
     }
     else {
-        $lines.Add(("{0}`t{1}`t{2}`t`t{3}" -f $result.Ts, $result.Resolver, $result.Domain, "unknown"))
+        Add-FailureLine -Lines $lines -Ts $result.Ts -Resolver $result.Resolver -Domain $result.Domain `
+            -LatencyMs $result.LatencyMs -ErrorCode "unknown"
     }
 }
 

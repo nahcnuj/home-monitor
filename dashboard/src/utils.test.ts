@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { withGaps } from "./utils.ts";
+import { monitorConfig } from "./config.ts";
+import { parseTsv } from "./data.ts";
+import type { DnsFailureRecord } from "./types.ts";
+import { timeoutDurationSec, timeoutRanges, withGaps } from "./utils.ts";
 
 describe("withGaps", () => {
   it("does not insert gaps between nearby points", () => {
@@ -21,6 +24,23 @@ describe("withGaps", () => {
       { x: 100, y: null },
       { x: 400, y: 20 },
     ]);
+  });
+
+  it("uses measured duration for timeout shading when duration_ms is present", () => {
+    const [failure] = parseTsv("1782000000\t203.165.31.152\tgoogle.com\t15000\tjob_timeout");
+    expect(timeoutDurationSec(failure as DnsFailureRecord)).toBe(15);
+
+    const ranges = timeoutRanges(parseTsv([
+      "1782000000\t203.165.31.152\tgoogle.com\t15000\tjob_timeout",
+      "1782000000\t203.165.31.152\tline.me\t8200\tdns_timeout",
+    ].join("\n")));
+
+    expect(ranges).toEqual([{ start: 1782000000, end: 1782000000 + 15 }]);
+  });
+
+  it("falls back to lookup_timeout_sec when timeout rows omit duration_ms", () => {
+    const [failure] = parseTsv("1782000000\t203.165.31.152\tgoogle.com\t\ttimeout");
+    expect(timeoutDurationSec(failure as DnsFailureRecord)).toBe(monitorConfig.lookup_timeout_sec);
   });
 
   it("inserts a gap when a zero-success timestamp sits between points", () => {
