@@ -1,6 +1,10 @@
 import "chart.js";
 
 declare module "chart.js" {
+  interface TooltipPositionerMap {
+    errorBarBelow: TooltipPositioner;
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   interface PluginOptionsByType<TType extends keyof ChartTypeRegistry> {
     chartRegions?: {
