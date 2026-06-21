@@ -1,9 +1,18 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { aggregateByServer, computeStats, filterByPeriod, parseTsv } from "./data.ts";
-import { sampleTsv } from "./test/fixtures.ts";
 import { setDataCutoffTs, setDisplayRangeSec } from "./state.ts";
+import { sampleTsv } from "./test/fixtures.ts";
 
 describe("parseTsv", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({
+      now: new Date(2026, 5, 21, 15, 0, 0),
+    });
+  });
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("parses published dns-latency.tsv without NaN latencies", () => {
     const records = parseTsv(sampleTsv);
     expect(records.length).toBeGreaterThan(0);
