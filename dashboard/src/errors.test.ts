@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { formatErrorCode, isDnsErrorCode, isTimeoutError } from "./errors.ts";
+import {
+  formatErrorCode,
+  formatErrorDescription,
+  isDnsErrorCode,
+  isTimeoutError,
+} from "./errors.ts";
 
 describe("error codes", () => {
   it("maps known codes to Japanese labels", () => {
@@ -13,6 +18,13 @@ describe("error codes", () => {
     expect(isTimeoutError("dns_timeout")).toBe(true);
     expect(isTimeoutError("timeout")).toBe(true);
     expect(isTimeoutError("no_response")).toBe(false);
+  });
+
+  it("describes current error codes but not legacy timeout", () => {
+    expect(formatErrorDescription("job_timeout")).toContain("計測側");
+    expect(formatErrorDescription("dns_timeout")).toContain("nslookup");
+    expect(formatErrorDescription("no_response")).toBeTruthy();
+    expect(formatErrorDescription("timeout")).toBeUndefined();
   });
 
   it("detects dns error dataset labels", () => {
