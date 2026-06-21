@@ -244,7 +244,7 @@ export function buildLatencyChart(
     datasets.push({
       label: `${server} max`,
       order: 3,
-      data: withGaps(envelope.max),
+      data: withGaps(envelope.max, envelope.emptyTimestamps),
       borderColor: "transparent",
       backgroundColor: "transparent",
       borderWidth: 0,
@@ -256,7 +256,7 @@ export function buildLatencyChart(
     datasets.push({
       label: `${server} min`,
       order: 3,
-      data: withGaps(envelope.min),
+      data: withGaps(envelope.min, envelope.emptyTimestamps),
       borderColor: "transparent",
       backgroundColor: withAlpha(color, minMaxBandAlpha),
       borderWidth: 0,
@@ -268,7 +268,7 @@ export function buildLatencyChart(
     datasets.push({
       label: `${server} q3`,
       order: 3,
-      data: withGaps(envelope.q3),
+      data: withGaps(envelope.q3, envelope.emptyTimestamps),
       borderColor: "transparent",
       backgroundColor: "transparent",
       borderWidth: 0,
@@ -280,7 +280,7 @@ export function buildLatencyChart(
     datasets.push({
       label: `${server} q1`,
       order: 3,
-      data: withGaps(envelope.q1),
+      data: withGaps(envelope.q1, envelope.emptyTimestamps),
       borderColor: "transparent",
       backgroundColor: withAlpha(color, iqrBandAlpha),
       borderWidth: 0,

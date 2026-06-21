@@ -21,14 +21,26 @@ export interface TimeoutSpan {
   end: number;
 }
 
-export function withGaps(points: ChartPoint[]): ChartPoint[] {
+function segmentNeedsGap(
+  prevX: number,
+  nextX: number,
+  breakTimestamps: readonly number[],
+): boolean {
+  if (nextX - prevX > MAX_GAP_SEC) return true;
+  for (const ts of breakTimestamps) {
+    if (ts > prevX && ts < nextX) return true;
+  }
+  return false;
+}
+
+export function withGaps(points: ChartPoint[], breakTimestamps: readonly number[] = []): ChartPoint[] {
   if (points.length < 2) return points;
   const sorted = [...points].sort((a, b) => a.x - b.x);
   const result: ChartPoint[] = [sorted[0]];
   for (let i = 1; i < sorted.length; i++) {
     const prevX = sorted[i - 1].x;
     const nextX = sorted[i].x;
-    if (nextX - prevX > MAX_GAP_SEC) {
+    if (segmentNeedsGap(prevX, nextX, breakTimestamps)) {
       result.push({ x: prevX, y: null });
     }
     result.push(sorted[i]);
