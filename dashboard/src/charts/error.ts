@@ -1,4 +1,4 @@
-import { Chart } from "chart.js";
+import { Chart, Tooltip, type TooltipItem } from "chart.js";
 import { ERROR_COLORS, SERVER_COLORS } from "../constants.ts";
 import { formatErrorCode, formatErrorDescription } from "../errors.ts";
 
@@ -11,9 +11,40 @@ interface ErrorBarDataset {
   borderRadius: BorderRadius;
 }
 
+type TooltipBarElement = { x: number; base: number };
+
 let errorChart: Chart<"bar"> | null = null;
+let errorBarPositionerRegistered = false;
 
 type BorderRadius = number | { topLeft: number; bottomLeft: number; topRight: number; bottomRight: number };
+
+export function errorTooltipAnchor(
+  bar: TooltipBarElement,
+  chartAreaBottom: number,
+): { x: number; y: number } {
+  const left = Math.min(bar.x, bar.base);
+  const right = Math.max(bar.x, bar.base);
+  return {
+    x: (left + right) / 2,
+    y: chartAreaBottom + 8,
+  };
+}
+
+function registerErrorBarTooltipPositioner(): void {
+  if (errorBarPositionerRegistered) return;
+
+  Tooltip.positioners.errorBarBelow = (
+    items: TooltipItem<"bar">[],
+    _eventPosition: { x: number; y: number },
+  ) => {
+    if (!items.length) return false;
+    const chart = items[0].chart;
+    const bar = items[0].element as unknown as TooltipBarElement;
+    return errorTooltipAnchor(bar, chart.chartArea.bottom);
+  };
+
+  errorBarPositionerRegistered = true;
+}
 
 function errorBandRadius(index: number, count: number): BorderRadius {
   if (count <= 1) return 6;
@@ -27,6 +58,8 @@ export function getErrorChart(): Chart<"bar"> | null {
 }
 
 export function buildErrorChart(errors: Record<string, number>): void {
+  registerErrorBarTooltipPositioner();
+
   const codes = Object.keys(errors).sort((a, b) => errors[b] - errors[a]);
   const total = codes.reduce((sum, code) => sum + errors[code], 0);
   const canvas = document.getElementById("errorChart") as HTMLCanvasElement | null;
@@ -79,6 +112,10 @@ export function buildErrorChart(errors: Record<string, number>): void {
         legend: { display: false },
         tooltip: {
           filter: () => codes.length > 0,
+          position: "errorBarBelow",
+          xAlign: "center",
+          yAlign: "top",
+          caretPadding: 4,
           callbacks: {
             label(ctx) {
               const dataset = ctx.dataset as ErrorBarDataset;
