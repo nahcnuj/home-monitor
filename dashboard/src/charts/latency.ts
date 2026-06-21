@@ -104,6 +104,13 @@ export function isTooltipDataset(label: string | undefined): boolean {
   return !!label && !isHiddenBand(label);
 }
 
+function pointTimestamp(point: unknown): number | null {
+  if (typeof point !== "object" || point === null || !("x" in point)) return null;
+  const x = point.x;
+  if (typeof x !== "number" || Number.isNaN(x)) return null;
+  return Math.round(x);
+}
+
 export function collectActiveElementsAtBatch(
   chart: Chart,
   ts: number,
@@ -114,15 +121,29 @@ export function collectActiveElementsAtBatch(
     if (!isTooltipDataset(dataset.label)) return;
 
     dataset.data.forEach((point, index) => {
-      const x = typeof point === "object" && point !== null && "x" in point
-        ? point.x
-        : null;
-      if (x === ts) {
+      if (pointTimestamp(point) === ts) {
         active.push({ datasetIndex, index });
       }
     });
   });
 
+  return active;
+}
+
+function applyBatchTooltip(
+  chart: Chart,
+  batchTimestamps: readonly number[],
+  pixelX: number,
+  pixelY: number,
+): { datasetIndex: number; index: number }[] | null {
+  const ts = resolveTooltipBatchTsFromPixel(chart, batchTimestamps, pixelX);
+  if (ts == null) return null;
+
+  const active = collectActiveElementsAtBatch(chart, ts);
+  if (!active.length) return null;
+
+  chart.setActiveElements(active);
+  chart.tooltip?.setActiveElements(active, { x: pixelX, y: pixelY });
   return active;
 }
 
@@ -141,19 +162,17 @@ function createBatchTooltipPlugin(batchTimestamps: readonly number[]): Plugin<"l
       if (event.type !== "mousemove") return;
 
       const pixelX = event.x;
-      if (pixelX == null) return;
+      const pixelY = event.y;
+      if (pixelX == null || pixelY == null) return;
 
-      const ts = resolveTooltipBatchTsFromPixel(chart, batchTimestamps, pixelX);
-      if (ts == null) return;
+      const active = applyBatchTooltip(chart, batchTimestamps, pixelX, pixelY);
+      if (!active) return;
 
-      const active = collectActiveElementsAtBatch(chart, ts);
-      if (!active.length) return;
-
-      const key = `${ts}:${active.map((item) => `${item.datasetIndex}:${item.index}`).join(",")}`;
+      const key = active.map((item) => `${item.datasetIndex}:${item.index}`).join(",");
       if (key === lastKey) return;
       lastKey = key;
 
-      chart.setActiveElements(active);
+      args.changed = true;
     },
   };
 }
@@ -258,6 +277,7 @@ export function buildLatencyChart(
 
   datasets.push({
     label: "Failures",
+    type: "scatter",
     order: 0,
     data: failurePoints,
     borderColor: "#f87171",

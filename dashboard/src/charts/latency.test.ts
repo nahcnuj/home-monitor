@@ -55,15 +55,21 @@ describe("buildTooltipLines", () => {
 });
 
 describe("collectActiveElementsAtBatch", () => {
-  it("selects server and failure points at the same timestamp", () => {
+  it("selects every success and failure point at the same timestamp", () => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date(1782003500 * 1000));
+    vi.setSystemTime(new Date(1782008900 * 1000));
     setDisplayRangeSec(24 * 3600);
     setDataCutoffTs(0);
 
     const records = parseTsv([
-      "1782003423\t203.165.31.152\tamazon.co.jp\t\ttimeout",
-      "1782003423\t203.165.31.152\tline.me\t188",
+      "1782008823\t203.165.31.152\tamazon.co.jp\t167",
+      "1782008823\t203.165.31.152\tapple.com\t228",
+      "1782008823\t203.165.31.152\tcloudflare.com\t232",
+      "1782008823\t203.165.31.152\tgithub.com\t\ttimeout",
+      "1782008823\t203.165.31.152\tgoogle.com\t\ttimeout",
+      "1782008823\t203.165.31.152\tline.me\t\ttimeout",
+      "1782008823\t203.165.31.152\tmicrosoft.com\t\ttimeout",
+      "1782008823\t203.165.31.152\tyahoo.co.jp\t\ttimeout",
     ].join("\n"));
     const filtered = filterByPeriod(records, 0);
     const { successes, failures } = aggregateByServer(filtered);
@@ -72,8 +78,8 @@ describe("collectActiveElementsAtBatch", () => {
     const chart = getLatencyChart();
     expect(chart).not.toBeNull();
 
-    const active = collectActiveElementsAtBatch(chart!, 1782003423);
-    expect(active).toHaveLength(2);
+    const active = collectActiveElementsAtBatch(chart!, 1782008823);
+    expect(active).toHaveLength(8);
     expect(isTooltipDataset("203.165.31.152")).toBe(true);
     expect(isTooltipDataset("Failures")).toBe(true);
     expect(isTooltipDataset("203.165.31.152 q1")).toBe(false);
