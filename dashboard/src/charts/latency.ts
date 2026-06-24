@@ -4,7 +4,7 @@ import {
   type Plugin,
   type TooltipItem,
 } from "chart.js";
-import { ERROR_COLORS, HIDE_LATENCY_POINTS_RANGE_SEC, SERVER_COLORS } from "../constants.ts";
+import { ERROR_COLORS, HIDE_LATENCY_POINTS_RANGE_SEC, MAX_GAP_SEC, SERVER_COLORS } from "../constants.ts";
 import { formatErrorCode, isDnsErrorCode } from "../errors.ts";
 import { displayRangeSec } from "../state.ts";
 import { buildRollingEnvelope, collectTimelineTimestamps } from "./rolling-envelope.ts";
@@ -243,7 +243,8 @@ export function buildLatencyChart(
   const batchTimestamps = collectBatchTimestamps(rawRecords);
   const latestDataTs = rawRecords.length ? Math.max(...rawRecords.map((r) => r.ts)) : null;
   const xBounds = chartTimeBounds(undefined, latestDataTs);
-  const timestamps = collectTimelineTimestamps(rawRecords, xBounds.min, xBounds.max);
+  const { timestamps, step } = collectTimelineTimestamps(rawRecords, xBounds.min, xBounds.max);
+  const maxGapSec = Math.max(MAX_GAP_SEC, MAX_GAP_SEC * step);
   const servers = [...new Set(rawRecords.filter(isSuccess).map((r) => r.dns_server))].sort();
   const datasets: ChartConfiguration["data"]["datasets"] = [];
   const showPoints = shouldShowLatencyPoints();
@@ -257,7 +258,7 @@ export function buildLatencyChart(
     datasets.push({
       label: `${server} max`,
       order: 3,
-      data: withGaps(envelope.max, envelope.emptyTimestamps),
+      data: withGaps(envelope.max, envelope.emptyTimestamps, maxGapSec),
       borderColor: "transparent",
       backgroundColor: "transparent",
       borderWidth: 0,
@@ -269,7 +270,7 @@ export function buildLatencyChart(
     datasets.push({
       label: `${server} min`,
       order: 3,
-      data: withGaps(envelope.min, envelope.emptyTimestamps),
+      data: withGaps(envelope.min, envelope.emptyTimestamps, maxGapSec),
       borderColor: "transparent",
       backgroundColor: withAlpha(color, minMaxBandAlpha),
       borderWidth: 0,
@@ -281,7 +282,7 @@ export function buildLatencyChart(
     datasets.push({
       label: `${server} q3`,
       order: 3,
-      data: withGaps(envelope.q3, envelope.emptyTimestamps),
+      data: withGaps(envelope.q3, envelope.emptyTimestamps, maxGapSec),
       borderColor: "transparent",
       backgroundColor: "transparent",
       borderWidth: 0,
@@ -293,7 +294,7 @@ export function buildLatencyChart(
     datasets.push({
       label: `${server} q1`,
       order: 3,
-      data: withGaps(envelope.q1, envelope.emptyTimestamps),
+      data: withGaps(envelope.q1, envelope.emptyTimestamps, maxGapSec),
       borderColor: "transparent",
       backgroundColor: withAlpha(color, iqrBandAlpha),
       borderWidth: 0,
