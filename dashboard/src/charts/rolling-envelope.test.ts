@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { DAY_SEC, HOUR_SEC, MIN_SEC } from "../constants.ts";
 import { parseTsv } from "../data.ts";
 import { setDisplayRangeSec } from "../state.ts";
-import { buildRollingEnvelope, envelopeWindowSec } from "./rolling-envelope.ts";
+import { buildRollingEnvelope, collectTimelineTimestamps, envelopeWindowSec } from "./rolling-envelope.ts";
 
 describe("envelopeWindowSec", () => {
   it("uses same-second samples below 6h and wider windows above", () => {
@@ -11,6 +11,31 @@ describe("envelopeWindowSec", () => {
     expect(envelopeWindowSec(12 * HOUR_SEC)).toBe(HOUR_SEC);
     expect(envelopeWindowSec(24 * HOUR_SEC)).toBe(HOUR_SEC);
     expect(envelopeWindowSec(7 * DAY_SEC)).toBe(DAY_SEC);
+  });
+});
+
+describe("collectTimelineTimestamps", () => {
+  it("returns step 1 and all timestamps if count is <= 400", () => {
+    const records = [
+      { ts: 100, dns_server: "a", latency_ms: 10 },
+      { ts: 200, dns_server: "a", latency_ms: 20 },
+    ] as any;
+    const result = collectTimelineTimestamps(records, 0, 1000);
+    expect(result.step).toBe(1);
+    expect(result.timestamps).toEqual([100, 200]);
+  });
+
+  it("downsamples timestamps and returns step > 1 if count > 400", () => {
+    const records = Array.from({ length: 800 }, (_, i) => ({
+      ts: i * 60,
+      dns_server: "a",
+      latency_ms: 10,
+    })) as any;
+    const result = collectTimelineTimestamps(records, 0, 800 * 60);
+    expect(result.step).toBe(2);
+    expect(result.timestamps.length).toBe(400);
+    expect(result.timestamps[0]).toBe(0);
+    expect(result.timestamps[1]).toBe(120);
   });
 });
 

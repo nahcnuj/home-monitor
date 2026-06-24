@@ -26,6 +26,15 @@ describe("withGaps", () => {
     ]);
   });
 
+  it("does not insert a gap if distance is within custom maxGapSec", () => {
+    const points = [
+      { x: 100, y: 10 },
+      { x: 400, y: 20 },
+    ];
+    // With maxGapSec = 500, a distance of 300 should not insert a gap
+    expect(withGaps(points, [], 500)).toEqual(points);
+  });
+
   it("uses measured duration for timeout shading when duration_ms is present", () => {
     const [failure] = parseTsv("1782000000\t203.165.31.152\tgoogle.com\t15000\tjob_timeout");
     expect(timeoutDurationSec(failure as DnsFailureRecord)).toBe(15);
