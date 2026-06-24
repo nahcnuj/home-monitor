@@ -74,15 +74,22 @@ header h1 { font-size: 1.5rem; font-weight: 600; }
 
 .range-btn.active:hover { background: #4a7ad4; }
 
-main { max-width: 1100px; margin: 0 auto; padding: 1.5rem 2rem 3rem; }
+main {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1.5rem 2rem 3rem;
+  display: flex;
+  flex-direction: column;
+}
 
-.last-updated { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1.5rem; }
+.last-updated { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1.5rem; order: 1; }
 
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 1rem;
   margin-bottom: 2rem;
+  order: 3;
 }
 
 .stat-card {
@@ -103,7 +110,11 @@ main { max-width: 1100px; margin: 0 auto; padding: 1.5rem 2rem 3rem; }
 .stat-card .value.error-rate { color: var(--error); }
 .stat-card .value.ok { color: var(--success); }
 
+.charts { display: contents; }
 .chart-section { margin-bottom: 2rem; }
+.chart-section--latency { order: 2; }
+.chart-section--error { order: 4; }
+
 .chart-section h2 { font-size: 1rem; font-weight: 500; margin-bottom: 1rem; color: var(--text-muted); }
 
 .chart-hint {
@@ -118,10 +129,10 @@ main { max-width: 1100px; margin: 0 auto; padding: 1.5rem 2rem 3rem; }
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 1rem;
-  height: 360px;
+  height: 420px;
 }
 
-.chart-container--short { height: 240px; }
+.chart-container--short { height: 280px; }
 
 @media (min-width: 1000px) and (min-height: 600px) {
   html, body {
@@ -177,12 +188,14 @@ main { max-width: 1100px; margin: 0 auto; padding: 1.5rem 2rem 3rem; }
   }
 
   .last-updated {
+    order: unset;
     flex-shrink: 0;
     font-size: 0.75rem;
     margin-bottom: 0.375rem;
   }
 
   .stats-grid {
+    order: unset;
     flex-shrink: 0;
     grid-template-columns: repeat(5, 1fr);
     gap: 0.5rem;
@@ -204,6 +217,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 1.5rem 2rem 3rem; }
   }
 
   .charts {
+    order: unset;
     flex: 1;
     display: flex;
     flex-direction: column;
@@ -219,10 +233,12 @@ main { max-width: 1100px; margin: 0 auto; padding: 1.5rem 2rem 3rem; }
   }
 
   .chart-section--latency {
+    order: unset;
     flex: 3;
   }
 
   .chart-section--error {
+    order: unset;
     flex: 1.25;
   }
 
