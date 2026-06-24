@@ -43,33 +43,18 @@ describe("chartTimeBounds", () => {
     ),
   )("falls back to the current minute when short ranges have no data (%s)", (_label, rangeSec) => {
     setDisplayRangeSec(rangeSec);
-    const bounds = chartTimeBounds(SAMPLE_NOW, null);
+    const bounds = chartTimeBounds(SAMPLE_NOW);
     expect(bounds.max % MIN_SEC).toBe(0);
     expect(bounds.max).toBe(Math.ceil(SAMPLE_NOW / MIN_SEC) * MIN_SEC);
   });
 
   it("uses the next JST hour for the 1h preset without data", () => {
     setDisplayRangeSec(HOUR_SEC);
-    const bounds = chartTimeBounds(SAMPLE_NOW, null);
+    const bounds = chartTimeBounds(SAMPLE_NOW);
     expect(bounds.max).toBe(SAMPLE_NOW - (SAMPLE_NOW % HOUR_SEC) + HOUR_SEC);
     expect(isJstOnTheHour(bounds.max)).toBe(true);
   });
 
-  it.each(
-    RANGE_PRESETS.filter((preset) => preset.seconds <= HOUR_SEC).map(
-      (preset) => [preset.label, preset.seconds] as const,
-    ),
-  )("anchors sub-hour ranges to the latest data timestamp (%s)", (_label, rangeSec) => {
-    setDisplayRangeSec(rangeSec);
-    const latestDataTs = SAMPLE_NOW - 2 * MIN_SEC;
-    const bounds = chartTimeBounds(SAMPLE_NOW, latestDataTs);
-    const expectedMax = Math.ceil(latestDataTs / MIN_SEC) * MIN_SEC;
-
-    expect(bounds.max).toBe(expectedMax);
-    expect(bounds.max).toBeLessThanOrEqual(SAMPLE_NOW);
-    expect(bounds.max).toBeLessThan(ceilToHour(SAMPLE_NOW));
-    expect(bounds.min).toBe(bounds.max - rangeSec);
-  });
 
   it("uses the next JST midnight for the 24h preset at 23:25 JST", () => {
     setDisplayRangeSec(DAY_SEC);

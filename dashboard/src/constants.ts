@@ -5,7 +5,6 @@ export const STORAGE_KEY = "dns-monitor-display-range-sec";
 export const LEGACY_STORAGE_KEY = "dns-monitor-display-hours";
 
 export const RANGE_PRESETS: RangePreset[] = [
-  { seconds: 10 * 60, label: "10m" },
   { seconds: 30 * 60, label: "30m" },
   { seconds: 3600, label: "1h" },
   { seconds: 3 * 3600, label: "3h" },
