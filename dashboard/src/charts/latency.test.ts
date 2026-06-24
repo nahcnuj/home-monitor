@@ -149,25 +149,7 @@ describe("buildLatencyChart", () => {
     expect(getLatencyChart()).not.toBeNull();
   });
 
-  it("anchors the x-axis to latest data for sub-hour ranges", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date(1781967900 * 1000));
 
-    setDisplayRangeSec(HOUR_SEC);
-    const records = parseTsv(sampleTsv);
-    const filtered = filterByPeriod(records, 1781967600);
-    const { successes, failures } = aggregateByServer(filtered);
-    const latestTs = Math.max(...filtered.map((r) => r.ts));
-
-    buildLatencyChart(filtered, successes, failures, 1781967600);
-
-    const chart = getLatencyChart();
-    const expected = chartTimeBounds(undefined, latestTs);
-    expect(chart?.options.scales?.x?.max).toBe(expected.max);
-    expect(expected.max).toBeLessThan(chartTimeBounds(undefined, null).max);
-
-    vi.useRealTimers();
-  });
 
   it("pins the x-axis right edge to JST on-the-hour for the default 24h range", () => {
     vi.useFakeTimers();

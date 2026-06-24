@@ -52,14 +52,12 @@ export function chartTickStep(rangeSec: number): number {
   return DAY_SEC;
 }
 
-export function chartTimeBounds(nowSec?: number, latestDataTs?: number | null): TimeBounds {
+export function chartTimeBounds(nowSec?: number): TimeBounds {
   const now = nowSec ?? Math.floor(Date.now() / 1000);
   const rangeSec = displayRangeSec;
   const tickStep = chartTickStep(rangeSec);
   let max: number;
-  if (rangeSec <= HOUR_SEC && latestDataTs != null && latestDataTs > 0) {
-    max = ceilToMinute(Math.min(latestDataTs, now));
-  } else if (rangeSec > DAY_SEC) {
+  if (rangeSec > DAY_SEC) {
     max = nextJstDay(now);
   } else if (rangeSec < HOUR_SEC) {
     max = ceilToMinute(now);

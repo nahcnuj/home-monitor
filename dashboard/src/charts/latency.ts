@@ -241,8 +241,8 @@ export function buildLatencyChart(
 ): void {
   const allFailures = listFailures(rawRecords);
   const batchTimestamps = collectBatchTimestamps(rawRecords);
-  const latestDataTs = rawRecords.length ? Math.max(...rawRecords.map((r) => r.ts)) : null;
-  const xBounds = chartTimeBounds(undefined, latestDataTs);
+
+  const xBounds = chartTimeBounds();
   const { timestamps, step } = collectTimelineTimestamps(rawRecords, xBounds.min, xBounds.max);
   const maxGapSec = Math.max(MAX_GAP_SEC, MAX_GAP_SEC * step);
   const servers = [...new Set(rawRecords.filter(isSuccess).map((r) => r.dns_server))].sort();
