@@ -27,22 +27,27 @@ function segmentNeedsGap(
   prevX: number,
   nextX: number,
   breakTimestamps: readonly number[],
+  maxGapSec: number
 ): boolean {
-  if (nextX - prevX > MAX_GAP_SEC) return true;
+  if (nextX - prevX > maxGapSec) return true;
   for (const ts of breakTimestamps) {
     if (ts > prevX && ts < nextX) return true;
   }
   return false;
 }
 
-export function withGaps(points: ChartPoint[], breakTimestamps: readonly number[] = []): ChartPoint[] {
+export function withGaps(
+  points: ChartPoint[],
+  breakTimestamps: readonly number[] = [],
+  maxGapSec: number = MAX_GAP_SEC
+): ChartPoint[] {
   if (points.length < 2) return points;
   const sorted = [...points].sort((a, b) => a.x - b.x);
   const result: ChartPoint[] = [sorted[0]];
   for (let i = 1; i < sorted.length; i++) {
     const prevX = sorted[i - 1].x;
     const nextX = sorted[i].x;
-    if (segmentNeedsGap(prevX, nextX, breakTimestamps)) {
+    if (segmentNeedsGap(prevX, nextX, breakTimestamps, maxGapSec)) {
       result.push({ x: prevX, y: null });
     }
     result.push(sorted[i]);

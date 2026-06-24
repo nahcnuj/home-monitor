@@ -30,16 +30,16 @@ function latencyValuesInWindow(
     .map((r) => r.latency_ms);
 }
 
-export function collectTimelineTimestamps(records: DnsRecord[], min: number, max: number): number[] {
+export function collectTimelineTimestamps(records: DnsRecord[], min: number, max: number): { timestamps: number[], step: number } {
   const ts = new Set<number>();
   for (const r of records) {
     if (r.ts >= min && r.ts <= max) ts.add(r.ts);
   }
   const sorted = [...ts].sort((a, b) => a - b);
   const maxPoints = 400;
-  if (sorted.length <= maxPoints) return sorted;
+  if (sorted.length <= maxPoints) return { timestamps: sorted, step: 1 };
   const step = Math.ceil(sorted.length / maxPoints);
-  return sorted.filter((_, index) => index % step === 0);
+  return { timestamps: sorted.filter((_, index) => index % step === 0), step };
 }
 
 export interface RollingEnvelope {
