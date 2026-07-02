@@ -20,7 +20,7 @@ export const monitorConfig = {
     "line.me",
     "203-165-31-152.rev.home.ne.jp",
   ],
-  lookup_timeout_sec: 15,
+  lookup_timeout_sec: 60,
   data_cutoff_ts: 1782000000, // 2026-06-21 09:00 JST
   display_hours: 24,
   publish_interval_min: 10,
