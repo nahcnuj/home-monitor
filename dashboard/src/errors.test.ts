@@ -21,7 +21,7 @@ describe("error codes", () => {
   });
 
   it("describes current error codes in one line but not legacy timeout", () => {
-    expect(formatErrorDescription("job_timeout")).toBe("設定 15秒で打ち切り（nslookup 未完了）");
+    expect(formatErrorDescription("job_timeout")).toBe("設定 60秒で打ち切り（nslookup 未完了）");
     expect(formatErrorDescription("dns_timeout")).toBe("nslookup が DNS 応答 timeout を返した");
     expect(formatErrorDescription("no_response")).toBe("リゾルバから応答なし");
     expect(formatErrorDescription("timeout")).toBeUndefined();
