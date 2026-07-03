@@ -12,7 +12,6 @@ export const RANGE_PRESETS: RangePreset[] = [
   { seconds: 12 * 3600, label: "12h" },
   { seconds: 24 * 3600, label: "24h" },
   { seconds: 72 * 3600, label: "3d" },
-  { seconds: 168 * 3600, label: "7d" },
 ];
 
 export const HOUR_SEC = 3600;
