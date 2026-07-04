@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { aggregateByServer, computeStats, filterByPeriod, parseTsv } from "./data.ts";
+import { aggregateByServer, computeStats, filterByPeriod, parseTsv, percentile } from "./data.ts";
 import { setDataCutoffTs, setDisplayRangeSec } from "./state.ts";
 import { sampleTsv } from "./test/fixtures.ts";
 
@@ -57,6 +57,36 @@ describe("computeStats", () => {
     ].join("\n"));
 
     expect(computeStats(records).uptime).toBeCloseTo(66.7, 1);
+  });
+
+  it("computes p95 and max", () => {
+    const records = parseTsv([
+      "1000\t203.165.31.152\td1\t10",
+      "1000\t203.165.31.152\td1\t20",
+      "1000\t203.165.31.152\td1\t30",
+      "1000\t203.165.31.152\td1\t40",
+      "1000\t203.165.31.152\td1\t1000", // outlier
+    ].join("\n"));
+
+    const stats = computeStats(records);
+    // n=5 → ceil(0.95*5)-1 = 4 → picks the largest (this impl's p95 for small n)
+    expect(stats.p95).toBe(1000);
+    expect(stats.max).toBe(1000);
+  });
+});
+
+describe("percentile", () => {
+  it("returns 0 for empty input", () => {
+    expect(percentile([], 95)).toBe(0);
+  });
+
+  it("picks the appropriate order statistic for p95", () => {
+    // n=5: ceil(4.75)-1 = 4 → last element for p95 with this impl
+    expect(percentile([10, 20, 30, 40, 1000], 95)).toBe(1000);
+    // n=21 case similar to chart test: mostly low + outlier → p95 from lows
+    const lows = Array.from({ length: 20 }, (_, i) => 100 + i);
+    const vals = [...lows, 5000];
+    expect(percentile(vals, 95)).toBe(lows[19]); // index 19
   });
 });
 

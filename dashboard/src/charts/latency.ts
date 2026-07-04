@@ -6,6 +6,7 @@ import {
 } from "chart.js";
 import { ERROR_COLORS, HIDE_LATENCY_POINTS_RANGE_SEC, MAX_GAP_SEC, SERVER_COLORS } from "../constants.ts";
 import { formatErrorCode, isDnsErrorCode } from "../errors.ts";
+import { percentile } from "../data.ts";
 import { displayRangeSec } from "../state.ts";
 import { buildRollingEnvelope, collectTimelineTimestamps } from "./rolling-envelope.ts";
 import { chartTimeBounds, fmtAxisTick, fmtJst } from "../time.ts";
@@ -242,6 +243,11 @@ export function buildLatencyChart(
   const allFailures = listFailures(rawRecords);
   const batchTimestamps = collectBatchTimestamps(rawRecords);
 
+  const successesForP95 = rawRecords.filter(isSuccess);
+  const latencies = successesForP95.map((r) => r.latency_ms);
+  const p95 = percentile(latencies, 95);
+  const yMax = p95 > 0 ? p95 * 2 : undefined;
+
   const xBounds = chartTimeBounds();
   const { timestamps, step } = collectTimelineTimestamps(rawRecords, xBounds.min, xBounds.max);
   const maxGapSec = Math.max(MAX_GAP_SEC, MAX_GAP_SEC * step);
@@ -378,6 +384,7 @@ export function buildLatencyChart(
           grid: { color: "#2a2e3d" },
           ticks: { color: "#8b90a0" },
           min: 0,
+          ...(yMax != null ? { max: yMax } : {}),
         },
       },
       plugins: {
