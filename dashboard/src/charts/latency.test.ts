@@ -1,6 +1,6 @@
 import { Chart, registerables } from "chart.js";
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { aggregateByServer, filterByPeriod, parseTsv } from "../data.ts";
+import { aggregateByServer, computeStats, filterByPeriod, parseTsv } from "../data.ts";
 import { chartRegionsPlugin, errorBandLabelsPlugin } from "./plugins.ts";
 import {
   buildFailurePoints,
@@ -149,7 +149,33 @@ describe("buildLatencyChart", () => {
     expect(getLatencyChart()).not.toBeNull();
   });
 
+  it("sets y-axis max to p95 * 2 (consistent with computeStats), including when outliers exceed it", () => {
+    // 20 low latencies + 1 high outlier.
+    // n=21 → ceil(0.95 * 21) - 1 = 19 → p95 picks from the low values, max is the outlier.
+    const lines: string[] = [];
+    const baseTs = 1781967602;
+    for (let i = 0; i < 20; i++) {
+      lines.push(`${baseTs + i * 60}\t203.165.31.152\texample.com\t${100 + (i % 50)}`);
+    }
+    lines.push(`${baseTs + 2000}\t203.165.31.152\texample.com\t5000`);
 
+    const records = parseTsv(lines.join("\n"));
+    // Use records directly (bypass filterByPeriod which depends on current displayRangeSec + "now")
+    // to ensure our crafted timestamps are included.
+    const { successes, failures } = aggregateByServer(records);
+    const stats = computeStats(records);
+
+    buildLatencyChart(records, successes, failures, 0);
+
+    const chart = getLatencyChart()!;
+    expect(stats.p95).toBeGreaterThan(0);
+    expect(stats.max).toBe(5000);
+    const yMax = chart.options.scales?.y?.max;
+    expect(yMax).toBe(stats.p95 * 2);
+    expect(yMax).toBeLessThan(stats.max); // we force the cap below the actual max
+    // also verify the live scale (after Chart construction) received the max
+    expect(chart.scales?.y?.max).toBe(stats.p95 * 2);
+  });
 
   it("pins the x-axis right edge to JST on-the-hour for the default 24h range", () => {
     vi.useFakeTimers();
@@ -168,6 +194,10 @@ describe("buildLatencyChart", () => {
     expect(xMax).toBe(expected.max);
     expect(isJstOnTheHour(Number(xMax))).toBe(true);
 
+    const stats = computeStats(filtered);
+    const yMax = chart?.options.scales?.y?.max;
+    expect(yMax).toBe(stats.p95 > 0 ? stats.p95 * 2 : undefined);
+
     vi.useRealTimers();
   });
 
@@ -183,6 +213,9 @@ describe("buildLatencyChart", () => {
       buildLatencyChart(filtered, [], [], 0);
       buildErrorChart({});
     }).not.toThrow();
+
+    const chart = getLatencyChart();
+    expect(chart?.options.scales?.y?.max).toBeUndefined();
 
     vi.useRealTimers();
   });

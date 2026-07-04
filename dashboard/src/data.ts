@@ -105,7 +105,7 @@ export function filterByPeriod(records: DnsRecord[], dataCutoffTs: number): DnsR
   return records.filter((r) => r.ts >= cutoff);
 }
 
-function percentile(values: number[], p: number): number {
+export function percentile(values: number[], p: number): number {
   if (!values.length) return 0;
   const sorted = [...values].sort((a, b) => a - b);
   return sorted[Math.max(0, Math.ceil((p / 100) * sorted.length) - 1)];
