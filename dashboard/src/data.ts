@@ -111,6 +111,15 @@ export function percentile(values: number[], p: number): number {
   return sorted[Math.max(0, Math.ceil((p / 100) * sorted.length) - 1)];
 }
 
+/**
+ * Ceil a value (e.g. p95*2) up to the next multiple of 100 (for y-axis max in ms).
+ * "100ms単位で切り上げ"
+ */
+export function ceilingToHundred(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return Math.ceil(value / 100) * 100;
+}
+
 export function computeStats(records: DnsRecord[]): Stats {
   const successes = records.filter(isSuccess);
   const failures = records.filter((r): r is DnsFailureRecord => Boolean(r.error));
