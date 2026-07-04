@@ -1,6 +1,6 @@
 import { Chart, registerables } from "chart.js";
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { aggregateByServer, computeStats, filterByPeriod, parseTsv } from "../data.ts";
+import { aggregateByServer, ceilingToHundred, computeStats, filterByPeriod, parseTsv } from "../data.ts";
 import { chartRegionsPlugin, errorBandLabelsPlugin } from "./plugins.ts";
 import {
   buildFailurePoints,
@@ -171,10 +171,11 @@ describe("buildLatencyChart", () => {
     expect(stats.p95).toBeGreaterThan(0);
     expect(stats.max).toBe(5000);
     const yMax = chart.options.scales?.y?.max;
-    expect(yMax).toBe(stats.p95 * 2);
+    const expectedYMax = ceilingToHundred(stats.p95 * 2);
+    expect(yMax).toBe(expectedYMax);
     expect(yMax).toBeLessThan(stats.max); // we force the cap below the actual max
     // also verify the live scale (after Chart construction) received the max
-    expect(chart.scales?.y?.max).toBe(stats.p95 * 2);
+    expect(chart.scales?.y?.max).toBe(expectedYMax);
   });
 
   it("pins the x-axis right edge to JST on-the-hour for the default 24h range", () => {
@@ -196,7 +197,8 @@ describe("buildLatencyChart", () => {
 
     const stats = computeStats(filtered);
     const yMax = chart?.options.scales?.y?.max;
-    expect(yMax).toBe(stats.p95 > 0 ? stats.p95 * 2 : undefined);
+    const expectedYMax = stats.p95 > 0 ? ceilingToHundred(stats.p95 * 2) : undefined;
+    expect(yMax).toBe(expectedYMax);
 
     vi.useRealTimers();
   });

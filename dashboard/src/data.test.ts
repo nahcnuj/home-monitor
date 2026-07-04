@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { aggregateByServer, computeStats, filterByPeriod, parseTsv, percentile } from "./data.ts";
+import { aggregateByServer, ceilingToHundred, computeStats, filterByPeriod, parseTsv, percentile } from "./data.ts";
 import { setDataCutoffTs, setDisplayRangeSec } from "./state.ts";
 import { sampleTsv } from "./test/fixtures.ts";
 
@@ -87,6 +87,26 @@ describe("percentile", () => {
     const lows = Array.from({ length: 20 }, (_, i) => 100 + i);
     const vals = [...lows, 5000];
     expect(percentile(vals, 95)).toBe(lows[19]); // index 19
+  });
+});
+
+describe("ceilingToHundred", () => {
+  it("returns 0 for non-positive or non-finite values", () => {
+    expect(ceilingToHundred(0)).toBe(0);
+    expect(ceilingToHundred(-10)).toBe(0);
+    expect(ceilingToHundred(NaN)).toBe(0);
+    expect(ceilingToHundred(Infinity)).toBe(0);
+  });
+
+  it("ceil to next 100ms unit", () => {
+    expect(ceilingToHundred(1)).toBe(100);
+    expect(ceilingToHundred(99)).toBe(100);
+    expect(ceilingToHundred(100)).toBe(100);
+    expect(ceilingToHundred(101)).toBe(200);
+    expect(ceilingToHundred(123.7)).toBe(200);
+    expect(ceilingToHundred(200)).toBe(200);
+    expect(ceilingToHundred(999)).toBe(1000);
+    expect(ceilingToHundred(1000)).toBe(1000);
   });
 });
 
