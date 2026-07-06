@@ -52,10 +52,10 @@ describe("buildRollingEnvelope", () => {
 
     const envelope = buildRollingEnvelope(records, "203.165.31.152", [ts]);
     const max = envelope.max.find((point) => point.x === ts);
-    const q3 = envelope.q3.find((point) => point.x === ts);
+    const meanHigh = envelope.meanHigh.find((point) => point.x === ts);
 
     expect(max?.y).toBe(290);
-    expect(q3?.y).toBeLessThan(290);
+    expect(meanHigh?.y).toBeLessThan(290);
   });
 
   it("uses only samples from the same measurement timestamp below 6h", () => {

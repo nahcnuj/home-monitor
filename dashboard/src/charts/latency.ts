@@ -192,8 +192,8 @@ function createBatchTooltipPlugin(batchTimestamps: readonly number[]): Plugin<"l
 }
 
 const BAND_TENSION = 0.42;
-const IQR_BAND_ALPHA = 0.18;
-const IQR_BAND_ALPHA_LONG = 0.32;
+const SIGMA_BAND_ALPHA = 0.18;
+const SIGMA_BAND_ALPHA_LONG = 0.32;
 const MINMAX_BAND_ALPHA = 0.07;
 const MINMAX_BAND_ALPHA_LONG = 0.12;
 const TIMEOUT_EDGE_WIDTH = 2;
@@ -211,8 +211,8 @@ export function getLatencyChart(): Chart | null {
 function isHiddenBand(label: string | undefined): boolean {
   return !!label?.endsWith(" min")
     || !!label?.endsWith(" max")
-    || !!label?.endsWith(" q1")
-    || !!label?.endsWith(" q3");
+    || !!label?.endsWith(" mean-σ")
+    || !!label?.endsWith(" mean+σ");
 }
 
 export function latencyTooltipTitle(items: TooltipItem<"line">[]): string {
@@ -254,7 +254,7 @@ export function buildLatencyChart(
   const servers = [...new Set(rawRecords.filter(isSuccess).map((r) => r.dns_server))].sort();
   const datasets: ChartConfiguration["data"]["datasets"] = [];
   const showPoints = shouldShowLatencyPoints();
-  const iqrBandAlpha = showPoints ? IQR_BAND_ALPHA : IQR_BAND_ALPHA_LONG;
+  const sigmaBandAlpha = showPoints ? SIGMA_BAND_ALPHA : SIGMA_BAND_ALPHA_LONG;
   const minMaxBandAlpha = showPoints ? MINMAX_BAND_ALPHA : MINMAX_BAND_ALPHA_LONG;
 
   servers.forEach((server, index) => {
@@ -286,9 +286,9 @@ export function buildLatencyChart(
       spanGaps: false,
     });
     datasets.push({
-      label: `${server} q3`,
+      label: `${server} mean+σ`,
       order: 3,
-      data: withGaps(envelope.q3, envelope.emptyTimestamps, maxGapSec),
+      data: withGaps(envelope.meanHigh, envelope.emptyTimestamps, maxGapSec),
       borderColor: "transparent",
       backgroundColor: "transparent",
       borderWidth: 0,
@@ -298,11 +298,11 @@ export function buildLatencyChart(
       spanGaps: false,
     });
     datasets.push({
-      label: `${server} q1`,
+      label: `${server} mean-σ`,
       order: 3,
-      data: withGaps(envelope.q1, envelope.emptyTimestamps, maxGapSec),
+      data: withGaps(envelope.meanLow, envelope.emptyTimestamps, maxGapSec),
       borderColor: "transparent",
-      backgroundColor: withAlpha(color, iqrBandAlpha),
+      backgroundColor: withAlpha(color, sigmaBandAlpha),
       borderWidth: 0,
       pointRadius: 0,
       tension: BAND_TENSION,

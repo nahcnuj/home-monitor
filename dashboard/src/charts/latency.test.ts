@@ -97,7 +97,7 @@ describe("collectActiveElementsAtBatch", () => {
     expect(isTooltipDataset("timeout")).toBe(true);
     expect(isTooltipDataset("no_response")).toBe(true);
     expect(isTooltipDataset("203.165.31.152 min")).toBe(false);
-    expect(isTooltipDataset("203.165.31.152 q1")).toBe(false);
+    expect(isTooltipDataset("203.165.31.152 mean-σ")).toBe(false);
 
     vi.useRealTimers();
   });

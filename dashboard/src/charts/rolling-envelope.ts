@@ -45,8 +45,8 @@ export function collectTimelineTimestamps(records: DnsRecord[], min: number, max
 export interface RollingEnvelope {
   min: ChartPoint[];
   max: ChartPoint[];
-  q1: ChartPoint[];
-  q3: ChartPoint[];
+  meanLow: ChartPoint[];
+  meanHigh: ChartPoint[];
   emptyTimestamps: number[];
 }
 
@@ -63,8 +63,8 @@ export function buildRollingEnvelope(
 
   const min: ChartPoint[] = [];
   const max: ChartPoint[] = [];
-  const q1: ChartPoint[] = [];
-  const q3: ChartPoint[] = [];
+  const meanLow: ChartPoint[] = [];
+  const meanHigh: ChartPoint[] = [];
   const emptyTimestamps: number[] = [];
 
   for (const ts of timestamps) {
@@ -76,11 +76,14 @@ export function buildRollingEnvelope(
     if (values.length < MIN_SAMPLES) continue;
 
     const stats = boxplot(values);
+    const mean = stats.mean;
+    const std = Math.sqrt(stats.variance || 0);
+
     min.push({ x: ts, y: stats.min });
     max.push({ x: ts, y: stats.max });
-    q1.push({ x: ts, y: stats.q1 });
-    q3.push({ x: ts, y: stats.q3 });
+    meanLow.push({ x: ts, y: Math.max(0, mean - std) });
+    meanHigh.push({ x: ts, y: mean + std });
   }
 
-  return { min, max, q1, q3, emptyTimestamps };
+  return { min, max, meanLow, meanHigh, emptyTimestamps };
 }
