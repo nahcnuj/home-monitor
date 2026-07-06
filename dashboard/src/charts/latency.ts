@@ -393,6 +393,7 @@ export function buildLatencyChart(
           cutoffEnd: dataCutoffTs > xBounds.min ? dataCutoffTs : 0,
           timeoutRanges: timeoutRanges(allFailures),
           timeoutEdgeWidth: showPoints ? TIMEOUT_EDGE_WIDTH : 0,
+          minTimeoutBarWidth: showPoints ? 0 : 1,
         },
         legend: {
           labels: {
