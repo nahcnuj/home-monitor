@@ -11,6 +11,8 @@ declare module "chart.js" {
       cutoffEnd?: number;
       xMin?: number;
       timeoutRanges?: { start: number; end: number }[];
+      timeoutEdgeWidth?: number;
+      minTimeoutBarWidth?: number;
     };
     errorBandLabels?: {
       empty?: boolean;
