@@ -2,6 +2,10 @@
 
 自宅回線の DNS 応答レイテンシを監視し、GitHub Pages で可視化するツールです。
 
+![Dashboard preview (30m, with timeout outages)](assets/dashboard-preview.png)
+
+30 分表示のサンプル。赤い帯はタイムアウト区間、下部はエラー種別内訳です。
+
 ## ブランチ構成
 
 | ブランチ | 内容 |
