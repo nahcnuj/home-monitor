@@ -1,12 +1,15 @@
 name: Deploy Pages
 
 on:
+  # Human/manual runs and explicit dispatch from Sync (after a real push).
+  workflow_dispatch:
+  # master → gh-pages merge (GITHUB_TOKEN push does not fire `push` here).
+  workflow_run:
+    workflows: [Merge to gh-pages]
+    types: [completed]
+  # Rare non-bot pushes to gh-pages (local PAT etc.).
   push:
     branches: [gh-pages]
-  workflow_dispatch:
-  workflow_run:
-    workflows: [Merge to gh-pages, Sync DNS Data]
-    types: [completed]
 
 permissions:
   contents: read
