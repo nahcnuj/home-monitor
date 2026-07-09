@@ -92,7 +92,7 @@ GitHub の Actions タブで **Sync DNS Data** ワークフローが起動する
 [`monitor.config.ts`](monitor.config.ts) が唯一の設定ファイルです。ダッシュボードはビルド時に取り込み、PowerShell スクリプトは `npm run read-config` 経由で読み取ります。
 
 - `domains` — クエリ先ドメイン一覧
-- `lookup_timeout_sec` — 1 クエリあたりの待ち上限（デフォルト 60 秒）。`nslookup` に `-timeout` / `-retry` を渡し、リトライ込みでこの秒数まで待つ（Windows はリトライごとに待ちを倍増するため、60 秒設定時はおおむね `timeout=8` × 3 回 ≒ 56 秒で `dns_timeout`）。プロセスがそれ以上ハングしたときだけ `job_timeout`
+- `lookup_timeout_sec` — 1 試行の目安秒数×3 回分の予算（デフォルト 60 → **timeout=20 / retry=2**）。Windows の `nslookup` はリトライごとに待ちを倍増するため、無応答時の壁時計は最大 **20+40+80 ≒ 140 秒** で `dns_timeout`。それ以上ハングしたときだけ `job_timeout`
 - `data_cutoff_ts` — これより古いデータを除外
 - `display_hours` — ダッシュボード初回表示の時間範囲
 - `publish_interval_min` — データ送信間隔（分、タスク再登録が必要）

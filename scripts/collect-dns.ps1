@@ -50,17 +50,19 @@ function Get-DnsResolverAddresses {
 function Get-NslookupWaitParams {
     param([int]$BudgetSec)
 
-    # Windows nslookup doubles the wait each retry:
-    #   attempts = retry + 1, total ≈ t + 2t + 4t + ... = t * (2^(retry+1) - 1)
-    # Fit that geometric sum into lookup_timeout_sec (default 60 → t=8, retry=2 → ~56s).
+    # Intent: (lookup_timeout_sec / 3) 秒 × 3 回 (e.g. 60 → timeout=20, retry=2).
+    # Windows nslookup doubles the wait each retry, so wall-clock max is geometric:
+    #   t + 2t + 4t = 7t  (60 → ~140s). Job wait uses MaxWaitSec so dns_timeout can finish.
     $budget = [Math]::Max(1, $BudgetSec)
-    if ($budget -lt 7) {
-        return @{ TimeoutSec = $budget; Retry = 0 }
+    $attempts = 3
+    $retry = $attempts - 1
+    $timeoutSec = [Math]::Max(1, [int][Math]::Floor($budget / $attempts))
+    $maxWaitSec = [int]($timeoutSec * ([Math]::Pow(2, $attempts) - 1))
+    return @{
+        TimeoutSec = $timeoutSec
+        Retry      = $retry
+        MaxWaitSec = $maxWaitSec
     }
-    $retry = 2
-    $factor = 7  # 1 + 2 + 4
-    $timeoutSec = [Math]::Max(1, [int][Math]::Floor($budget / $factor))
-    return @{ TimeoutSec = $timeoutSec; Retry = $retry }
 }
 
 function Start-DnsLookupJob {
@@ -68,10 +70,9 @@ function Start-DnsLookupJob {
         [string]$Domain,
         [string]$QueryType,
         [string]$Resolver,
-        [int]$LookupTimeoutSec
+        [int]$NsTimeoutSec,
+        [int]$NsRetry
     )
-
-    $nsParams = Get-NslookupWaitParams -BudgetSec $LookupTimeoutSec
 
     return Start-Job -ScriptBlock {
         param($Domain, $QueryType, $Resolver, $NsTimeoutSec, $NsRetry)
@@ -87,7 +88,7 @@ function Start-DnsLookupJob {
             LatencyMs = [int]$sw.ElapsedMilliseconds
             Output    = $output
         }
-    } -ArgumentList $Domain, $QueryType, $Resolver, $nsParams.TimeoutSec, $nsParams.Retry
+    } -ArgumentList $Domain, $QueryType, $Resolver, $NsTimeoutSec, $NsRetry
 }
 
 function Get-JobLatencyMs {
@@ -239,6 +240,10 @@ if ($resolvers.Count -eq 0) {
 $batchTs = [long][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
 if ($batchTs -le 0) { throw "Invalid timestamp: $batchTs" }
 
+$nsParams = Get-NslookupWaitParams -BudgetSec $timeoutSec
+# Wait long enough for nslookup's doubled retries (20+40+80≈140s when budget=60).
+$jobWaitSec = [Math]::Max($timeoutSec, [int]$nsParams.MaxWaitSec)
+
 $domains = @($config.domains | Sort-Object)
 $jobEntries = New-Object System.Collections.Generic.List[object]
 foreach ($resolver in $resolvers) {
@@ -246,7 +251,7 @@ foreach ($resolver in $resolvers) {
         $jobEntries.Add([PSCustomObject]@{
             Key      = ("{0}`0{1}" -f $resolver, $domain)
             Job      = (Start-DnsLookupJob -Domain $domain -QueryType $queryType -Resolver $resolver `
-                -LookupTimeoutSec $timeoutSec)
+                -NsTimeoutSec $nsParams.TimeoutSec -NsRetry $nsParams.Retry)
             BatchTs  = $batchTs
             Resolver = $resolver
             Domain   = $domain
@@ -254,7 +259,7 @@ foreach ($resolver in $resolvers) {
     }
 }
 
-$lookupResults = Wait-DnsLookupJobs -JobEntries $jobEntries -TimeoutSec $timeoutSec
+$lookupResults = Wait-DnsLookupJobs -JobEntries $jobEntries -TimeoutSec $jobWaitSec
 
 $lines = New-Object System.Collections.Generic.List[string]
 foreach ($result in ($lookupResults | Sort-Object Ts, Resolver, Domain)) {
