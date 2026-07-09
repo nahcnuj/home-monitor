@@ -41,7 +41,6 @@ export function formatErrorCode(code: string): string {
 }
 
 const ERROR_DESCRIPTIONS: Record<string, string> = {
-  no_response: "リゾルバから応答なし",
   no_nameserver: "利用可能な DNS サーバー未設定",
   server_fail: "SERVFAIL 等のサーバーエラー",
   refused: "クエリ拒否",
@@ -56,7 +55,10 @@ export function formatErrorDescription(code: string): string | undefined {
     return `設定 ${monitorConfig.job_timeout_sec}秒で打ち切り（nslookup 未完了）`;
   }
   if (code === "dns_timeout") {
-    return `nslookup が timeout=${monitorConfig.lookup_timeout_sec}秒（retry=0）で timeout を返した`;
+    return `設定 ${monitorConfig.lookup_timeout_sec}秒まで再試行した末に DNS timeout`;
+  }
+  if (code === "no_response") {
+    return `設定 ${monitorConfig.lookup_timeout_sec}秒まで再試行した末に No response from server`;
   }
   return ERROR_DESCRIPTIONS[code];
 }

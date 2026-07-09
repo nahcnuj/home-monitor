@@ -57,15 +57,46 @@ function Start-DnsLookupJob {
 
     return Start-Job -ScriptBlock {
         param($Domain, $QueryType, $Resolver, $LookupTimeoutSec)
+
+        function Test-NslookupSuccessOutput {
+            param([string]$Output)
+            $jaName = -join ([char]0x540D, [char]0x524D)
+            $jaAddr = -join ([char]0x30A2, [char]0x30C9, [char]0x30EC, [char]0x30B9)
+            $hasName = ($Output -match '(?m)^Name:\s') -or ($Output -match "(?m)^${jaName}:\s")
+            $hasAddress = ($Output -match '(?m)^(Address|Addresses):\s') -or ($Output -match "(?m)^${jaAddr}:\s")
+            return $hasName -and $hasAddress
+        }
+
+        # Transient nslookup outcomes we keep retrying until lookup_timeout_sec elapses.
+        function Test-NslookupRetryableOutput {
+            param([string]$Output)
+            return $Output -match '(timed-out|DNS request timed out|No response from server)'
+        }
+
+        $budgetMs = [Math]::Max(1, $LookupTimeoutSec) * 1000
         $sw = [System.Diagnostics.Stopwatch]::StartNew()
-        # Single wait of lookup_timeout_sec (no multi-retry). LatencyMs = start→exit wall clock.
-        $output = & nslookup.exe `
-            "-timeout=$LookupTimeoutSec" `
-            "-retry=0" `
-            "-type=$QueryType" `
-            $Domain $Resolver 2>&1 | Out-String
+        $output = ""
+
+        while ($true) {
+            $remainingMs = $budgetMs - $sw.ElapsedMilliseconds
+            if ($remainingMs -le 0) { break }
+
+            # One attempt: wait up to the remaining budget (Windows -retry off; we own retries).
+            $attemptTimeoutSec = [Math]::Max(1, [int][Math]::Ceiling($remainingMs / 1000.0))
+            $output = & nslookup.exe `
+                "-timeout=$attemptTimeoutSec" `
+                "-retry=0" `
+                "-type=$QueryType" `
+                $Domain $Resolver 2>&1 | Out-String
+
+            if (Test-NslookupSuccessOutput -Output $output) { break }
+            if (-not (Test-NslookupRetryableOutput -Output $output)) { break }
+            # timed out / no response: re-run while wall clock stays within budget
+        }
+
         $sw.Stop()
         return @{
+            # Full span: first request start → last attempt end (success or final failure).
             LatencyMs = [int]$sw.ElapsedMilliseconds
             Output    = $output
         }
