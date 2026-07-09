@@ -398,8 +398,7 @@ export function buildLatencyChart(
           cutoffEnd: dataCutoffTs > xBounds.min ? dataCutoffTs : 0,
           timeoutRanges: timeoutRanges(allFailures),
           timeoutEdgeWidth: showPoints ? TIMEOUT_EDGE_WIDTH : 0,
-          // Always at least 1px so short measured dns_timeout durations remain visible.
-          minTimeoutBarWidth: 1,
+          minTimeoutBarWidth: 1, // CSS px; short errors (e.g. 170ms no_response) stay visible
         },
         legend: {
           labels: {
