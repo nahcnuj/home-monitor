@@ -194,6 +194,11 @@ function Test-DnsSuccess {
     return $hasName -and $hasAddress
 }
 
+# Dot-sourcing loads functions for tests without running a collection cycle.
+if ($MyInvocation.InvocationName -eq '.') {
+    return
+}
+
 try {
     $config = Get-MonitorConfig
 }
