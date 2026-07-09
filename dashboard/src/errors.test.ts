@@ -26,7 +26,10 @@ describe("error codes", () => {
       `設定 ${monitorConfig.job_timeout_sec}秒で打ち切り（nslookup 未完了）`,
     );
     expect(formatErrorDescription("dns_timeout")).toBe(
-      `nslookup が timeout=${monitorConfig.lookup_timeout_sec}秒（retry=0）で timeout を返した`,
+      `設定 ${monitorConfig.lookup_timeout_sec}秒まで再試行した末に DNS timeout`,
+    );
+    expect(formatErrorDescription("no_response")).toBe(
+      `設定 ${monitorConfig.lookup_timeout_sec}秒まで再試行した末に No response from server`,
     );
     expect(formatErrorDescription("no_response")).toBe("リゾルバから応答なし");
     expect(formatErrorDescription("timeout")).toBeUndefined();
