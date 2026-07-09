@@ -44,6 +44,17 @@ describe("parseTsv", () => {
     expect(parseTsv("\n")).toEqual([]);
   });
 
+  it("strips CRLF so error codes do not keep a trailing carriage return", () => {
+    const records = parseTsv("1783606682\t122.197.254.136\tgoogle.com\t162\tno_response\r\n");
+    expect(records).toEqual([{
+      ts: 1783606682,
+      dns_server: "122.197.254.136",
+      domain: "google.com",
+      error: "no_response",
+      duration_ms: 162,
+    }]);
+  });
+
   it("parses legacy and per-domain rows", () => {
     const records = parseTsv([
       "1781960628\t203.165.31.152\t324",
