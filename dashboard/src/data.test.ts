@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { aggregateByServer, ceilingToHundred, computeStats, filterByPeriod, parseTsv, percentile } from "./data.ts";
+import {
+  aggregateByServer,
+  ceilingToHundred,
+  computeStats,
+  filterByPeriod,
+  parseRecordsJson,
+  parseTsv,
+  percentile,
+} from "./data.ts";
 import { setDataCutoffTs, setDisplayRangeSec } from "./state.ts";
 import { sampleTsv } from "./test/fixtures.ts";
 
@@ -31,6 +39,11 @@ describe("parseTsv", () => {
     ]);
   });
 
+  it("returns empty array for blank TSV", () => {
+    expect(parseTsv("")).toEqual([]);
+    expect(parseTsv("\n")).toEqual([]);
+  });
+
   it("parses legacy and per-domain rows", () => {
     const records = parseTsv([
       "1781960628\t203.165.31.152\t324",
@@ -45,6 +58,22 @@ describe("parseTsv", () => {
       { error: "timeout", domain: null },
       { error: "timeout", domain: "cloudflare.com", duration_ms: 60012 },
     ]);
+  });
+});
+
+describe("parseRecordsJson", () => {
+  it("loads DnsRecord arrays produced for the dashboard", () => {
+    const tsv = [
+      "1781962922\t203.165.31.152\tgoogle.com\t301",
+      "1781962802\t203.165.31.152\tcloudflare.com\t60012\ttimeout",
+    ].join("\n");
+    const fromTsv = parseTsv(tsv);
+    const fromJson = parseRecordsJson(JSON.stringify(fromTsv));
+    expect(fromJson).toEqual(fromTsv);
+  });
+
+  it("rejects non-arrays", () => {
+    expect(() => parseRecordsJson("{}")).toThrow(/array/i);
   });
 });
 

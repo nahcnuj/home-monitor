@@ -71,9 +71,11 @@ GitHub の Actions タブで **Sync DNS Data** ワークフローが起動する
 
 タスクスケジューラから送信されない場合は `data/local/publish.log` を確認してください（`monitor.config.ts` 読み込みや `gh` の PATH 問題などが記録されます）。
 
-## データ形式 (TSV)
+## データ形式
 
-1行 = 1回の nslookup（ドメイン単位の生データ）。集計はダッシュボード（JS）側で行います。
+### 収集・アップロード (TSV)
+
+1行 = 1回の nslookup（ドメイン単位の生データ）。ローカル保存と GitHub への送信は TSV のままです。
 
 成功:
 
@@ -84,10 +86,14 @@ GitHub の Actions タブで **Sync DNS Data** ワークフローが起動する
 失敗:
 
 ```
-1718863260	203.165.31.152	cloudflare.com		timeout
+1718863260	203.165.31.152	cloudflare.com	60000	dns_timeout
 ```
 
 2列目は名前解決に使った DNS サーバーの IP、3列目はクエリ先ドメインです。
+
+### ダッシュボード (JSON)
+
+GitHub Actions（**Sync DNS Data** / **Deploy Pages** の `prepare-pages`）が TSV を `DnsRecord[]` の JSON に変換し、ブラウザは `data/dns-latency.json` を読みます。変換は `npm run tsv-to-json`（`scripts/tsv-to-json.ts`、`parseTsv` と同じ規則）です。
 
 [`monitor.config.ts`](monitor.config.ts) の `data_cutoff_ts`（Unix 秒）より古い行は保存・表示・送信の対象外です。GitHub 上のデータは最大 7 日分保持されます。ダッシュボードの表示範囲（10m / 30m / 1h / 3h / 6h / 12h / 24h / 3d）は UI から切り替えでき、選択はブラウザに保存されます。`display_hours`（デフォルト 24）は初回表示の初期値のみです。
 
