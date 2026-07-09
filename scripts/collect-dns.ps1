@@ -50,14 +50,16 @@ function Get-DnsResolverAddresses {
 function Get-NslookupWaitParams {
     param([int]$BudgetSec)
 
-    # Intent: (lookup_timeout_sec / 3) 秒 × 3 回 (e.g. 60 → timeout=20, retry=2).
-    # Windows nslookup doubles the wait each retry, so wall-clock max is geometric:
-    #   t + 2t + 4t = 7t  (60 → ~140s). Job wait uses MaxWaitSec so dns_timeout can finish.
+    # 3 attempts (retry=2). Windows doubles wait each retry:
+    #   wall ≈ t + 2t + 4t = 7t
+    # Choose t so 7t ≳ lookup_timeout_sec (slightly over budget is OK).
+    # e.g. 60 → t=9 → 9+18+36 = 63s
     $budget = [Math]::Max(1, $BudgetSec)
     $attempts = 3
     $retry = $attempts - 1
-    $timeoutSec = [Math]::Max(1, [int][Math]::Floor($budget / $attempts))
-    $maxWaitSec = [int]($timeoutSec * ([Math]::Pow(2, $attempts) - 1))
+    $factor = [int]([Math]::Pow(2, $attempts) - 1)  # 7
+    $timeoutSec = [Math]::Max(1, [int][Math]::Ceiling($budget / $factor))
+    $maxWaitSec = $timeoutSec * $factor
     return @{
         TimeoutSec = $timeoutSec
         Retry      = $retry
@@ -241,7 +243,7 @@ $batchTs = [long][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
 if ($batchTs -le 0) { throw "Invalid timestamp: $batchTs" }
 
 $nsParams = Get-NslookupWaitParams -BudgetSec $timeoutSec
-# Wait long enough for nslookup's doubled retries (20+40+80≈140s when budget=60).
+# Wait for the doubled-retry ceiling (slightly over budget is intentional).
 $jobWaitSec = [Math]::Max($timeoutSec, [int]$nsParams.MaxWaitSec)
 
 $domains = @($config.domains | Sort-Object)
