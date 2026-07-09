@@ -50,19 +50,16 @@ function Get-DnsResolverAddresses {
 function Get-NslookupWaitParams {
     param([int]$BudgetSec)
 
-    # 3 attempts (retry=2). Windows doubles wait each retry:
-    #   wall ≈ t + 2t + 4t = 7t
-    # Choose t so 7t ≳ lookup_timeout_sec (slightly over budget is OK).
-    # e.g. 60 → t=9 → 9+18+36 = 63s
+    # Equal splits of lookup_timeout_sec across our own attempts (not Windows -retry,
+    # which can exit after the first "timed out" on some resolvers).
+    # e.g. 60 → 20s × 3 attempts → wall up to ~60s on full timeout failure.
     $budget = [Math]::Max(1, $BudgetSec)
     $attempts = 3
-    $retry = $attempts - 1
-    $factor = [int]([Math]::Pow(2, $attempts) - 1)  # 7
-    $timeoutSec = [Math]::Max(1, [int][Math]::Ceiling($budget / $factor))
-    $maxWaitSec = $timeoutSec * $factor
+    $timeoutSec = [Math]::Max(1, [int][Math]::Floor($budget / $attempts))
+    $maxWaitSec = $timeoutSec * $attempts
     return @{
         TimeoutSec = $timeoutSec
-        Retry      = $retry
+        Attempts   = $attempts
         MaxWaitSec = $maxWaitSec
     }
 }
@@ -73,24 +70,48 @@ function Start-DnsLookupJob {
         [string]$QueryType,
         [string]$Resolver,
         [int]$NsTimeoutSec,
-        [int]$NsRetry
+        [int]$NsAttempts
     )
 
     return Start-Job -ScriptBlock {
-        param($Domain, $QueryType, $Resolver, $NsTimeoutSec, $NsRetry)
+        param($Domain, $QueryType, $Resolver, $NsTimeoutSec, $NsAttempts)
+
+        function Test-NslookupTimeoutOutput {
+            param([string]$Output)
+            return $Output -match '(timed-out|DNS request timed out)'
+        }
+
+        function Test-NslookupSuccessOutput {
+            param([string]$Output)
+            $jaName = -join ([char]0x540D, [char]0x524D)
+            $jaAddr = -join ([char]0x30A2, [char]0x30C9, [char]0x30EC, [char]0x30B9)
+            $hasName = ($Output -match '(?m)^Name:\s') -or ($Output -match "(?m)^${jaName}:\s")
+            $hasAddress = ($Output -match '(?m)^(Address|Addresses):\s') -or ($Output -match "(?m)^${jaAddr}:\s")
+            return $hasName -and $hasAddress
+        }
+
         $sw = [System.Diagnostics.Stopwatch]::StartNew()
-        # Drive dns_timeout wait from monitor config (not nslookup defaults timeout=2/retry=1).
-        $output = & nslookup.exe `
-            "-timeout=$NsTimeoutSec" `
-            "-retry=$NsRetry" `
-            "-type=$QueryType" `
-            $Domain $Resolver 2>&1 | Out-String
+        $output = ""
+        $attempts = [Math]::Max(1, $NsAttempts)
+        for ($i = 0; $i -lt $attempts; $i++) {
+            # Per-attempt wait; no Windows-internal retry (we own the retry loop).
+            $output = & nslookup.exe `
+                "-timeout=$NsTimeoutSec" `
+                "-retry=0" `
+                "-type=$QueryType" `
+                $Domain $Resolver 2>&1 | Out-String
+
+            if (Test-NslookupSuccessOutput -Output $output) { break }
+            # Non-timeout failures are final (SERVFAIL, NXDOMAIN, no response, etc.).
+            if (-not (Test-NslookupTimeoutOutput -Output $output)) { break }
+            # Timeout: retry until attempts are exhausted; LatencyMs spans the whole loop.
+        }
         $sw.Stop()
         return @{
             LatencyMs = [int]$sw.ElapsedMilliseconds
             Output    = $output
         }
-    } -ArgumentList $Domain, $QueryType, $Resolver, $NsTimeoutSec, $NsRetry
+    } -ArgumentList $Domain, $QueryType, $Resolver, $NsTimeoutSec, $NsAttempts
 }
 
 function Get-JobLatencyMs {
@@ -248,7 +269,7 @@ $batchTs = [long][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
 if ($batchTs -le 0) { throw "Invalid timestamp: $batchTs" }
 
 $nsParams = Get-NslookupWaitParams -BudgetSec $timeoutSec
-# Outer kill limit (config job_timeout_sec, default 70). Must cover nslookup wall (≈63s).
+# Outer kill limit (config job_timeout_sec, default 70). Must cover full attempt budget (~60s).
 $jobWaitSec = [Math]::Max($jobTimeoutSec, [int]$nsParams.MaxWaitSec)
 
 $domains = @($config.domains | Sort-Object)
@@ -258,7 +279,7 @@ foreach ($resolver in $resolvers) {
         $jobEntries.Add([PSCustomObject]@{
             Key      = ("{0}`0{1}" -f $resolver, $domain)
             Job      = (Start-DnsLookupJob -Domain $domain -QueryType $queryType -Resolver $resolver `
-                -NsTimeoutSec $nsParams.TimeoutSec -NsRetry $nsParams.Retry)
+                -NsTimeoutSec $nsParams.TimeoutSec -NsAttempts $nsParams.Attempts)
             BatchTs  = $batchTs
             Resolver = $resolver
             Domain   = $domain
