@@ -53,7 +53,7 @@ const ERROR_DESCRIPTIONS: Record<string, string> = {
 
 export function formatErrorDescription(code: string): string | undefined {
   if (code === "job_timeout") {
-    return `設定 ${monitorConfig.lookup_timeout_sec}秒で打ち切り（nslookup 未完了）`;
+    return `設定 ${monitorConfig.job_timeout_sec}秒で打ち切り（nslookup 未完了）`;
   }
   if (code === "dns_timeout") {
     const base = Math.max(1, Math.ceil(monitorConfig.lookup_timeout_sec / 7));

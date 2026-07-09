@@ -1,6 +1,8 @@
 export interface MonitorConfig {
   domains: readonly string[];
   lookup_timeout_sec: number;
+  /** Outer Wait-Job kill limit (seconds). Should exceed nslookup doubled-retry wall time. */
+  job_timeout_sec: number;
   data_cutoff_ts: number;
   display_hours: number;
   publish_interval_min: number;
@@ -21,6 +23,7 @@ export const monitorConfig = {
     "203-165-31-152.rev.home.ne.jp",
   ],
   lookup_timeout_sec: 60,
+  job_timeout_sec: 70,
   data_cutoff_ts: 1782000000, // 2026-06-21 09:00 JST
   display_hours: 24,
   publish_interval_min: 10,

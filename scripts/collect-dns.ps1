@@ -225,6 +225,11 @@ $timeoutSec = if ($null -ne $config.lookup_timeout_sec -and $config.lookup_timeo
 } else {
     $DefaultTimeoutSec
 }
+$jobTimeoutSec = if ($null -ne $config.job_timeout_sec -and $config.job_timeout_sec -gt 0) {
+    [int]$config.job_timeout_sec
+} else {
+    70
+}
 
 if (-not (Test-Path $DataDir)) { New-Item -ItemType Directory -Path $DataDir -Force | Out-Null }
 
@@ -243,8 +248,8 @@ $batchTs = [long][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
 if ($batchTs -le 0) { throw "Invalid timestamp: $batchTs" }
 
 $nsParams = Get-NslookupWaitParams -BudgetSec $timeoutSec
-# Wait for the doubled-retry ceiling (slightly over budget is intentional).
-$jobWaitSec = [Math]::Max($timeoutSec, [int]$nsParams.MaxWaitSec)
+# Outer kill limit (config job_timeout_sec, default 70). Must cover nslookup wall (≈63s).
+$jobWaitSec = [Math]::Max($jobTimeoutSec, [int]$nsParams.MaxWaitSec)
 
 $domains = @($config.domains | Sort-Object)
 $jobEntries = New-Object System.Collections.Generic.List[object]
