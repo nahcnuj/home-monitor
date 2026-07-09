@@ -4,6 +4,8 @@ import { setDisplayRangeSec } from "./state.ts";
 import {
   chartTimeBounds,
   chartTickStep,
+  fmtAxisTick,
+  isCompactChartLayout,
   isJstMidnight,
   isJstOnTheHour,
 } from "./time.ts";
@@ -65,6 +67,38 @@ describe("chartTimeBounds", () => {
   });
 });
 
-function ceilToHour(unixSec: number): number {
-  return Math.ceil(unixSec / HOUR_SEC) * HOUR_SEC;
-}
+describe("isCompactChartLayout", () => {
+  it("matches the PC dashboard breakpoint (wide and tall enough)", () => {
+    expect(isCompactChartLayout(1200, 800)).toBe(false);
+    expect(isCompactChartLayout(1000, 600)).toBe(false);
+    expect(isCompactChartLayout(999, 800)).toBe(true);
+    expect(isCompactChartLayout(1200, 599)).toBe(true);
+  });
+});
+
+describe("chartTickStep compact", () => {
+  it("uses coarser steps than desktop for common ranges", () => {
+    expect(chartTickStep(30 * MIN_SEC, true)).toBeGreaterThan(chartTickStep(30 * MIN_SEC, false));
+    expect(chartTickStep(HOUR_SEC, true)).toBeGreaterThan(chartTickStep(HOUR_SEC, false));
+    expect(chartTickStep(DAY_SEC, true)).toBe(6 * HOUR_SEC);
+    expect(chartTickStep(DAY_SEC, false)).toBe(3 * HOUR_SEC);
+    expect(chartTickStep(72 * HOUR_SEC, true)).toBe(DAY_SEC);
+    expect(chartTickStep(72 * HOUR_SEC, false)).toBe(12 * HOUR_SEC);
+  });
+});
+
+describe("fmtAxisTick compact", () => {
+  // 2026-06-20 23:00:00 JST
+  const sampleTs = Date.UTC(2026, 5, 20, 14, 0, 0) / 1000;
+
+  it("uses short time-only labels for sub-day steps", () => {
+    const compact = fmtAxisTick(sampleTs, HOUR_SEC, true);
+    const full = fmtAxisTick(sampleTs, HOUR_SEC, false);
+    expect(compact.length).toBeLessThan(full.length);
+    expect(compact).toMatch(/\d{1,2}:\d{2}/);
+  });
+
+  it("keeps month/day for day-scale ticks", () => {
+    expect(fmtAxisTick(sampleTs, DAY_SEC, true)).toMatch(/\d{1,2}/);
+  });
+});

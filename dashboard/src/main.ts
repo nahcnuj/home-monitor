@@ -10,11 +10,13 @@ import {
   setDataCutoffTs,
   setDisplayRangeSec,
 } from "./state.ts";
-import { fmtJst } from "./time.ts";
+import { fmtJst, isCompactChartLayout } from "./time.ts";
 import { initRangeSelector, loadDisplayRangeFromConfig, renderStats } from "./ui.ts";
 import "./style.css";
 
 Chart.register(...registerables, chartRegionsPlugin, errorBandLabelsPlugin);
+
+let lastCompactLayout = isCompactChartLayout();
 
 function render(): void {
   const filtered = filterByPeriod(allRecords, monitorConfig.data_cutoff_ts);
@@ -23,10 +25,17 @@ function render(): void {
   renderStats(stats);
   buildLatencyChart(filtered, successes, failures, monitorConfig.data_cutoff_ts);
   buildErrorChart(stats.errors);
+  lastCompactLayout = isCompactChartLayout();
   requestAnimationFrame(resizeCharts);
 }
 
 function resizeCharts(): void {
+  const compact = isCompactChartLayout();
+  // Tick density / label format differ between compact and PC; rebuild when it flips.
+  if (compact !== lastCompactLayout && allRecords.length) {
+    render();
+    return;
+  }
   getLatencyChart()?.resize();
   getErrorChart()?.resize();
 }

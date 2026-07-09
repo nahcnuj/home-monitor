@@ -9,7 +9,7 @@ import { formatErrorCode, isDnsErrorCode } from "../errors.ts";
 import { ceilingToHundred, percentile } from "../data.ts";
 import { displayRangeSec } from "../state.ts";
 import { buildRollingEnvelope, collectTimelineTimestamps } from "./rolling-envelope.ts";
-import { chartTimeBounds, fmtAxisTick, fmtJst } from "../time.ts";
+import { chartTimeBounds, fmtAxisTick, fmtJst, isCompactChartLayout } from "../time.ts";
 import type {
   AggregatedSuccess,
   DnsFailureRecord,
@@ -258,7 +258,8 @@ export function buildLatencyChart(
   const p95 = percentile(latencies, 95);
   const yMax = p95 > 0 ? ceilingToHundred(p95 * 2) : undefined;
 
-  const xBounds = chartTimeBounds();
+  const compact = isCompactChartLayout();
+  const xBounds = chartTimeBounds(undefined, compact);
   const { timestamps, step } = collectTimelineTimestamps(rawRecords, xBounds.min, xBounds.max);
   const maxGapSec = Math.max(MAX_GAP_SEC, MAX_GAP_SEC * step);
   const servers = [...new Set(rawRecords.filter(isSuccess).map((r) => r.dns_server))].sort();
@@ -379,9 +380,13 @@ export function buildLatencyChart(
           ticks: {
             color: "#8b90a0",
             stepSize: xBounds.tickStep,
+            // Desktop keeps every step; compact relies on a coarser stepSize instead.
             autoSkip: false,
             maxRotation: 0,
-            callback: (value: string | number) => fmtAxisTick(Number(value), xBounds.tickStep),
+            maxTicksLimit: compact ? 6 : undefined,
+            font: compact ? { size: 10 } : undefined,
+            callback: (value: string | number) =>
+              fmtAxisTick(Number(value), xBounds.tickStep, compact),
           },
         },
         y: {
