@@ -31,7 +31,6 @@ describe("error codes", () => {
     expect(formatErrorDescription("no_response")).toBe(
       `設定 ${monitorConfig.lookup_timeout_sec}秒まで再試行した末に No response from server`,
     );
-    expect(formatErrorDescription("no_response")).toBe("リゾルバから応答なし");
     expect(formatErrorDescription("timeout")).toBeUndefined();
   });
 
