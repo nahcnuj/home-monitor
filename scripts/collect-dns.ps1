@@ -66,6 +66,36 @@ function Start-DnsLookupJob {
     } -ArgumentList $Domain, $QueryType, $Resolver
 }
 
+function Get-JobLatencyMs {
+    param(
+        $Payload,
+        [System.Diagnostics.Stopwatch]$WallClock
+    )
+
+    if ($null -ne $Payload) {
+        $raw = $null
+        if ($Payload -is [hashtable] -or $Payload -is [System.Collections.IDictionary]) {
+            if ($Payload.ContainsKey("LatencyMs")) { $raw = $Payload["LatencyMs"] }
+            elseif ($Payload.ContainsKey("latencyMs")) { $raw = $Payload["latencyMs"] }
+        }
+        else {
+            $raw = $Payload.LatencyMs
+            if ($null -eq $raw) { $raw = $Payload.latencyMs }
+        }
+        if ($null -ne $raw) {
+            $parsed = 0
+            if ([int]::TryParse([string]$raw, [ref]$parsed) -and $parsed -gt 0) {
+                return $parsed
+            }
+        }
+    }
+
+    if ($null -ne $WallClock -and $WallClock.ElapsedMilliseconds -gt 0) {
+        return [int]$WallClock.ElapsedMilliseconds
+    }
+    return 0
+}
+
 function Wait-DnsLookupJobs {
     param(
         [array]$JobEntries,
@@ -81,17 +111,22 @@ function Wait-DnsLookupJobs {
             $remaining = 0.01
         }
 
+        $waitSw = [System.Diagnostics.Stopwatch]::StartNew()
         $completed = Wait-Job -Job $entry.Job -Timeout $remaining
+        $waitSw.Stop()
         if (-not $completed) {
             Stop-Job -Job $entry.Job -ErrorAction SilentlyContinue
             $payload = Receive-Job -Job $entry.Job -ErrorAction SilentlyContinue
             Remove-Job -Job $entry.Job -Force -ErrorAction SilentlyContinue
+            # Prefer measured wall-clock until the job was cut off; fall back to configured timeout.
+            $latencyMs = Get-JobLatencyMs -Payload $payload -WallClock $waitSw
+            if ($latencyMs -le 0) { $latencyMs = $TimeoutSec * 1000 }
             $results.Add([PSCustomObject]@{
                 Key       = $entry.Key
                 Ts        = [long]$entry.BatchTs
                 Resolver  = $entry.Resolver
                 Domain    = $entry.Domain
-                LatencyMs = $TimeoutSec * 1000
+                LatencyMs = $latencyMs
                 Error     = "job_timeout"
                 Output    = ""
             })
@@ -100,14 +135,15 @@ function Wait-DnsLookupJobs {
 
         $payload = Receive-Job -Job $entry.Job -ErrorAction SilentlyContinue
         Remove-Job -Job $entry.Job -Force -ErrorAction SilentlyContinue
+        $latencyMs = Get-JobLatencyMs -Payload $payload -WallClock $waitSw
         $results.Add([PSCustomObject]@{
             Key       = $entry.Key
             Ts        = [long]$entry.BatchTs
             Resolver  = $entry.Resolver
             Domain    = $entry.Domain
-            LatencyMs = [int]$payload.LatencyMs
+            LatencyMs = $latencyMs
             Error     = $null
-            Output    = [string]$payload.Output
+            Output    = if ($null -ne $payload) { [string]$payload.Output } else { "" }
         })
     }
 

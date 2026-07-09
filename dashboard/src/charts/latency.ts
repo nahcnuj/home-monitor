@@ -35,12 +35,17 @@ export function buildFailurePoints(records: DnsRecord[]): FailurePoint[] {
     error: r.error,
     dns_server: r.dns_server,
     domain: r.domain,
+    duration_ms: r.duration_ms,
   }));
 }
 
 export function formatFailureLabel(point: FailurePoint): string {
   const domain = point.domain ? ` / ${point.domain}` : "";
-  return `${point.dns_server}${domain}: ${formatErrorCode(point.error)}`;
+  const base = `${point.dns_server}${domain}: ${formatErrorCode(point.error)}`;
+  if (point.duration_ms != null && point.duration_ms > 0) {
+    return `${base} (${Math.round(point.duration_ms)} ms)`;
+  }
+  return base;
 }
 
 export function formatSuccessLabel(
@@ -94,6 +99,7 @@ export function buildTooltipLines(records: DnsRecord[], ts: number): string[] {
       error: record.error,
       dns_server: record.dns_server,
       domain: record.domain,
+      duration_ms: record.duration_ms,
     }));
   }
 
@@ -393,7 +399,8 @@ export function buildLatencyChart(
           cutoffEnd: dataCutoffTs > xBounds.min ? dataCutoffTs : 0,
           timeoutRanges: timeoutRanges(allFailures),
           timeoutEdgeWidth: showPoints ? TIMEOUT_EDGE_WIDTH : 0,
-          minTimeoutBarWidth: showPoints ? 0 : 1,
+          // Always at least 1px so short measured dns_timeout durations remain visible.
+          minTimeoutBarWidth: 1,
         },
         legend: {
           labels: {

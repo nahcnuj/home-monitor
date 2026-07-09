@@ -47,6 +47,16 @@ describe("withGaps", () => {
     expect(ranges).toEqual([{ start: 1782000000, end: 1782000000 + 15 }]);
   });
 
+  it("uses measured dns_timeout duration for bar width", () => {
+    const ranges = timeoutRanges(parseTsv(
+      "1782000000\t203.165.31.152\tline.me\t2418\tdns_timeout",
+    ));
+    expect(ranges).toEqual([{ start: 1782000000, end: 1782000000 + 2.418 }]);
+    expect(timeoutDurationSec(parseTsv(
+      "1782000000\t203.165.31.152\tline.me\t2418\tdns_timeout",
+    )[0] as DnsFailureRecord)).toBe(2.418);
+  });
+
   it("falls back to lookup_timeout_sec when timeout rows omit duration_ms", () => {
     const [failure] = parseTsv("1782000000\t203.165.31.152\tgoogle.com\t\ttimeout");
     expect(timeoutDurationSec(failure as DnsFailureRecord)).toBe(monitorConfig.lookup_timeout_sec);
