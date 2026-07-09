@@ -8,7 +8,7 @@ Set-Location $RepoRoot
 $DataDir = Join-Path $RepoRoot "data\local"
 $DataFile = Join-Path $DataDir "dns-latency.tsv"
 $QueryTypeStateFile = Join-Path $DataDir ".query-type-state"
-$DefaultTimeoutSec = 15
+$DefaultTimeoutSec = 60
 
 $ErrorPatterns = @(
     @{ code = "no_nameserver";  pattern = "Default servers are not available" },
@@ -47,23 +47,47 @@ function Get-DnsResolverAddresses {
     return @($addresses | Sort-Object)
 }
 
+function Get-NslookupWaitParams {
+    param([int]$BudgetSec)
+
+    # Windows nslookup doubles the wait each retry:
+    #   attempts = retry + 1, total ≈ t + 2t + 4t + ... = t * (2^(retry+1) - 1)
+    # Fit that geometric sum into lookup_timeout_sec (default 60 → t=8, retry=2 → ~56s).
+    $budget = [Math]::Max(1, $BudgetSec)
+    if ($budget -lt 7) {
+        return @{ TimeoutSec = $budget; Retry = 0 }
+    }
+    $retry = 2
+    $factor = 7  # 1 + 2 + 4
+    $timeoutSec = [Math]::Max(1, [int][Math]::Floor($budget / $factor))
+    return @{ TimeoutSec = $timeoutSec; Retry = $retry }
+}
+
 function Start-DnsLookupJob {
     param(
         [string]$Domain,
         [string]$QueryType,
-        [string]$Resolver
+        [string]$Resolver,
+        [int]$LookupTimeoutSec
     )
 
+    $nsParams = Get-NslookupWaitParams -BudgetSec $LookupTimeoutSec
+
     return Start-Job -ScriptBlock {
-        param($Domain, $QueryType, $Resolver)
+        param($Domain, $QueryType, $Resolver, $NsTimeoutSec, $NsRetry)
         $sw = [System.Diagnostics.Stopwatch]::StartNew()
-        $output = & nslookup.exe "-type=$QueryType" $Domain $Resolver 2>&1 | Out-String
+        # Drive dns_timeout wait from monitor config (not nslookup defaults timeout=2/retry=1).
+        $output = & nslookup.exe `
+            "-timeout=$NsTimeoutSec" `
+            "-retry=$NsRetry" `
+            "-type=$QueryType" `
+            $Domain $Resolver 2>&1 | Out-String
         $sw.Stop()
         return @{
             LatencyMs = [int]$sw.ElapsedMilliseconds
             Output    = $output
         }
-    } -ArgumentList $Domain, $QueryType, $Resolver
+    } -ArgumentList $Domain, $QueryType, $Resolver, $nsParams.TimeoutSec, $nsParams.Retry
 }
 
 function Get-JobLatencyMs {
@@ -221,7 +245,8 @@ foreach ($resolver in $resolvers) {
     foreach ($domain in $domains) {
         $jobEntries.Add([PSCustomObject]@{
             Key      = ("{0}`0{1}" -f $resolver, $domain)
-            Job      = (Start-DnsLookupJob -Domain $domain -QueryType $queryType -Resolver $resolver)
+            Job      = (Start-DnsLookupJob -Domain $domain -QueryType $queryType -Resolver $resolver `
+                -LookupTimeoutSec $timeoutSec)
             BatchTs  = $batchTs
             Resolver = $resolver
             Domain   = $domain
