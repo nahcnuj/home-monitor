@@ -106,10 +106,15 @@ describe("collectActiveElementsAtBatch", () => {
     const active = collectActiveElementsAtBatch(chart!, 1782008823);
     expect(active).toHaveLength(8);
     expect(isTooltipDataset("203.165.31.152")).toBe(true);
+    expect(isTooltipDataset("error")).toBe(true);
     expect(isTooltipDataset("timeout")).toBe(true);
-    expect(isTooltipDataset("no_response")).toBe(true);
     expect(isTooltipDataset("203.165.31.152 min")).toBe(false);
     expect(isTooltipDataset("203.165.31.152 mean-σ")).toBe(false);
+
+    // Failures are a single scatter series on the latency chart.
+    const failDs = chart!.data.datasets.filter((d) => d.label === "error");
+    expect(failDs).toHaveLength(1);
+    expect(failDs[0].data).toHaveLength(5);
 
     vi.useRealTimers();
   });

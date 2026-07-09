@@ -120,6 +120,10 @@ export function resolveTooltipBatchTsFromPixel(
   return nearestBatchTs(batchTimestamps, Number(hoverValue));
 }
 
+export function isFailureDataset(label: string | undefined): boolean {
+  return label === "error" || isDnsErrorCode(label);
+}
+
 export function isTooltipDataset(label: string | undefined): boolean {
   return !!label && !isHiddenBand(label);
 }
@@ -338,20 +342,17 @@ export function buildLatencyChart(
     }
   });
 
+  // Latency chart: all failures share one marker style (error types are only in the error chart / tooltip).
   const failurePoints = buildFailurePoints(rawRecords);
-  const failureCodes = [...new Set(failurePoints.map((point) => point.error))].sort((a, b) =>
-    formatErrorCode(a).localeCompare(formatErrorCode(b), "ja"),
-  );
-
-  for (const code of failureCodes) {
-    const color = ERROR_COLORS[code] ?? "#8b90a0";
+  if (failurePoints.length) {
+    const errorColor = ERROR_COLORS.timeout ?? "#f87171";
     datasets.push({
-      label: code,
+      label: "error",
       type: "scatter",
       order: 0,
-      data: failurePoints.filter((point) => point.error === code),
-      borderColor: color,
-      backgroundColor: color,
+      data: failurePoints,
+      borderColor: errorColor,
+      backgroundColor: errorColor,
       pointRadius: showPoints ? 3.5 : 0,
       pointHoverRadius: showPoints ? 4 : 0,
       pointStyle: "crossRot",
@@ -405,14 +406,14 @@ export function buildLatencyChart(
         legend: {
           labels: {
             color: "#e4e6ed",
-            filter: (item: { text: string }) => !isHiddenBand(item.text) && !isDnsErrorCode(item.text),
+            filter: (item: { text: string }) => !isHiddenBand(item.text) && !isFailureDataset(item.text),
           },
         },
         tooltip: {
           filter: (item: TooltipItem<"line">) => isTooltipDataset(item.dataset.label),
           itemSort: (a: TooltipItem<"line">, b: TooltipItem<"line">) => {
-            const aFail = isDnsErrorCode(a.dataset.label);
-            const bFail = isDnsErrorCode(b.dataset.label);
+            const aFail = isFailureDataset(a.dataset.label);
+            const bFail = isFailureDataset(b.dataset.label);
             if (aFail !== bFail) return aFail ? 1 : -1;
             return String(a.label).localeCompare(String(b.label));
           },
