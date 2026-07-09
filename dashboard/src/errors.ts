@@ -55,10 +55,10 @@ export function formatErrorDescription(code: string): string | undefined {
     return `設定 ${monitorConfig.job_timeout_sec}秒で打ち切り（nslookup 未完了）`;
   }
   if (code === "dns_timeout") {
-    return `設定 ${monitorConfig.lookup_timeout_sec}秒まで再試行した末に DNS timeout`;
+    return `nslookup が timeout=${monitorConfig.lookup_timeout_sec}秒で DNS timeout を返した`;
   }
   if (code === "no_response") {
-    return `設定 ${monitorConfig.lookup_timeout_sec}秒まで再試行した末に No response from server`;
+    return `nslookup が No response from server を返した`;
   }
   return ERROR_DESCRIPTIONS[code];
 }

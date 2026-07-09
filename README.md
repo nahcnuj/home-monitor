@@ -102,8 +102,8 @@ GitHub Actions（**Sync DNS Data** / **Deploy Pages** の `prepare-pages`）が 
 [`monitor.config.ts`](monitor.config.ts) が唯一の設定ファイルです。ダッシュボードはビルド時に取り込み、PowerShell スクリプトは `npm run read-config` 経由で読み取ります。
 
 - `domains` — クエリ先ドメイン一覧
-- `lookup_timeout_sec` — 1 クエリの待ち予算（デフォルト **60 秒**）。`timed out` / `No response from server` のときはこの秒数まで **再実行**（各試行は残り時間を `-timeout` に渡し `-retry=0`）。成功やその他エラーでは即終了。記録 ms は **初回開始〜最終終了** の壁時計
-- `job_timeout_sec` — ジョブ打ち切り（デフォルト **70 秒**）。再試行込みでもプロセスが戻らないとき `job_timeout`
+- `lookup_timeout_sec` — `nslookup -timeout=N`（デフォルト **60 秒**）。**`-retry=0` は使わない**（Windows では即 `No response from server` になる既知の挙動）。記録 ms は nslookup 開始〜終了の壁時計
+- `job_timeout_sec` — ジョブ打ち切り（デフォルト **70 秒**）。nslookup が戻らないとき `job_timeout`
 - `data_cutoff_ts` — これより古いデータを除外
 - `display_hours` — ダッシュボード初回表示の時間範囲
 - `publish_interval_min` — データ送信間隔（分、タスク再登録が必要）

@@ -26,10 +26,10 @@ describe("error codes", () => {
       `設定 ${monitorConfig.job_timeout_sec}秒で打ち切り（nslookup 未完了）`,
     );
     expect(formatErrorDescription("dns_timeout")).toBe(
-      `設定 ${monitorConfig.lookup_timeout_sec}秒まで再試行した末に DNS timeout`,
+      `nslookup が timeout=${monitorConfig.lookup_timeout_sec}秒で DNS timeout を返した`,
     );
     expect(formatErrorDescription("no_response")).toBe(
-      `設定 ${monitorConfig.lookup_timeout_sec}秒まで再試行した末に No response from server`,
+      `nslookup が No response from server を返した`,
     );
     expect(formatErrorDescription("timeout")).toBeUndefined();
   });
