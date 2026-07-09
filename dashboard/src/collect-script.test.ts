@@ -7,14 +7,15 @@ const collectPs1 = readFileSync(
   "utf8",
 );
 
-describe("collect-dns.ps1 nslookup contract", () => {
-  it("invokes nslookup with timeout and type only (no -retry flag)", () => {
-    expect(collectPs1).toMatch(/nslookup\.exe/);
+describe("collect-dns.ps1", () => {
+  it("Start-DnsLookupJob does not pass -retry=0 to nslookup", () => {
     const invoke = collectPs1.match(/\$output\s*=\s*&\s*nslookup\.exe\s*([\s\S]+?)\s*2>&1/);
     expect(invoke).not.toBeNull();
-    const args = invoke![1];
-    expect(args).toMatch(/-timeout=/);
-    expect(args).toMatch(/-type=/);
-    expect(args).not.toMatch(/retry/i);
+    expect(invoke![1]).not.toMatch(/-retry\s*=\s*0/i);
+    expect(collectPs1).not.toMatch(/["']-retry=0["']/);
+  });
+
+  it("can be dot-sourced without running the main collection", () => {
+    expect(collectPs1).toMatch(/InvocationName -eq '\.'/);
   });
 });

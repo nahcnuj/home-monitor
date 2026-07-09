@@ -20,19 +20,19 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      - name: Static collect-dns.ps1 safety checks
+      - name: Static collect-dns.ps1 checks
         shell: pwsh
         run: ./scripts/tests/Assert-CollectDnsSafe.ps1
 
-  windows-nslookup:
+  windows-collect:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Static collect-dns.ps1 safety checks
+      - name: Static collect-dns.ps1 checks
         shell: pwsh
         run: ./scripts/tests/Assert-CollectDnsSafe.ps1
 
-      - name: Live collect-style nslookup on Windows
+      - name: Run production Start-DnsLookupJob (real nslookup)
         shell: pwsh
-        run: ./scripts/tests/Test-NslookupWindows.ps1
+        run: ./scripts/tests/Test-CollectDnsLookup.ps1

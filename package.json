@@ -10,7 +10,7 @@
     "tsv-to-json": "tsx scripts/tsv-to-json.ts",
     "test": "vitest run",
     "test:collect-safe": "powershell -NoProfile -File scripts/tests/Assert-CollectDnsSafe.ps1",
-    "test:nslookup-windows": "powershell -NoProfile -File scripts/tests/Test-NslookupWindows.ps1",
+    "test:collect-lookup": "powershell -NoProfile -File scripts/tests/Test-CollectDnsLookup.ps1",
     "preview": "vite preview --config dashboard/vite.config.ts"
   },
   "dependencies": {
