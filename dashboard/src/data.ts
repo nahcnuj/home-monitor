@@ -28,7 +28,8 @@ export function parseTsv(text: string): DnsRecord[] {
     .split("\n")
     .filter((line) => line.trim())
     .map((line): DnsRecord => {
-      const cols = line.split("\t");
+      // gh-pages / Windows checkouts may use CRLF; strip so error codes match.
+      const cols = line.replace(/\r$/, "").split("\t");
       const ts = parseInt(cols[0] ?? "0", 10);
       const dns_server = cols[1] ?? "unknown";
 
