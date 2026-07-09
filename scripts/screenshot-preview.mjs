@@ -15,9 +15,10 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const out = path.join(root, "assets/dashboard-preview.png");
 
 const browser = await chromium.launch({ headless: true });
+// Typical Full HD; avoid 2x DPR so the PNG stays roughly FHD-sized.
 const page = await browser.newPage({
-  viewport: { width: 1440, height: 1100 },
-  deviceScaleFactor: 2,
+  viewport: { width: 1920, height: 1080 },
+  deviceScaleFactor: 1,
 });
 
 await page.addInitScript(() => {
@@ -35,7 +36,8 @@ if (active !== "30m") {
 }
 
 await page.waitForTimeout(1800);
-await page.screenshot({ path: out, fullPage: true });
+// Clip to the FHD viewport (not full-page scroll height).
+await page.screenshot({ path: out, fullPage: false });
 console.log(
   "wrote",
   out,
