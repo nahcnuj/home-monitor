@@ -111,10 +111,11 @@ describe("collectActiveElementsAtBatch", () => {
     expect(isTooltipDataset("203.165.31.152 min")).toBe(false);
     expect(isTooltipDataset("203.165.31.152 mean-σ")).toBe(false);
 
-    // Failures are a single scatter series on the latency chart.
+    // Failures are one invisible series (bars are drawn by chartRegions).
     const failDs = chart!.data.datasets.filter((d) => d.label === "error");
     expect(failDs).toHaveLength(1);
     expect(failDs[0].data).toHaveLength(5);
+    expect(failDs[0].pointRadius).toBe(0);
 
     vi.useRealTimers();
   });

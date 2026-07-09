@@ -59,13 +59,19 @@ export function timeoutDurationSec(failure: DnsFailureRecord): number {
   if (failure.duration_ms && failure.duration_ms > 0) {
     return failure.duration_ms / 1000;
   }
-  return monitorConfig.lookup_timeout_sec;
+  // Legacy timeout rows without duration: assume configured lookup budget.
+  if (isTimeoutError(failure.error)) {
+    return monitorConfig.lookup_timeout_sec;
+  }
+  // Other errors without duration still get a bar (plugin enforces min 1px).
+  return 0;
 }
 
+/** Red vertical bars for every failure (same style for all error codes). */
 export function timeoutRanges(failures: DnsRecord[]): TimeoutSpan[] {
   const buckets = new Map<string, TimeoutSpan>();
   for (const f of failures) {
-    if (!("error" in f) || !f.error || !isTimeoutError(f.error)) continue;
+    if (!("error" in f) || !f.error) continue;
     const key = `${f.dns_server}\0${f.ts}`;
     const durationSec = timeoutDurationSec(f as DnsFailureRecord);
     const existing = buckets.get(key);

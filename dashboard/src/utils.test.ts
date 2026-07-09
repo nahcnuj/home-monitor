@@ -57,6 +57,13 @@ describe("withGaps", () => {
     )[0] as DnsFailureRecord)).toBe(2.418);
   });
 
+  it("draws bars for non-timeout errors using measured duration", () => {
+    const ranges = timeoutRanges(parseTsv(
+      "1782000000\t203.165.31.152\tgoogle.com\t170\tno_response",
+    ));
+    expect(ranges).toEqual([{ start: 1782000000, end: 1782000000 + 0.17 }]);
+  });
+
   it("falls back to lookup_timeout_sec when timeout rows omit duration_ms", () => {
     const [failure] = parseTsv("1782000000\t203.165.31.152\tgoogle.com\t\ttimeout");
     expect(timeoutDurationSec(failure as DnsFailureRecord)).toBe(monitorConfig.lookup_timeout_sec);
