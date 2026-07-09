@@ -54,6 +54,18 @@ describe("buildTooltipLines", () => {
     expect(buildTooltipLines(records, 1782003483)).toEqual(["203.165.31.152 / yahoo.co.jp: 201 ms"]);
   });
 
+  it("includes measured duration for DNS timeout rows", () => {
+    const records = parseTsv([
+      "1782003423\t203.165.31.152\tgoogle.com\t4218\tdns_timeout",
+      "1782003423\t203.165.31.152\tline.me\t188",
+    ].join("\n"));
+
+    expect(buildTooltipLines(records, 1782003423)).toEqual([
+      "203.165.31.152 / line.me: 188 ms",
+      "203.165.31.152 / google.com: DNSタイムアウト (4218 ms)",
+    ]);
+  });
+
   it("lists each resolver separately at the same batch timestamp", () => {
     const records = parseTsv([
       "1782003423\t203.165.31.152\tline.me\t188",
@@ -123,6 +135,20 @@ describe("buildFailurePoints", () => {
     expect(points).toHaveLength(2);
     expect(points.map((point) => point.domain).sort()).toEqual(["amazon.co.jp", "google.com"]);
     expect(formatFailureLabel(points[0])).toBe("203.165.31.152 / amazon.co.jp: タイムアウト（旧）");
+  });
+
+  it("carries measured duration for dns_timeout labels", () => {
+    const records = parseTsv("1782003423\t203.165.31.152\tgoogle.com\t6158\tdns_timeout");
+    const points = buildFailurePoints(records);
+    expect(points).toEqual([{
+      x: 1782003423,
+      y: 0,
+      error: "dns_timeout",
+      dns_server: "203.165.31.152",
+      domain: "google.com",
+      duration_ms: 6158,
+    }]);
+    expect(formatFailureLabel(points[0])).toBe("203.165.31.152 / google.com: DNSタイムアウト (6158 ms)");
   });
 });
 

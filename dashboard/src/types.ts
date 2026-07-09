@@ -75,6 +75,7 @@ export interface FailurePoint {
   error: DnsErrorCode;
   dns_server: string;
   domain: string | null;
+  duration_ms?: number;
 }
 
 export interface TimeoutRange {

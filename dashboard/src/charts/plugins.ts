@@ -40,15 +40,16 @@ export const chartRegionsPlugin: Plugin<"line"> = {
     }
 
     const timeoutEdgeWidth = options?.timeoutEdgeWidth ?? 2;
-    const minTimeoutBarWidth = options?.minTimeoutBarWidth ?? 0;
+    const minTimeoutBarWidth = options?.minTimeoutBarWidth ?? 1;
 
     for (const { start, end } of options?.timeoutRanges ?? []) {
       let left = xScale.getPixelForValue(start);
       let right = xScale.getPixelForValue(end);
       left = Math.max(left, chartArea.left);
       right = Math.min(right, chartArea.right);
-      if (right <= left) continue;
 
+      // Width follows measured timeout duration; force at least 1px so short
+      // dns_timeout spans stay visible on wide time scales (sub-pixel otherwise).
       if (minTimeoutBarWidth > 0 && right - left < minTimeoutBarWidth) {
         right = left + minTimeoutBarWidth;
         if (right > chartArea.right) {
@@ -56,6 +57,7 @@ export const chartRegionsPlugin: Plugin<"line"> = {
           left = Math.max(chartArea.left, right - minTimeoutBarWidth);
         }
       }
+      if (right <= left) continue;
 
       ctx.fillStyle = "rgba(248, 113, 113, 0.28)";
       ctx.fillRect(left, chartArea.top, right - left, chartArea.bottom - chartArea.top);
