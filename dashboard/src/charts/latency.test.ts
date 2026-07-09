@@ -115,7 +115,7 @@ describe("collectActiveElementsAtBatch", () => {
     const failDs = chart!.data.datasets.filter((d) => d.label === "error");
     expect(failDs).toHaveLength(1);
     expect(failDs[0].data).toHaveLength(5);
-    expect(failDs[0].pointRadius).toBe(0);
+    expect((failDs[0] as { pointRadius?: number }).pointRadius).toBe(0);
 
     vi.useRealTimers();
   });
