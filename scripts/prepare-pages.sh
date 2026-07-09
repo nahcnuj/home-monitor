@@ -17,4 +17,13 @@ fi
 rm -rf "$DIST/data"
 cp -R "$DATA_DIR/data" "$DIST/data"
 
+# Browser loads JSON; regenerate from TSV so the artifact always matches the store.
+TSV="$DIST/data/dns-latency.tsv"
+JSON="$DIST/data/dns-latency.json"
+if [[ -f "$TSV" ]]; then
+  npx tsx scripts/tsv-to-json.ts "$TSV" "$JSON"
+else
+  echo "[]" > "$JSON"
+fi
+
 echo "Pages artifact ready at dashboard/dist"

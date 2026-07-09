@@ -21,8 +21,10 @@ function isErrorToken(value: string | undefined): value is string {
 }
 
 export function parseTsv(text: string): DnsRecord[] {
-  return text
-    .trim()
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+
+  return trimmed
     .split("\n")
     .filter((line) => line.trim())
     .map((line): DnsRecord => {
@@ -67,6 +69,15 @@ export function parseTsv(text: string): DnsRecord[] {
       }
       return { ts, dns_server, domain: null, latency_ms };
     });
+}
+
+/** Load records from Actions-generated JSON (DnsRecord[]). */
+export function parseRecordsJson(text: string): DnsRecord[] {
+  const data: unknown = JSON.parse(text);
+  if (!Array.isArray(data)) {
+    throw new Error("dns-latency.json must be a JSON array");
+  }
+  return data as DnsRecord[];
 }
 
 export function aggregateByServer(records: DnsRecord[]): {

@@ -108,6 +108,17 @@ jobs:
                   f.write("\n".join(merged) + "\n")
           PYEOF
 
+      - name: Build dns-latency.json for the dashboard
+        run: |
+          TSV=pages/docs/data/dns-latency.tsv
+          JSON=pages/docs/data/dns-latency.json
+          if [[ -f "$TSV" ]]; then
+            (cd source && npx tsx scripts/tsv-to-json.ts "../$TSV" "../$JSON")
+          else
+            mkdir -p pages/docs/data
+            echo '[]' > "$JSON"
+          fi
+
       - name: Commit and push gh-pages
         working-directory: pages
         id: commit-push
@@ -121,7 +132,7 @@ jobs:
             git rm -rf docs/config
           fi
 
-          git add -f docs/data/dns-latency.tsv
+          git add -f docs/data/dns-latency.tsv docs/data/dns-latency.json
           if git diff --cached --quiet && git diff --quiet; then
             echo "No changes to publish"
             exit 0

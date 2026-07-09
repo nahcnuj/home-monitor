@@ -3,7 +3,7 @@ import { buildErrorChart, getErrorChart } from "./charts/error.ts";
 import { buildLatencyChart, getLatencyChart } from "./charts/latency.ts";
 import { chartRegionsPlugin, errorBandLabelsPlugin } from "./charts/plugins.ts";
 import { monitorConfig } from "./config.ts";
-import { aggregateByServer, computeStats, filterByPeriod, parseTsv } from "./data.ts";
+import { aggregateByServer, computeStats, filterByPeriod, parseRecordsJson } from "./data.ts";
 import {
   allRecords,
   setAllRecords,
@@ -42,9 +42,9 @@ async function loadData(): Promise<void> {
   try {
     initDashboard();
 
-    const res = await fetch(`data/dns-latency.tsv?t=${Date.now()}`);
+    const res = await fetch(`data/dns-latency.json?t=${Date.now()}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    setAllRecords(parseTsv(await res.text()));
+    setAllRecords(parseRecordsJson(await res.text()));
     if (lastUpdated) {
       lastUpdated.textContent = allRecords.length
         ? `最終データ: ${fmtJst(allRecords.at(-1)!.ts)}（JST）`
