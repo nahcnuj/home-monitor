@@ -56,8 +56,9 @@ export function formatErrorDescription(code: string): string | undefined {
     return `設定 ${monitorConfig.lookup_timeout_sec}秒で打ち切り（nslookup 未完了）`;
   }
   if (code === "dns_timeout") {
-    const base = Math.max(1, Math.floor(monitorConfig.lookup_timeout_sec / 3));
-    return `nslookup が timeout≈${base}秒×3回（リトライで倍増）で timeout を返した`;
+    const base = Math.max(1, Math.ceil(monitorConfig.lookup_timeout_sec / 7));
+    const wall = base * 7;
+    return `nslookup が timeout=${base}秒×3回（倍増で最大約${wall}秒）で timeout を返した`;
   }
   return ERROR_DESCRIPTIONS[code];
 }
