@@ -15,9 +15,10 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const out = path.join(root, "assets/dashboard-preview.png");
 
 const browser = await chromium.launch({ headless: true });
-// Typical Full HD; avoid 2x DPR so the PNG stays roughly FHD-sized.
+// PC layout starts at min-width: 1000px / min-height: 600px (style.css).
+// Capture just above that threshold so the eye-catch matches desktop layout without being oversized.
 const page = await browser.newPage({
-  viewport: { width: 1920, height: 1080 },
+  viewport: { width: 1024, height: 720 },
   deviceScaleFactor: 1,
 });
 
@@ -36,7 +37,7 @@ if (active !== "30m") {
 }
 
 await page.waitForTimeout(1800);
-// Clip to the FHD viewport (not full-page scroll height).
+// Clip to the viewport (not full-page scroll height).
 await page.screenshot({ path: out, fullPage: false });
 console.log(
   "wrote",
