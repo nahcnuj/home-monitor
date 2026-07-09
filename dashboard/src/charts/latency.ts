@@ -4,7 +4,7 @@ import {
   type Plugin,
   type TooltipItem,
 } from "chart.js";
-import { ERROR_COLORS, HIDE_LATENCY_POINTS_RANGE_SEC, MAX_GAP_SEC, SERVER_COLORS } from "../constants.ts";
+import { HIDE_LATENCY_POINTS_RANGE_SEC, MAX_GAP_SEC, SERVER_COLORS } from "../constants.ts";
 import { formatErrorCode, isDnsErrorCode } from "../errors.ts";
 import { ceilingToHundred, percentile } from "../data.ts";
 import { displayRangeSec } from "../state.ts";
@@ -342,20 +342,18 @@ export function buildLatencyChart(
     }
   });
 
-  // Latency chart: all failures share one marker style (error types are only in the error chart / tooltip).
+  // Invisible scatter only so batch tooltips can still list failures; visuals are red bars (chartRegions).
   const failurePoints = buildFailurePoints(rawRecords);
   if (failurePoints.length) {
-    const errorColor = ERROR_COLORS.timeout ?? "#f87171";
     datasets.push({
       label: "error",
       type: "scatter",
       order: 0,
       data: failurePoints,
-      borderColor: errorColor,
-      backgroundColor: errorColor,
-      pointRadius: showPoints ? 3.5 : 0,
-      pointHoverRadius: showPoints ? 4 : 0,
-      pointStyle: "crossRot",
+      borderColor: "transparent",
+      backgroundColor: "transparent",
+      pointRadius: 0,
+      pointHoverRadius: 0,
       showLine: false,
     });
   }
