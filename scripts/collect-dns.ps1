@@ -47,71 +47,29 @@ function Get-DnsResolverAddresses {
     return @($addresses | Sort-Object)
 }
 
-function Get-NslookupWaitParams {
-    param([int]$BudgetSec)
-
-    # Equal splits of lookup_timeout_sec across our own attempts (not Windows -retry,
-    # which can exit after the first "timed out" on some resolvers).
-    # e.g. 60 → 20s × 3 attempts → wall up to ~60s on full timeout failure.
-    $budget = [Math]::Max(1, $BudgetSec)
-    $attempts = 3
-    $timeoutSec = [Math]::Max(1, [int][Math]::Floor($budget / $attempts))
-    $maxWaitSec = $timeoutSec * $attempts
-    return @{
-        TimeoutSec = $timeoutSec
-        Attempts   = $attempts
-        MaxWaitSec = $maxWaitSec
-    }
-}
-
 function Start-DnsLookupJob {
     param(
         [string]$Domain,
         [string]$QueryType,
         [string]$Resolver,
-        [int]$NsTimeoutSec,
-        [int]$NsAttempts
+        [int]$LookupTimeoutSec
     )
 
     return Start-Job -ScriptBlock {
-        param($Domain, $QueryType, $Resolver, $NsTimeoutSec, $NsAttempts)
-
-        function Test-NslookupTimeoutOutput {
-            param([string]$Output)
-            return $Output -match '(timed-out|DNS request timed out)'
-        }
-
-        function Test-NslookupSuccessOutput {
-            param([string]$Output)
-            $jaName = -join ([char]0x540D, [char]0x524D)
-            $jaAddr = -join ([char]0x30A2, [char]0x30C9, [char]0x30EC, [char]0x30B9)
-            $hasName = ($Output -match '(?m)^Name:\s') -or ($Output -match "(?m)^${jaName}:\s")
-            $hasAddress = ($Output -match '(?m)^(Address|Addresses):\s') -or ($Output -match "(?m)^${jaAddr}:\s")
-            return $hasName -and $hasAddress
-        }
-
+        param($Domain, $QueryType, $Resolver, $LookupTimeoutSec)
         $sw = [System.Diagnostics.Stopwatch]::StartNew()
-        $output = ""
-        $attempts = [Math]::Max(1, $NsAttempts)
-        for ($i = 0; $i -lt $attempts; $i++) {
-            # Per-attempt wait; no Windows-internal retry (we own the retry loop).
-            $output = & nslookup.exe `
-                "-timeout=$NsTimeoutSec" `
-                "-retry=0" `
-                "-type=$QueryType" `
-                $Domain $Resolver 2>&1 | Out-String
-
-            if (Test-NslookupSuccessOutput -Output $output) { break }
-            # Non-timeout failures are final (SERVFAIL, NXDOMAIN, no response, etc.).
-            if (-not (Test-NslookupTimeoutOutput -Output $output)) { break }
-            # Timeout: retry until attempts are exhausted; LatencyMs spans the whole loop.
-        }
+        # Single wait of lookup_timeout_sec (no multi-retry). LatencyMs = start→exit wall clock.
+        $output = & nslookup.exe `
+            "-timeout=$LookupTimeoutSec" `
+            "-retry=0" `
+            "-type=$QueryType" `
+            $Domain $Resolver 2>&1 | Out-String
         $sw.Stop()
         return @{
             LatencyMs = [int]$sw.ElapsedMilliseconds
             Output    = $output
         }
-    } -ArgumentList $Domain, $QueryType, $Resolver, $NsTimeoutSec, $NsAttempts
+    } -ArgumentList $Domain, $QueryType, $Resolver, $LookupTimeoutSec
 }
 
 function Get-JobLatencyMs {
@@ -268,9 +226,8 @@ if ($resolvers.Count -eq 0) {
 $batchTs = [long][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
 if ($batchTs -le 0) { throw "Invalid timestamp: $batchTs" }
 
-$nsParams = Get-NslookupWaitParams -BudgetSec $timeoutSec
-# Outer kill limit (config job_timeout_sec, default 70). Must cover full attempt budget (~60s).
-$jobWaitSec = [Math]::Max($jobTimeoutSec, [int]$nsParams.MaxWaitSec)
+# Outer kill limit (job_timeout_sec, default 70) must exceed nslookup's single wait (lookup_timeout_sec).
+$jobWaitSec = [Math]::Max($jobTimeoutSec, $timeoutSec)
 
 $domains = @($config.domains | Sort-Object)
 $jobEntries = New-Object System.Collections.Generic.List[object]
@@ -279,7 +236,7 @@ foreach ($resolver in $resolvers) {
         $jobEntries.Add([PSCustomObject]@{
             Key      = ("{0}`0{1}" -f $resolver, $domain)
             Job      = (Start-DnsLookupJob -Domain $domain -QueryType $queryType -Resolver $resolver `
-                -NsTimeoutSec $nsParams.TimeoutSec -NsAttempts $nsParams.Attempts)
+                -LookupTimeoutSec $timeoutSec)
             BatchTs  = $batchTs
             Resolver = $resolver
             Domain   = $domain
