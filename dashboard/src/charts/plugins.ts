@@ -40,31 +40,37 @@ export const chartRegionsPlugin: Plugin<"line"> = {
     }
 
     const timeoutEdgeWidth = options?.timeoutEdgeWidth ?? 2;
-    const minTimeoutBarWidth = options?.minTimeoutBarWidth ?? 1;
+    // Error bars (timeouts and other failures): never thinner than 1 CSS pixel.
+    const minBarWidth = Math.max(1, options?.minTimeoutBarWidth ?? 1);
 
     for (const { start, end } of options?.timeoutRanges ?? []) {
-      let left = xScale.getPixelForValue(start);
-      let right = xScale.getPixelForValue(end);
-      left = Math.max(left, chartArea.left);
-      right = Math.min(right, chartArea.right);
+      const x0 = xScale.getPixelForValue(start);
+      const x1 = xScale.getPixelForValue(Math.max(end, start));
+      let left = Math.min(x0, x1);
+      let width = Math.max(Math.abs(x1 - x0), minBarWidth);
 
-      // Width follows measured timeout duration; force at least 1px so short
-      // dns_timeout spans stay visible on wide time scales (sub-pixel otherwise).
-      if (minTimeoutBarWidth > 0 && right - left < minTimeoutBarWidth) {
-        right = left + minTimeoutBarWidth;
-        if (right > chartArea.right) {
-          right = chartArea.right;
-          left = Math.max(chartArea.left, right - minTimeoutBarWidth);
-        }
+      // Clip to plot area; if the event is in view, keep at least minBarWidth.
+      if (left + width < chartArea.left || left > chartArea.right) continue;
+      if (left < chartArea.left) {
+        width -= chartArea.left - left;
+        left = chartArea.left;
       }
-      if (right <= left) continue;
+      if (left + width > chartArea.right) {
+        width = chartArea.right - left;
+      }
+      if (width < minBarWidth) {
+        if (x0 < chartArea.left || x0 > chartArea.right) continue;
+        left = Math.min(Math.max(x0, chartArea.left), chartArea.right - minBarWidth);
+        width = minBarWidth;
+      }
+      if (width <= 0) continue;
 
       ctx.fillStyle = "rgba(248, 113, 113, 0.28)";
-      ctx.fillRect(left, chartArea.top, right - left, chartArea.bottom - chartArea.top);
+      ctx.fillRect(left, chartArea.top, width, chartArea.bottom - chartArea.top);
 
       if (timeoutEdgeWidth > 0) {
         ctx.fillStyle = "rgba(248, 113, 113, 0.55)";
-        ctx.fillRect(left, chartArea.top, right - left, chartArea.bottom - chartArea.top);
+        ctx.fillRect(left, chartArea.top, width, chartArea.bottom - chartArea.top);
       }
     }
 
