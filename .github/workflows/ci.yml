@@ -20,3 +20,19 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - name: Static collect-dns.ps1 safety checks
+        shell: pwsh
+        run: ./scripts/tests/Assert-CollectDnsSafe.ps1
+
+  windows-nslookup:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Static collect-dns.ps1 safety checks
+        shell: pwsh
+        run: ./scripts/tests/Assert-CollectDnsSafe.ps1
+
+      - name: Live Windows nslookup regression (-retry=0 quirk)
+        shell: pwsh
+        run: ./scripts/tests/Test-NslookupWindows.ps1
