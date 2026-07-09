@@ -145,22 +145,10 @@ jobs:
           echo "pushed=true" >> $GITHUB_OUTPUT
 
       - name: Trigger Pages deployment
-        # GITHUB_TOKEN pushes do not trigger `push` events.
-        # We explicitly dispatch to guarantee automatic deploy.
+        # GITHUB_TOKEN pushes do not fire `push` events. Dispatch once when we
+        # actually pushed (Deploy Pages no longer listens to this workflow via
+        # workflow_run, so this is the sole deploy path for Sync).
         if: steps.commit-push.outputs.pushed == 'true'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.actions.createWorkflowDispatch({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: 'deploy-pages.yml',
-              ref: 'gh-pages'
-            });
-
-      - name: Trigger Pages deployment
-        # Explicit dispatch ensures Deploy Pages runs even when the push
-        # was performed with GITHUB_TOKEN (which does not trigger push events).
         uses: actions/github-script@v7
         with:
           script: |
