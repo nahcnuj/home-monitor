@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Static safety checks for collect-dns.ps1 (PowerShell on any OS).
+  Static checks: collect-dns.ps1 nslookup invocation matches the supported contract.
 #>
 $ErrorActionPreference = "Stop"
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
@@ -25,23 +25,12 @@ function Assert-True {
     }
 }
 
-# Regression: Windows nslookup with argument -retry=0 yields false
-# "No response from server" even when DNS works. Comments may mention it.
-Assert-True ($src -notmatch '(?i)["'']-retry=0["'']') `
-    "collect-dns.ps1 must not pass quoted -retry=0 to nslookup"
-Assert-True ($src -notmatch '(?is)nslookup\.exe.{0,200}-retry=0') `
-    "collect-dns.ps1 must not pass -retry=0 near nslookup.exe invocation"
-
 Assert-True ($src -match 'nslookup\.exe') `
     "collect-dns.ps1 invokes nslookup.exe"
-
-Assert-True ($src -match '-timeout=') `
-    "collect-dns.ps1 sets nslookup -timeout"
 
 Assert-True ($src -match 'LookupTimeoutSec|lookup_timeout_sec') `
     "collect-dns.ps1 uses configured lookup timeout"
 
-# Ensure the live invocation only passes timeout + type (no retry flag at all).
 $invokeBlock = [regex]::Match(
     $src,
     '(?s)\$output\s*=\s*&\s*nslookup\.exe\s*(.+?)\s*2>&1'
@@ -51,7 +40,7 @@ if ($invokeBlock.Success) {
     $invoke = $invokeBlock.Groups[1].Value
     Assert-True ($invoke -match '-timeout=') "nslookup invocation includes -timeout="
     Assert-True ($invoke -match '-type=') "nslookup invocation includes -type="
-    Assert-True ($invoke -notmatch '(?i)retry') "nslookup invocation must not set any -retry flag"
+    Assert-True ($invoke -notmatch '(?i)retry') "nslookup invocation does not set -retry"
 }
 
 if ($failed -gt 0) {

@@ -33,6 +33,6 @@ jobs:
         shell: pwsh
         run: ./scripts/tests/Assert-CollectDnsSafe.ps1
 
-      - name: Live Windows nslookup regression (-retry=0 quirk)
+      - name: Live collect-style nslookup on Windows
         shell: pwsh
         run: ./scripts/tests/Test-NslookupWindows.ps1
