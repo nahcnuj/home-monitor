@@ -313,6 +313,36 @@ export function resizeLatencyChartToPlot(): void {
   }
 }
 
+/**
+ * Pin the scrollport to the right edge so the first view shows the most recent viewport.
+ * Uses computed plot width when scrollWidth has not updated yet after a CSS size change.
+ */
+export function scrollLatencyChartToLatest(): void {
+  const { scroll } = getLatencyLayoutElements();
+  if (!scroll || !latencyScrollMode) return;
+
+  const plotW = scroll.clientWidth;
+  const contentW =
+    latencyPlotCssWidth > 0
+      ? latencyPlotCssWidth
+      : scroll.scrollWidth;
+  scroll.scrollLeft = Math.max(0, contentW - plotW);
+
+  // Second pass after the browser applies layout / scrollbar.
+  requestAnimationFrame(() => {
+    if (!latencyScrollMode) return;
+    const s = getLatencyLayoutElements().scroll;
+    if (!s) return;
+    s.scrollLeft = Math.max(0, s.scrollWidth - s.clientWidth);
+  });
+}
+
+function isLatencyChartScrolledToEnd(epsilonPx = 4): boolean {
+  const { scroll } = getLatencyLayoutElements();
+  if (!scroll || !latencyScrollMode) return true;
+  return scroll.scrollLeft + scroll.clientWidth >= scroll.scrollWidth - epsilonPx;
+}
+
 function getLatencyLayoutElements(): {
   container: HTMLElement | null;
   yAxisWrap: HTMLElement | null;
@@ -397,11 +427,11 @@ export function applyLatencyChartLayout(scrollToEnd = false): boolean {
       yAxisWrap.style.height = `${plotH}px`;
       yAxisWrap.style.alignSelf = "flex-start";
     }
+    latencyScrollMode = true;
     if (scrollToEnd) {
-      // After width change, scrollWidth may not update until layout; use computed sizes.
+      // Width reset above drops scrollLeft to 0; always re-pin to the latest viewport.
       scroll.scrollLeft = Math.max(0, contentW - plotW);
     }
-    latencyScrollMode = true;
     return true;
   }
 
@@ -505,11 +535,30 @@ export function paintLatencyYAxis(): void {
   ctx.restore();
 }
 
-/** Call after window resize or container size changes. */
-export function resizeLatencyChartLayout(): void {
-  applyLatencyChartLayout(false);
+/**
+ * Call after window resize or container size changes.
+ * Reflow keeps the latest viewport when the user was already at the end (or when forced);
+ * otherwise preserves relative scroll position across the width change.
+ */
+export function resizeLatencyChartLayout(scrollToEnd = false): void {
+  const { scroll } = getLatencyLayoutElements();
+  const pinToLatest = scrollToEnd || isLatencyChartScrolledToEnd();
+  let ratio = 1;
+  if (scroll && latencyScrollMode && !pinToLatest) {
+    const maxScroll = Math.max(1, scroll.scrollWidth - scroll.clientWidth);
+    ratio = Math.min(1, Math.max(0, scroll.scrollLeft / maxScroll));
+  }
+
+  applyLatencyChartLayout(pinToLatest);
   resizeLatencyChartToPlot();
-  if (latencyScrollMode) {
+
+  if (latencyScrollMode && scroll) {
+    if (pinToLatest) {
+      scrollLatencyChartToLatest();
+    } else {
+      const contentW = latencyPlotCssWidth > 0 ? latencyPlotCssWidth : scroll.scrollWidth;
+      scroll.scrollLeft = Math.max(0, ratio * (contentW - scroll.clientWidth));
+    }
     paintLatencyYAxis();
   }
 }
@@ -664,8 +713,8 @@ export function buildLatencyChart(
   const canvas = document.getElementById("latencyChart") as HTMLCanvasElement | null;
   if (!canvas) return;
 
-  // Decide scroll mode + explicit plot size before Chart construction.
-  const scrollable = applyLatencyChartLayout(false);
+  // Decide scroll mode + explicit plot size; pin to latest so first view is the recent window.
+  const scrollable = applyLatencyChartLayout(true);
   renderLatencyLegend(scrollable ? servers : []);
 
   latencyChart?.destroy();
@@ -751,11 +800,13 @@ export function buildLatencyChart(
   latencyChart = new Chart(canvas, config as ChartConfiguration);
 
   if (scrollable) {
-    // Pin size + scroll to the latest viewport; paint the fixed Y-axis after scales exist.
+    // Pin size + scroll to the latest viewport for every range (30m…3d).
     resizeLatencyChartToPlot();
+    scrollLatencyChartToLatest();
     requestAnimationFrame(() => {
       applyLatencyChartLayout(true);
       resizeLatencyChartToPlot();
+      scrollLatencyChartToLatest();
       paintLatencyYAxis();
     });
   } else {
