@@ -25,17 +25,51 @@ describe("collectTimelineTimestamps", () => {
     expect(result.timestamps).toEqual([100, 200]);
   });
 
-  it("downsamples timestamps and returns step > 1 if count > 400", () => {
+  it("downsamples only when density would exceed the viewport-based budget", () => {
+    // 800 minutes of data, 1h viewport → budget ≈ 240 * (800/60) ≈ 3200, capped later;
+    // with span≈800min and default 240/viewport, small spans keep more detail.
     const records = Array.from({ length: 800 }, (_, i) => ({
       ts: i * 60,
       dns_server: "a",
       latency_ms: 10,
     })) as any;
-    const result = collectTimelineTimestamps(records, 0, 800 * 60);
-    expect(result.step).toBe(2);
-    expect(result.timestamps.length).toBe(400);
-    expect(result.timestamps[0]).toBe(0);
-    expect(result.timestamps[1]).toBe(120);
+    const oneHour = 3600;
+    const result = collectTimelineTimestamps(records, 0, 800 * 60, oneHour, 240);
+    // 800 points fit under the short-zoom hard cap → keep all
+    expect(result.step).toBe(1);
+    expect(result.timestamps.length).toBe(800);
+  });
+
+  it("keeps roughly pointsPerViewport samples inside one viewport of a long span", () => {
+    // 7 days of 1-minute samples
+    const n = 7 * 24 * 60;
+    const records = Array.from({ length: n }, (_, i) => ({
+      ts: i * 60,
+      dns_server: "a",
+      latency_ms: 10,
+    })) as any;
+    const spanMax = n * 60;
+    const viewport = 6 * 3600;
+    const result = collectTimelineTimestamps(records, 0, spanMax, viewport, 240);
+    // 6h zoom uses the long-range hard cap (5k)
+    expect(result.timestamps.length).toBeLessThanOrEqual(5000);
+    // Density in a 6h window should stay on the order of pointsPerViewport, not ~400/28.
+    const inView = result.timestamps.filter((t) => t >= spanMax - viewport).length;
+    expect(inView).toBeGreaterThan(100);
+  });
+
+  it("keeps near-full minute density for short zooms over a week of history", () => {
+    const n = 7 * 24 * 60;
+    const records = Array.from({ length: n }, (_, i) => ({
+      ts: i * 60,
+      dns_server: "a",
+      latency_ms: 10,
+    })) as any;
+    const spanMax = n * 60;
+    const viewport = 30 * 60;
+    const result = collectTimelineTimestamps(records, 0, spanMax, viewport, 240);
+    expect(result.step).toBe(1);
+    expect(result.timestamps.length).toBe(n);
   });
 });
 

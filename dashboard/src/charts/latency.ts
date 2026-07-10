@@ -212,7 +212,8 @@ function createBatchTooltipPlugin(batchTimestamps: readonly number[]): Plugin<"l
   };
 }
 
-const BAND_TENSION = 0.42;
+// Low tension keeps min/max σ bands responsive to spikes; 0.4+ looked overly smoothed.
+const BAND_TENSION = 0.12;
 const SIGMA_BAND_ALPHA = 0.18;
 const SIGMA_BAND_ALPHA_LONG = 0.32;
 const MINMAX_BAND_ALPHA = 0.07;
@@ -521,7 +522,12 @@ export function buildLatencyChart(
   const view = visibleXWindow(xBounds.max, xBounds.viewportSec, xBounds.min, xBounds.max);
   // Labels follow the zoom (selected range), not the full multi-day span.
   const viewTickStep = chartTickStep(xBounds.viewportSec, compact);
-  const { timestamps, step } = collectTimelineTimestamps(rawRecords, xBounds.min, xBounds.max);
+  const { timestamps, step } = collectTimelineTimestamps(
+    rawRecords,
+    xBounds.min,
+    xBounds.max,
+    xBounds.viewportSec,
+  );
   const maxGapSec = Math.max(MAX_GAP_SEC, MAX_GAP_SEC * step);
   const servers = [...new Set(rawRecords.filter(isSuccess).map((r) => r.dns_server))].sort();
   const datasets: ChartConfiguration["data"]["datasets"] = [];

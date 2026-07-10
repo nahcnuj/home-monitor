@@ -30,13 +30,34 @@ function latencyValuesInWindow(
     .map((r) => r.latency_ms);
 }
 
-export function collectTimelineTimestamps(records: DnsRecord[], min: number, max: number): { timestamps: number[], step: number } {
+/**
+ * Build X anchors for the rolling envelope across [min, max].
+ * Density targets ~`pointsPerViewport` samples inside one selected-range window so bands
+ * stay sharp when panning multi-day history (a flat 400-point cap over a week looked too smooth).
+ */
+export function collectTimelineTimestamps(
+  records: DnsRecord[],
+  min: number,
+  max: number,
+  viewportSec: number = displayRangeSec,
+  pointsPerViewport = 240,
+): { timestamps: number[]; step: number } {
   const ts = new Set<number>();
   for (const r of records) {
     if (r.ts >= min && r.ts <= max) ts.add(r.ts);
   }
   const sorted = [...ts].sort((a, b) => a - b);
-  const maxPoints = 400;
+  if (!sorted.length) return { timestamps: [], step: 1 };
+
+  const spanSec = Math.max(1, max - min);
+  const vp = Math.max(1, viewportSec);
+  // Short zooms use per-batch bands — keep nearly every minute for a week of data.
+  // Longer zooms use a rolling window and can afford more downsampling.
+  const hardCap = vp < HIDE_LATENCY_POINTS_RANGE_SEC ? 12_000 : 5_000;
+  const maxPoints = Math.min(
+    hardCap,
+    Math.max(pointsPerViewport, Math.ceil(pointsPerViewport * (spanSec / vp))),
+  );
   if (sorted.length <= maxPoints) return { timestamps: sorted, step: 1 };
   const step = Math.ceil(sorted.length / maxPoints);
   return { timestamps: sorted.filter((_, index) => index % step === 0), step };
