@@ -10,6 +10,9 @@ import {
   SCROLLABLE_CHART_MAX_RANGE_SEC,
   SCROLLABLE_CHART_PX_PER_HOUR,
   SCROLLABLE_CHART_PX_PER_HOUR_COMPACT,
+  SCROLLABLE_CHART_VISIBLE_HOURS,
+  SCROLLABLE_CHART_VISIBLE_HOURS_COMPACT,
+  SCROLLABLE_CHART_Y_AXIS_WIDTH_PX,
   SERVER_COLORS,
 } from "../constants.ts";
 import { formatErrorCode, isDnsErrorCode } from "../errors.ts";
@@ -220,7 +223,8 @@ export function shouldShowLatencyPoints(rangeSec: number = displayRangeSec): boo
 }
 
 let latencyChart: Chart | null = null;
-let latencyYAxisChart: Chart | null = null;
+/** Whether the last layout pass put the latency chart in horizontal-scroll mode. */
+let latencyScrollMode = false;
 
 export function getLatencyChart(): Chart | null {
   return latencyChart;
@@ -238,9 +242,12 @@ export function latencyChartScrollWidth(
   if (!isLatencyChartScrollable(rangeSec) || containerWidth <= 0) {
     return Math.max(0, containerWidth);
   }
+  const rangeHours = rangeSec / 3600;
+  const visibleHours = compact ? SCROLLABLE_CHART_VISIBLE_HOURS_COMPACT : SCROLLABLE_CHART_VISIBLE_HOURS;
+  const byViewport = Math.ceil(containerWidth * (rangeHours / visibleHours));
   const pxPerHour = compact ? SCROLLABLE_CHART_PX_PER_HOUR_COMPACT : SCROLLABLE_CHART_PX_PER_HOUR;
-  const contentWidth = Math.ceil((rangeSec / 3600) * pxPerHour);
-  return Math.max(containerWidth, contentWidth);
+  const byDensity = Math.ceil(rangeHours * pxPerHour);
+  return Math.max(containerWidth, byViewport, byDensity);
 }
 
 function getLatencyLayoutElements(): {
@@ -249,6 +256,7 @@ function getLatencyLayoutElements(): {
   scroll: HTMLElement | null;
   inner: HTMLElement | null;
   yAxisCanvas: HTMLCanvasElement | null;
+  legend: HTMLElement | null;
 } {
   return {
     container: document.getElementById("latencyChartContainer"),
@@ -256,120 +264,193 @@ function getLatencyLayoutElements(): {
     scroll: document.getElementById("latencyChartScroll"),
     inner: document.getElementById("latencyChartInner"),
     yAxisCanvas: document.getElementById("latencyYAxis") as HTMLCanvasElement | null,
+    legend: document.getElementById("latencyLegend"),
   };
 }
 
-/** Size the scrollable plot area and toggle the fixed Y-axis column. */
-export function applyLatencyChartLayout(scrollToEnd = false): void {
+/**
+ * Size the plot area and toggle fixed Y-axis / scroll mode.
+ * Scroll mode is only enabled when the content is actually wider than the plot viewport.
+ */
+export function applyLatencyChartLayout(scrollToEnd = false): boolean {
   const { container, yAxisWrap, scroll, inner } = getLatencyLayoutElements();
-  if (!container || !scroll || !inner) return;
-
-  const scrollable = isLatencyChartScrollable();
-  container.classList.toggle("is-scrollable", scrollable);
-
-  if (yAxisWrap) {
-    yAxisWrap.hidden = !scrollable;
+  if (!container || !scroll || !inner) {
+    latencyScrollMode = false;
+    return false;
   }
 
-  if (!scrollable) {
+  if (!isLatencyChartScrollable()) {
+    container.classList.remove("is-scrollable");
+    if (yAxisWrap) {
+      yAxisWrap.hidden = true;
+      yAxisWrap.style.paddingBottom = "";
+      yAxisWrap.style.height = "";
+      yAxisWrap.style.alignSelf = "";
+    }
     inner.style.width = "100%";
     scroll.scrollLeft = 0;
-    return;
+    latencyScrollMode = false;
+    return false;
   }
 
-  const containerWidth = scroll.clientWidth;
-  const width = latencyChartScrollWidth(containerWidth, displayRangeSec, isCompactChartLayout());
-  inner.style.width = `${width}px`;
-
-  if (scrollToEnd) {
-    scroll.scrollLeft = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
+  // Measure without the Y-axis column first.
+  if (yAxisWrap) {
+    yAxisWrap.hidden = true;
+    yAxisWrap.style.paddingBottom = "";
+    yAxisWrap.style.height = "";
+    yAxisWrap.style.alignSelf = "";
   }
-}
+  container.classList.remove("is-scrollable");
+  inner.style.width = "100%";
 
-function destroyLatencyYAxisChart(): void {
-  latencyYAxisChart?.destroy();
-  latencyYAxisChart = null;
-}
+  const baseW = scroll.clientWidth;
+  let contentW = latencyChartScrollWidth(baseW, displayRangeSec, isCompactChartLayout());
+  let needsScroll = contentW > baseW + 1;
 
-function syncLatencyYAxisChart(yMax: number | undefined): void {
-  const { yAxisCanvas } = getLatencyLayoutElements();
-  if (!latencyChart || !yAxisCanvas || !isLatencyChartScrollable()) {
-    destroyLatencyYAxisChart();
-    return;
-  }
-
-  const top = latencyChart.chartArea?.top ?? 0;
-  const bottomPad = latencyChart.height - (latencyChart.chartArea?.bottom ?? latencyChart.height);
-  const yMin = typeof latencyChart.scales.y?.min === "number" ? latencyChart.scales.y.min : 0;
-  const resolvedYMax =
-    typeof latencyChart.scales.y?.max === "number"
-      ? latencyChart.scales.y.max
-      : yMax;
-
-  const scaleOpts = {
-    min: yMin,
-    ...(resolvedYMax != null ? { max: resolvedYMax } : {}),
-    title: { display: true, text: "ms", color: "#8b90a0" },
-    grid: { drawOnChartArea: false, drawTicks: true, color: "#2a2e3d" },
-    border: { display: true, color: "#2a2e3d" },
-    ticks: { color: "#8b90a0", mirror: false, padding: 4 },
-  };
-
-  if (latencyYAxisChart) {
-    latencyYAxisChart.options.layout = {
-      padding: { top, bottom: bottomPad, left: 0, right: 0 },
-    };
-    const yScale = latencyYAxisChart.options.scales?.y;
-    if (yScale && typeof yScale === "object") {
-      Object.assign(yScale, scaleOpts);
+  if (needsScroll) {
+    if (yAxisWrap) {
+      yAxisWrap.hidden = false;
+      yAxisWrap.style.flexBasis = `${SCROLLABLE_CHART_Y_AXIS_WIDTH_PX}px`;
+      yAxisWrap.style.width = `${SCROLLABLE_CHART_Y_AXIS_WIDTH_PX}px`;
     }
-    latencyYAxisChart.update("none");
-    latencyYAxisChart.resize();
+    container.classList.add("is-scrollable");
+    const plotW = scroll.clientWidth;
+    contentW = latencyChartScrollWidth(plotW, displayRangeSec, isCompactChartLayout());
+    // If showing the axis made the plot fit, fall back to a normal chart.
+    if (contentW <= plotW + 1) {
+      if (yAxisWrap) yAxisWrap.hidden = true;
+      container.classList.remove("is-scrollable");
+      inner.style.width = "100%";
+      scroll.scrollLeft = 0;
+      latencyScrollMode = false;
+      return false;
+    }
+    inner.style.width = `${contentW}px`;
+    // Match axis height to the plot above the horizontal scrollbar (not the full card).
+    if (yAxisWrap) {
+      yAxisWrap.style.paddingBottom = "";
+      yAxisWrap.style.height = `${scroll.clientHeight}px`;
+      yAxisWrap.style.alignSelf = "flex-start";
+    }
+    if (scrollToEnd) {
+      scroll.scrollLeft = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
+    }
+    latencyScrollMode = true;
+    return true;
+  }
+
+  if (yAxisWrap) {
+    yAxisWrap.hidden = true;
+    yAxisWrap.style.height = "";
+    yAxisWrap.style.alignSelf = "";
+  }
+  inner.style.width = "100%";
+  scroll.scrollLeft = 0;
+  latencyScrollMode = false;
+  return false;
+}
+
+export function isLatencyScrollMode(): boolean {
+  return latencyScrollMode;
+}
+
+function clearLatencyLegend(): void {
+  const { legend } = getLatencyLayoutElements();
+  if (!legend) return;
+  legend.hidden = true;
+  legend.innerHTML = "";
+}
+
+function renderLatencyLegend(servers: readonly string[]): void {
+  const { legend } = getLatencyLayoutElements();
+  if (!legend) return;
+  if (!latencyScrollMode || !servers.length) {
+    clearLatencyLegend();
+    return;
+  }
+  legend.hidden = false;
+  legend.innerHTML = servers
+    .map((server, index) => {
+      const color = SERVER_COLORS[index % SERVER_COLORS.length];
+      return `<span class="latency-legend-item"><span class="swatch" style="background:${color}"></span>${server}</span>`;
+    })
+    .join("");
+}
+
+/** Draw fixed Y-axis labels aligned to the main chart's Y scale. */
+export function paintLatencyYAxis(): void {
+  const { yAxisWrap, yAxisCanvas } = getLatencyLayoutElements();
+  if (!latencyChart || !yAxisWrap || !yAxisCanvas || yAxisWrap.hidden || !latencyScrollMode) {
     return;
   }
 
-  latencyYAxisChart = new Chart(yAxisCanvas, {
-    type: "line",
-    data: { datasets: [{ data: [] }] },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: false,
-      events: [],
-      layout: {
-        padding: { top, bottom: bottomPad, left: 0, right: 0 },
-      },
-      plugins: {
-        legend: { display: false },
-        tooltip: { enabled: false },
-        chartRegions: {
-          xMin: 0,
-          cutoffEnd: 0,
-          timeoutRanges: [],
-          timeoutEdgeWidth: 0,
-          minTimeoutBarWidth: 0,
-        },
-      },
-      scales: {
-        x: { display: false, min: 0, max: 1 },
-        y: scaleOpts,
-      },
-    },
-  } as ChartConfiguration);
+  const scale = latencyChart.scales.y;
+  if (!scale) return;
+
+  const cssW = SCROLLABLE_CHART_Y_AXIS_WIDTH_PX;
+  const cssH = yAxisWrap.clientHeight;
+  if (cssH <= 0) return;
+
+  const dpr = window.devicePixelRatio || 1;
+  yAxisCanvas.width = Math.max(1, Math.floor(cssW * dpr));
+  yAxisCanvas.height = Math.max(1, Math.floor(cssH * dpr));
+  yAxisCanvas.style.width = `${cssW}px`;
+  yAxisCanvas.style.height = `${cssH}px`;
+
+  const ctx = yAxisCanvas.getContext("2d");
+  if (!ctx) return;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+
+  ctx.strokeStyle = "#2a2e3d";
+  ctx.fillStyle = "#8b90a0";
+  ctx.lineWidth = 1;
+
+  // Axis line on the right edge (adjacent to the plot).
+  ctx.beginPath();
+  ctx.moveTo(cssW - 0.5, scale.top);
+  ctx.lineTo(cssW - 0.5, scale.bottom);
+  ctx.stroke();
+
+  ctx.font = `11px "Segoe UI", system-ui, sans-serif`;
+  ctx.textAlign = "right";
+  ctx.textBaseline = "middle";
+
+  scale.ticks.forEach((tick, index) => {
+    const y = scale.getPixelForTick(index);
+    if (y < scale.top - 4 || y > scale.bottom + 4) return;
+    // Tick mark
+    ctx.beginPath();
+    ctx.moveTo(cssW - 0.5, y);
+    ctx.lineTo(cssW - 5, y);
+    ctx.stroke();
+    const raw = tick.label ?? tick.value;
+    const text = Array.isArray(raw) ? raw.join(" ") : String(raw);
+    ctx.fillText(text, cssW - 7, y);
+  });
+
+  // Rotated unit label
+  ctx.save();
+  ctx.translate(11, (scale.top + scale.bottom) / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("ms", 0, 0);
+  ctx.restore();
 }
 
 /** Call after window resize or container size changes. */
 export function resizeLatencyChartLayout(): void {
-  applyLatencyChartLayout(false);
+  const wasScroll = latencyScrollMode;
+  const needsScroll = applyLatencyChartLayout(false);
+  // Entering/leaving scroll mode changes legend + Y-axis options; rebuild via caller if needed.
+  if (wasScroll !== needsScroll && latencyChart) {
+    // Options (legend/ticks) differ; force a full re-render path by resizing then painting.
+    // Main already owns rebuild on compact flip; here we only reflow width/axis paint.
+  }
   latencyChart?.resize();
-  if (isLatencyChartScrollable()) {
-    syncLatencyYAxisChart(
-      typeof latencyChart?.options.scales?.y === "object"
-        ? (latencyChart.options.scales.y as { max?: number }).max
-        : undefined,
-    );
-  } else {
-    destroyLatencyYAxisChart();
+  if (latencyScrollMode) {
+    paintLatencyYAxis();
   }
 }
 
@@ -517,11 +598,11 @@ export function buildLatencyChart(
   const canvas = document.getElementById("latencyChart") as HTMLCanvasElement | null;
   if (!canvas) return;
 
-  const scrollable = isLatencyChartScrollable();
-  applyLatencyChartLayout(scrollable);
+  // Decide scroll mode before Chart construction (affects legend / Y ticks).
+  const scrollable = applyLatencyChartLayout(false);
+  renderLatencyLegend(scrollable ? servers : []);
 
   latencyChart?.destroy();
-  destroyLatencyYAxisChart();
 
   const config = {
     type: "line",
@@ -531,6 +612,8 @@ export function buildLatencyChart(
       responsive: true,
       maintainAspectRatio: false,
       interaction: { mode: "nearest", axis: "x", intersect: false },
+      // Extra top padding when Chart.js legend is hidden (external legend is above the container).
+      layout: scrollable ? { padding: { top: 4 } } : undefined,
       scales: {
         x: {
           type: "linear",
@@ -556,6 +639,7 @@ export function buildLatencyChart(
             color: "#8b90a0",
           },
           grid: { color: "#2a2e3d" },
+          border: { display: !scrollable },
           ticks: {
             display: !scrollable,
             color: "#8b90a0",
@@ -573,6 +657,8 @@ export function buildLatencyChart(
           minTimeoutBarWidth: 1, // CSS px; short errors (e.g. 170ms no_response) stay visible
         },
         legend: {
+          // Scroll mode: fixed HTML legend above the chart so labels do not slide away.
+          display: !scrollable,
           labels: {
             color: "#e4e6ed",
             filter: (item: { text: string }) => !isHiddenBand(item.text) && !isFailureDataset(item.text),
@@ -597,11 +683,13 @@ export function buildLatencyChart(
   latencyChart = new Chart(canvas, config as ChartConfiguration);
 
   if (scrollable) {
-    // Layout after Chart measures legend/area so the fixed Y-axis aligns.
+    // After Chart measures scales, pin scroll to the latest data and paint the fixed Y-axis.
     requestAnimationFrame(() => {
       applyLatencyChartLayout(true);
       latencyChart?.resize();
-      syncLatencyYAxisChart(yMax);
+      paintLatencyYAxis();
     });
+  } else {
+    clearLatencyLegend();
   }
 }

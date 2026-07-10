@@ -2,6 +2,7 @@ import { Chart, registerables } from "chart.js";
 import { buildErrorChart, getErrorChart } from "./charts/error.ts";
 import {
   buildLatencyChart,
+  isLatencyScrollMode,
   resizeLatencyChartLayout,
 } from "./charts/latency.ts";
 import { chartRegionsPlugin, errorBandLabelsPlugin } from "./charts/plugins.ts";
@@ -39,7 +40,13 @@ function resizeCharts(): void {
     render();
     return;
   }
+  const wasScroll = isLatencyScrollMode();
   resizeLatencyChartLayout();
+  // Entering/leaving scroll mode toggles legend placement and Y-axis options.
+  if (wasScroll !== isLatencyScrollMode() && allRecords.length) {
+    render();
+    return;
+  }
   getErrorChart()?.resize();
 }
 

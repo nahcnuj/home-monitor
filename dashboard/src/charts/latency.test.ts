@@ -10,6 +10,7 @@ import {
   formatFailureLabel,
   getLatencyChart,
   isLatencyChartScrollable,
+  isLatencyScrollMode,
   isTooltipDataset,
   latencyChartScrollWidth,
   nearestBatchTs,
@@ -25,11 +26,12 @@ Chart.register(...registerables, chartRegionsPlugin, errorBandLabelsPlugin);
 
 beforeAll(() => {
   document.body.innerHTML = `
+    <div class="latency-legend" id="latencyLegend" hidden></div>
     <div class="chart-container chart-container--latency" id="latencyChartContainer" style="width:800px;height:400px">
-      <div class="chart-yaxis-wrap" id="latencyYAxisWrap" hidden style="width:52px;height:400px">
-        <canvas id="latencyYAxis" width="52" height="400"></canvas>
+      <div class="chart-yaxis-wrap" id="latencyYAxisWrap" hidden style="width:44px;height:400px">
+        <canvas id="latencyYAxis" width="44" height="400"></canvas>
       </div>
-      <div class="chart-scroll" id="latencyChartScroll" style="width:748px;height:400px">
+      <div class="chart-scroll" id="latencyChartScroll" style="width:756px;height:400px">
         <div class="chart-scroll-inner" id="latencyChartInner" style="width:800px;height:400px">
           <canvas id="latencyChart" width="800" height="400"></canvas>
         </div>
@@ -37,6 +39,21 @@ beforeAll(() => {
     </div>
     <canvas id="errorChart" width="800" height="200"></canvas>
   `;
+  // jsdom: clientWidth/Height are 0 unless explicitly stubbed for layout helpers.
+  const scroll = document.getElementById("latencyChartScroll")!;
+  const container = document.getElementById("latencyChartContainer")!;
+  Object.defineProperty(scroll, "clientWidth", { configurable: true, get: () => 756 });
+  Object.defineProperty(scroll, "clientHeight", { configurable: true, get: () => 400 });
+  Object.defineProperty(scroll, "offsetHeight", { configurable: true, get: () => 400 });
+  Object.defineProperty(scroll, "scrollWidth", {
+    configurable: true,
+    get: () => {
+      const inner = document.getElementById("latencyChartInner");
+      const w = Number.parseInt(inner?.style.width ?? "756", 10);
+      return Number.isFinite(w) ? w : 756;
+    },
+  });
+  Object.defineProperty(container, "clientWidth", { configurable: true, get: () => 800 });
 });
 
 describe("nearestBatchTs", () => {
@@ -49,35 +66,72 @@ describe("nearestBatchTs", () => {
 });
 
 describe("latency chart horizontal scroll layout", () => {
-  it("enables scroll for ranges at or below 24h, not for 3d", () => {
+  it("allows scroll mode for ranges at or below 24h, not for 3d", () => {
     expect(isLatencyChartScrollable(30 * 60)).toBe(true);
     expect(isLatencyChartScrollable(DAY_SEC)).toBe(true);
     expect(isLatencyChartScrollable(3 * DAY_SEC)).toBe(false);
   });
 
-  it("widens the chart for dense short ranges and never shrinks below the container", () => {
+  it("widens longer ≤24h ranges and never shrinks below the container", () => {
+    // 30m fits in a typical viewport — no artificial widening past container.
     expect(latencyChartScrollWidth(800, 30 * 60, false)).toBe(800);
-    expect(latencyChartScrollWidth(800, DAY_SEC, false)).toBeGreaterThan(800);
+    // 24h targets ~6h visible ⇒ about 4× container.
+    expect(latencyChartScrollWidth(800, DAY_SEC, false)).toBeGreaterThan(2000);
     expect(latencyChartScrollWidth(800, 3 * DAY_SEC, false)).toBe(800);
   });
 
-  it("marks the container scrollable and hides Y ticks on the plot chart for 24h", () => {
+  it("enables scroll mode with fixed Y-axis and external legend for 24h", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(Date.UTC(2026, 5, 20, 14, 25, 5)));
     setDisplayRangeSec(DAY_SEC);
+
     const records = parseTsv(sampleTsv);
-    const filtered = filterByPeriod(records, 0);
+    const filtered = filterByPeriod(records, 1781967600);
     const { successes, failures } = aggregateByServer(filtered);
+    expect(successes.length).toBeGreaterThan(0);
 
-    buildLatencyChart(filtered, successes, failures, 0);
+    buildLatencyChart(filtered, successes, failures, 1781967600);
 
+    expect(isLatencyScrollMode()).toBe(true);
     const container = document.getElementById("latencyChartContainer");
     const yAxisWrap = document.getElementById("latencyYAxisWrap") as HTMLElement;
+    const legend = document.getElementById("latencyLegend") as HTMLElement;
     expect(container?.classList.contains("is-scrollable")).toBe(true);
     expect(yAxisWrap.hidden).toBe(false);
+    expect(legend.hidden).toBe(false);
+    expect(legend.querySelectorAll(".latency-legend-item").length).toBeGreaterThan(0);
 
     const chart = getLatencyChart()!;
     const yScale = chart.options.scales?.y as { ticks?: { display?: boolean }; title?: { display?: boolean } };
     expect(yScale.ticks?.display).toBe(false);
     expect(yScale.title?.display).toBe(false);
+    expect(chart.options.plugins?.legend?.display).toBe(false);
+
+    vi.useRealTimers();
+  });
+
+  it("keeps a normal integrated Y-axis when the range fits the viewport", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(Date.UTC(2026, 5, 20, 14, 25, 5)));
+    setDisplayRangeSec(30 * 60);
+
+    const records = parseTsv(sampleTsv);
+    const filtered = filterByPeriod(records, 1781967600);
+    const { successes, failures } = aggregateByServer(filtered);
+
+    buildLatencyChart(filtered, successes, failures, 1781967600);
+
+    expect(isLatencyScrollMode()).toBe(false);
+    const yAxisWrap = document.getElementById("latencyYAxisWrap") as HTMLElement;
+    expect(yAxisWrap.hidden).toBe(true);
+
+    const chart = getLatencyChart()!;
+    const yScale = chart.options.scales?.y as { ticks?: { display?: boolean }; title?: { display?: boolean } };
+    expect(yScale.ticks?.display).not.toBe(false);
+    expect(yScale.title?.display).not.toBe(false);
+    expect(chart.options.plugins?.legend?.display).not.toBe(false);
+
+    vi.useRealTimers();
   });
 });
 
