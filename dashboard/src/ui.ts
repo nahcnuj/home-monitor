@@ -17,27 +17,37 @@ import type { Stats } from "./types.ts";
 
 export function renderStats(stats: Stats): void {
   const grid = document.getElementById("statsGrid");
-  if (!grid) return;
-
-  grid.innerHTML = [
-    { label: "測定数", value: stats.total.toLocaleString() },
-    { label: "平均 (ms)", value: stats.avg ? Math.round(stats.avg) : "-" },
-    { label: "P95 (ms)", value: stats.p95 ? Math.round(stats.p95) : "-" },
-    { label: "最大 (ms)", value: stats.max || "-" },
-    {
-      label: "Uptime",
-      value: stats.total ? `${stats.uptime.toFixed(1)}%` : "-",
-      cls: stats.uptime < 95 ? "error-rate" : "ok",
-    },
-  ]
-    .map(
-      (item) => `
-    <div class="stat-card">
-      <div class="label">${item.label}</div>
-      <div class="value ${item.cls || ""}">${item.value}</div>
+  if (grid) {
+    grid.innerHTML = [
+      { label: "測定数", value: stats.total.toLocaleString() },
+      { label: "平均", value: stats.avg ? `${Math.round(stats.avg)}` : "-", unit: "ms" },
+      { label: "P95", value: stats.p95 ? `${Math.round(stats.p95)}` : "-", unit: "ms" },
+      { label: "最大", value: stats.max ? `${stats.max}` : "-", unit: "ms" },
+    ]
+      .map(
+        (item) => `
+    <div class="stat-item">
+      <span class="label">${item.label}</span>
+      <span class="value">${item.value}${item.unit ? `<span class="unit">${item.unit}</span>` : ""}</span>
     </div>`,
-    )
-    .join("");
+      )
+      .join("");
+  }
+
+  const uptime = document.getElementById("uptimeBadge");
+  if (uptime) {
+    if (!stats.total) {
+      uptime.innerHTML = `<span class="label">Uptime</span><span class="value">—</span>`;
+      uptime.classList.remove("ok", "warn");
+      return;
+    }
+    const cls = stats.uptime < 95 ? "warn" : "ok";
+    uptime.classList.toggle("ok", cls === "ok");
+    uptime.classList.toggle("warn", cls === "warn");
+    uptime.innerHTML =
+      `<span class="label">Uptime</span>` +
+      `<span class="value">${stats.uptime.toFixed(1)}%</span>`;
+  }
 }
 
 export function updateRangeUi(): void {
