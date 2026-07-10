@@ -134,6 +134,7 @@ npm run dev      # data/local の TSV を参照（設定は monitor.config.ts）
 npm run build    # dashboard/dist/ に出力
 npm run typecheck
 npm test
+npm run bench    # レイテンシチャート描画のベンチ（7日分合成データ）
 ```
 
 公開 TSV をローカルで確認したい場合:

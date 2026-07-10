@@ -9,12 +9,12 @@
     "read-config": "tsx scripts/read-config.ts",
     "tsv-to-json": "tsx scripts/tsv-to-json.ts",
     "test": "vitest run",
+    "bench": "vitest bench --run",
     "test:collect-safe": "powershell -NoProfile -File scripts/tests/Assert-CollectDnsSafe.ps1",
     "test:collect-lookup": "powershell -NoProfile -File scripts/tests/Test-CollectDnsLookup.ps1",
     "preview": "vite preview --config dashboard/vite.config.ts"
   },
   "dependencies": {
-    "@sgratzl/boxplots": "^2.0.0",
     "chart.js": "^4.4.7"
   },
   "devDependencies": {

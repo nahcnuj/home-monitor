@@ -6,6 +6,9 @@ export default defineConfig({
     environment: "happy-dom",
     setupFiles: ["dashboard/src/test/setup.ts"],
     include: ["dashboard/src/**/*.test.ts"],
+    benchmark: {
+      include: ["dashboard/src/**/*.bench.ts"],
+    },
   },
   resolve: {
     alias: {

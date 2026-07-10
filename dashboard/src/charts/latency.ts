@@ -29,7 +29,7 @@ import type {
   LatencySamplePoint,
   TimeBounds,
 } from "../types.ts";
-import { minOf, timeoutRanges, withAlpha, withGaps } from "../utils.ts";
+import { timeoutRanges, withAlpha, withGaps } from "../utils.ts";
 
 function isSuccess(r: DnsRecord): r is DnsSuccessRecord {
   return !r.error;
@@ -237,9 +237,26 @@ let latencyChartViewportSec = DEFAULT_VIEWPORT_SEC;
 let latencyViewMax = 0;
 let latencyScrollListenerBound = false;
 let latencyScrollRaf = 0;
+let latencyPinRaf = 0;
+/** Kept for pan-time scatter refresh when individual points are shown. */
+let latencySuccessesByServer: Map<string, DnsSuccessRecord[]> | null = null;
+let latencyShowPoints = false;
 
 export function getLatencyChart(): Chart | null {
   return latencyChart;
+}
+
+function destroyLatencyChartInstance(): void {
+  if (latencyPinRaf) {
+    cancelAnimationFrame(latencyPinRaf);
+    latencyPinRaf = 0;
+  }
+  if (latencyScrollRaf) {
+    cancelAnimationFrame(latencyScrollRaf);
+    latencyScrollRaf = 0;
+  }
+  latencyChart?.destroy();
+  latencyChart = null;
 }
 
 /**
@@ -336,15 +353,47 @@ function getLatencyLayoutElements(): {
   };
 }
 
+function scatterPointsInRange(
+  samples: readonly DnsSuccessRecord[],
+  min: number,
+  max: number,
+): LatencySamplePoint[] {
+  const out: LatencySamplePoint[] = [];
+  for (const r of samples) {
+    if (r.ts >= min && r.ts <= max) {
+      out.push({ x: r.ts, y: r.latency_ms, domain: r.domain });
+    }
+  }
+  return out;
+}
+
+function refreshScatterForView(min: number, max: number): void {
+  if (!latencyChart || !latencySuccessesByServer || !latencyShowPoints) return;
+  for (const ds of latencyChart.data.datasets) {
+    const label = ds.label;
+    if (!label || isFailureDataset(label) || isHiddenBand(label)) continue;
+    // Scatter series use the server IP as label.
+    if ((ds as { type?: string }).type !== "scatter" && ds.type !== "scatter") continue;
+    const samples = latencySuccessesByServer.get(label);
+    if (!samples) continue;
+    ds.data = scatterPointsInRange(samples, min, max);
+  }
+}
+
 function applyVisibleWindowToChart(): void {
-  if (!latencyChart) return;
+  if (!latencyChart?.canvas) return;
   const { min, max } = visibleXWindow();
   const x = latencyChart.options.scales?.x;
   if (x && typeof x === "object") {
     (x as { min?: number; max?: number }).min = min;
     (x as { max?: number }).max = max;
   }
-  latencyChart.update("none");
+  refreshScatterForView(min, max);
+  try {
+    latencyChart.update("none");
+  } catch {
+    // Chart may be destroyed between rAF schedules (tests / rapid rebuilds).
+  }
 }
 
 function onLatencyHistoryScroll(): void {
@@ -410,9 +459,11 @@ export function applyLatencyChartLayout(scrollToEnd = false): boolean {
     const maxScroll = Math.max(0, contentW - trackW);
     scroll.scrollLeft = maxScroll;
     // Layout may lag one frame for scrollWidth on some engines.
-    requestAnimationFrame(() => {
+    if (latencyPinRaf) cancelAnimationFrame(latencyPinRaf);
+    latencyPinRaf = requestAnimationFrame(() => {
+      latencyPinRaf = 0;
       const s = getLatencyLayoutElements().scroll;
-      if (!s || !latencyScrollMode) return;
+      if (!s || !latencyScrollMode || !latencyChart?.canvas) return;
       s.scrollLeft = Math.max(0, s.scrollWidth - s.clientWidth);
       latencyViewMax = latencySpanMax;
       applyVisibleWindowToChart();
@@ -500,17 +551,34 @@ export function buildLatencyChart(
   _failures: DnsFailureRecord[],
   dataCutoffTs: number,
 ): void {
-  const allFailures = listFailures(rawRecords);
-  const batchTimestamps = collectBatchTimestamps(rawRecords);
+  // Single pass: failures, successes-by-server, latencies, data min, batch timestamps.
+  const allFailures: DnsFailureRecord[] = [];
+  const successesByServer = new Map<string, DnsSuccessRecord[]>();
+  const latencies: number[] = [];
+  const batchTsSet = new Set<number>();
+  let dataMinTs: number | undefined;
 
-  const successesForP95 = rawRecords.filter(isSuccess);
-  const latencies = successesForP95.map((r) => r.latency_ms);
+  for (const r of rawRecords) {
+    batchTsSet.add(r.ts);
+    if (dataMinTs === undefined || r.ts < dataMinTs) dataMinTs = r.ts;
+    if (isSuccess(r)) {
+      latencies.push(r.latency_ms);
+      let list = successesByServer.get(r.dns_server);
+      if (!list) {
+        list = [];
+        successesByServer.set(r.dns_server, list);
+      }
+      list.push(r);
+    } else if (r.error) {
+      allFailures.push(r);
+    }
+  }
+
+  const batchTimestamps = [...batchTsSet].sort((a, b) => a - b);
   const p95 = percentile(latencies, 95);
   const yMax = p95 > 0 ? ceilingToHundred(p95 * 2) : undefined;
 
   const compact = isCompactChartLayout();
-  // Loop min — Math.min(...ts) overflows the stack on multi-day datasets.
-  const dataMinTs = rawRecords.length ? minOf(rawRecords.map((r) => r.ts)) : undefined;
   const xBounds = chartTimeBounds(undefined, compact, {
     dataMinTs,
     dataCutoffTs,
@@ -528,11 +596,16 @@ export function buildLatencyChart(
     xBounds.viewportSec,
   );
   const maxGapSec = Math.max(MAX_GAP_SEC, MAX_GAP_SEC * step);
-  const servers = [...new Set(rawRecords.filter(isSuccess).map((r) => r.dns_server))].sort();
+  const servers = [...successesByServer.keys()].sort();
   const datasets: ChartConfiguration["data"]["datasets"] = [];
   const showPoints = shouldShowLatencyPoints();
+  latencyShowPoints = showPoints;
+  latencySuccessesByServer = successesByServer;
   const sigmaBandAlpha = showPoints ? SIGMA_BAND_ALPHA : SIGMA_BAND_ALPHA_LONG;
   const minMaxBandAlpha = showPoints ? MINMAX_BAND_ALPHA : MINMAX_BAND_ALPHA_LONG;
+  // Scatter is clipped to the visible X window (refreshed on pan) so Chart.js is not
+  // handed ~100k points for a week of multi-domain samples.
+  const tooltipAnchorTs = showPoints ? null : new Set(timestamps);
 
   servers.forEach((server, index) => {
     const color = SERVER_COLORS[index % SERVER_COLORS.length];
@@ -587,30 +660,38 @@ export function buildLatencyChart(
       spanGaps: false,
     });
 
-    const samples = rawRecords.filter(
-      (r): r is DnsSuccessRecord => isSuccess(r) && r.dns_server === server,
-    );
+    const samples = successesByServer.get(server) ?? [];
     if (samples.length) {
-      datasets.push({
-        label: server,
-        type: "scatter",
-        order: 1,
-        data: samples.map((r): LatencySamplePoint => ({
-          x: r.ts,
-          y: r.latency_ms,
-          domain: r.domain,
-        })),
-        borderColor: color,
-        backgroundColor: withAlpha(color, 0.85),
-        pointRadius: showPoints ? 1.25 : 0,
-        pointHoverRadius: showPoints ? 2.5 : 0,
-        showLine: false,
-      });
+      const scatterData: LatencySamplePoint[] = showPoints
+        ? scatterPointsInRange(samples, view.min, view.max)
+        : samples
+            .filter((r) => tooltipAnchorTs!.has(r.ts) && r.ts >= view.min && r.ts <= view.max)
+            .map((r) => ({ x: r.ts, y: r.latency_ms, domain: r.domain }));
+      if (scatterData.length) {
+        datasets.push({
+          label: server,
+          type: "scatter",
+          order: 1,
+          data: scatterData,
+          borderColor: color,
+          backgroundColor: withAlpha(color, 0.85),
+          pointRadius: showPoints ? 1.25 : 0,
+          pointHoverRadius: showPoints ? 2.5 : 0,
+          showLine: false,
+        });
+      }
     }
   });
 
   // Invisible scatter only so batch tooltips can still list failures; visuals are red bars (chartRegions).
-  const failurePoints = buildFailurePoints(rawRecords);
+  const failurePoints = allFailures.map((r) => ({
+    x: r.ts,
+    y: 0,
+    error: r.error,
+    dns_server: r.dns_server,
+    domain: r.domain,
+    duration_ms: r.duration_ms,
+  }));
   if (failurePoints.length) {
     datasets.push({
       label: "error",
@@ -631,7 +712,7 @@ export function buildLatencyChart(
   // Scrubber + pin to latest (first view = most recent selected range).
   applyLatencyChartLayout(true);
 
-  latencyChart?.destroy();
+  destroyLatencyChartInstance();
 
   const config = {
     type: "line",
@@ -706,8 +787,11 @@ export function buildLatencyChart(
   latencyChart = new Chart(canvas, config as ChartConfiguration);
 
   // Ensure scrubber is at the right edge after Chart layout.
-  requestAnimationFrame(() => {
+  if (latencyPinRaf) cancelAnimationFrame(latencyPinRaf);
+  latencyPinRaf = requestAnimationFrame(() => {
+    latencyPinRaf = 0;
+    if (!latencyChart?.canvas) return;
     scrollLatencyChartToLatest();
-    latencyChart?.resize();
+    latencyChart.resize();
   });
 }
