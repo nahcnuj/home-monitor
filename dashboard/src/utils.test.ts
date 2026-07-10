@@ -2,7 +2,21 @@ import { describe, expect, it } from "vitest";
 import { monitorConfig } from "./config.ts";
 import { parseTsv } from "./data.ts";
 import type { DnsFailureRecord } from "./types.ts";
-import { timeoutDurationSec, timeoutRanges, withGaps } from "./utils.ts";
+import { maxOf, minOf, timeoutDurationSec, timeoutRanges, withGaps } from "./utils.ts";
+
+describe("minOf / maxOf", () => {
+  it("handles large arrays without spreading (stack-safe)", () => {
+    const n = 200_000;
+    const values = Array.from({ length: n }, (_, i) => i + 1);
+    expect(minOf(values)).toBe(1);
+    expect(maxOf(values)).toBe(n);
+  });
+
+  it("returns infinities for empty input", () => {
+    expect(minOf([])).toBe(Number.POSITIVE_INFINITY);
+    expect(maxOf([])).toBe(Number.NEGATIVE_INFINITY);
+  });
+});
 
 describe("withGaps", () => {
   it("does not insert gaps between nearby points", () => {

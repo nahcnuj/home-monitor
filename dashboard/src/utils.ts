@@ -10,6 +10,28 @@ export function withAlpha(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+/** Safe min over large arrays (avoids Math.min(...arr) stack overflow). */
+export function minOf(values: readonly number[]): number {
+  if (!values.length) return Number.POSITIVE_INFINITY;
+  let min = values[0];
+  for (let i = 1; i < values.length; i++) {
+    const v = values[i];
+    if (v < min) min = v;
+  }
+  return min;
+}
+
+/** Safe max over large arrays (avoids Math.max(...arr) stack overflow). */
+export function maxOf(values: readonly number[]): number {
+  if (!values.length) return Number.NEGATIVE_INFINITY;
+  let max = values[0];
+  for (let i = 1; i < values.length; i++) {
+    const v = values[i];
+    if (v > max) max = v;
+  }
+  return max;
+}
+
 export function readableTextColor(hex: string): string {
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);

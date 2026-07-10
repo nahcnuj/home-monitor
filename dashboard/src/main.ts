@@ -21,6 +21,7 @@ import "./style.css";
 Chart.register(...registerables, chartRegionsPlugin, errorBandLabelsPlugin);
 
 let lastCompactLayout = isCompactChartLayout();
+let renderScheduled = false;
 
 function render(): void {
   const filtered = filterByPeriod(allRecords, monitorConfig.data_cutoff_ts);
@@ -33,18 +34,28 @@ function render(): void {
   requestAnimationFrame(resizeCharts);
 }
 
+function scheduleRender(): void {
+  if (renderScheduled || !allRecords.length) return;
+  renderScheduled = true;
+  requestAnimationFrame(() => {
+    renderScheduled = false;
+    render();
+  });
+}
+
 function resizeCharts(): void {
   const compact = isCompactChartLayout();
   // Tick density / label format differ between compact and PC; rebuild when it flips.
   if (compact !== lastCompactLayout && allRecords.length) {
-    render();
+    scheduleRender();
     return;
   }
   const wasScroll = isLatencyScrollMode();
   resizeLatencyChartLayout();
   // Entering/leaving scroll mode toggles legend placement and Y-axis options.
+  // Defer rebuild so we never recurse render → resize → render on the same stack.
   if (wasScroll !== isLatencyScrollMode() && allRecords.length) {
-    render();
+    scheduleRender();
     return;
   }
   getErrorChart()?.resize();

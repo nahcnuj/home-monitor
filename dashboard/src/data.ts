@@ -7,6 +7,7 @@ import type {
   DnsSuccessRecord,
   Stats,
 } from "./types.ts";
+import { maxOf } from "./utils.ts";
 
 function isSuccess(r: DnsRecord): r is DnsSuccessRecord {
   return !r.error;
@@ -142,7 +143,7 @@ export function computeStats(records: DnsRecord[]): Stats {
     uptime: total ? (successes.length / total) * 100 : 0,
     avg: latencies.length ? latencies.reduce((a, b) => a + b, 0) / latencies.length : 0,
     p95: percentile(latencies, 95),
-    max: latencies.length ? Math.max(...latencies) : 0,
+    max: latencies.length ? maxOf(latencies) : 0,
     errors: failures.reduce<Record<string, number>>((acc, r) => {
       acc[r.error] = (acc[r.error] || 0) + 1;
       return acc;
