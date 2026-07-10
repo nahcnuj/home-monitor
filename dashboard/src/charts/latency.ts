@@ -7,11 +7,6 @@ import {
 import {
   HIDE_LATENCY_POINTS_RANGE_SEC,
   MAX_GAP_SEC,
-  SCROLLABLE_CHART_MAX_RANGE_SEC,
-  SCROLLABLE_CHART_PX_PER_HOUR,
-  SCROLLABLE_CHART_PX_PER_HOUR_COMPACT,
-  SCROLLABLE_CHART_VISIBLE_HOURS,
-  SCROLLABLE_CHART_VISIBLE_HOURS_COMPACT,
   SCROLLABLE_CHART_Y_AXIS_WIDTH_PX,
   SERVER_COLORS,
 } from "../constants.ts";
@@ -222,32 +217,44 @@ export function shouldShowLatencyPoints(rangeSec: number = displayRangeSec): boo
   return rangeSec < HIDE_LATENCY_POINTS_RANGE_SEC;
 }
 
+const DEFAULT_VIEWPORT_SEC = 24 * 3600;
+
 let latencyChart: Chart | null = null;
 /** Whether the last layout pass put the latency chart in horizontal-scroll mode. */
 let latencyScrollMode = false;
+/** Full X span (sec) and selected viewport duration for width = container * span / viewport. */
+let latencyChartSpanSec = 0;
+let latencyChartViewportSec = DEFAULT_VIEWPORT_SEC;
 
 export function getLatencyChart(): Chart | null {
   return latencyChart;
 }
 
-export function isLatencyChartScrollable(rangeSec: number = displayRangeSec): boolean {
-  return rangeSec <= SCROLLABLE_CHART_MAX_RANGE_SEC;
-}
-
+/**
+ * CSS width of the scrollable plot so that `viewportSec` of time fills the container width.
+ * When history is longer than the selected range, the chart becomes wider and scrolls.
+ */
 export function latencyChartScrollWidth(
   containerWidth: number,
-  rangeSec: number = displayRangeSec,
-  compact: boolean = isCompactChartLayout(),
+  viewportSec: number,
+  spanSec: number,
 ): number {
-  if (!isLatencyChartScrollable(rangeSec) || containerWidth <= 0) {
-    return Math.max(0, containerWidth);
-  }
-  const rangeHours = rangeSec / 3600;
-  const visibleHours = compact ? SCROLLABLE_CHART_VISIBLE_HOURS_COMPACT : SCROLLABLE_CHART_VISIBLE_HOURS;
-  const byViewport = Math.ceil(containerWidth * (rangeHours / visibleHours));
-  const pxPerHour = compact ? SCROLLABLE_CHART_PX_PER_HOUR_COMPACT : SCROLLABLE_CHART_PX_PER_HOUR;
-  const byDensity = Math.ceil(rangeHours * pxPerHour);
-  return Math.max(containerWidth, byViewport, byDensity);
+  if (containerWidth <= 0) return 0;
+  if (viewportSec <= 0 || spanSec <= viewportSec) return containerWidth;
+  return Math.max(containerWidth, Math.ceil(containerWidth * (spanSec / viewportSec)));
+}
+
+export function setLatencyChartGeometry(spanSec: number, viewportSec: number): void {
+  latencyChartSpanSec = Math.max(0, spanSec);
+  latencyChartViewportSec = Math.max(1, viewportSec);
+}
+
+/** True when the full data span is longer than one viewport (selected range). */
+export function isLatencyChartScrollable(
+  spanSec: number = latencyChartSpanSec,
+  viewportSec: number = latencyChartViewportSec,
+): boolean {
+  return spanSec > viewportSec + 1;
 }
 
 function getLatencyLayoutElements(): {
@@ -270,25 +277,12 @@ function getLatencyLayoutElements(): {
 
 /**
  * Size the plot area and toggle fixed Y-axis / scroll mode.
- * Scroll mode is only enabled when the content is actually wider than the plot viewport.
+ * Selected range = time shown across the visible width; extra history scrolls left.
+ * Default scroll position is the right edge (most recent data).
  */
 export function applyLatencyChartLayout(scrollToEnd = false): boolean {
   const { container, yAxisWrap, scroll, inner } = getLatencyLayoutElements();
   if (!container || !scroll || !inner) {
-    latencyScrollMode = false;
-    return false;
-  }
-
-  if (!isLatencyChartScrollable()) {
-    container.classList.remove("is-scrollable");
-    if (yAxisWrap) {
-      yAxisWrap.hidden = true;
-      yAxisWrap.style.paddingBottom = "";
-      yAxisWrap.style.height = "";
-      yAxisWrap.style.alignSelf = "";
-    }
-    inner.style.width = "100%";
-    scroll.scrollLeft = 0;
     latencyScrollMode = false;
     return false;
   }
@@ -304,8 +298,8 @@ export function applyLatencyChartLayout(scrollToEnd = false): boolean {
   inner.style.width = "100%";
 
   const baseW = scroll.clientWidth;
-  let contentW = latencyChartScrollWidth(baseW, displayRangeSec, isCompactChartLayout());
-  let needsScroll = contentW > baseW + 1;
+  let contentW = latencyChartScrollWidth(baseW, latencyChartViewportSec, latencyChartSpanSec);
+  const needsScroll = contentW > baseW + 1 && isLatencyChartScrollable();
 
   if (needsScroll) {
     if (yAxisWrap) {
@@ -315,10 +309,14 @@ export function applyLatencyChartLayout(scrollToEnd = false): boolean {
     }
     container.classList.add("is-scrollable");
     const plotW = scroll.clientWidth;
-    contentW = latencyChartScrollWidth(plotW, displayRangeSec, isCompactChartLayout());
+    contentW = latencyChartScrollWidth(plotW, latencyChartViewportSec, latencyChartSpanSec);
     // If showing the axis made the plot fit, fall back to a normal chart.
     if (contentW <= plotW + 1) {
-      if (yAxisWrap) yAxisWrap.hidden = true;
+      if (yAxisWrap) {
+        yAxisWrap.hidden = true;
+        yAxisWrap.style.height = "";
+        yAxisWrap.style.alignSelf = "";
+      }
       container.classList.remove("is-scrollable");
       inner.style.width = "100%";
       scroll.scrollLeft = 0;
@@ -495,7 +493,14 @@ export function buildLatencyChart(
   const yMax = p95 > 0 ? ceilingToHundred(p95 * 2) : undefined;
 
   const compact = isCompactChartLayout();
-  const xBounds = chartTimeBounds(undefined, compact);
+  const dataMinTs = rawRecords.length
+    ? Math.min(...rawRecords.map((r) => r.ts))
+    : undefined;
+  const xBounds = chartTimeBounds(undefined, compact, {
+    dataMinTs,
+    dataCutoffTs,
+  });
+  setLatencyChartGeometry(xBounds.range, xBounds.viewportSec);
   const { timestamps, step } = collectTimelineTimestamps(rawRecords, xBounds.min, xBounds.max);
   const maxGapSec = Math.max(MAX_GAP_SEC, MAX_GAP_SEC * step);
   const servers = [...new Set(rawRecords.filter(isSuccess).map((r) => r.dns_server))].sort();
@@ -623,10 +628,10 @@ export function buildLatencyChart(
           ticks: {
             color: "#8b90a0",
             stepSize: xBounds.tickStep,
-            // Desktop keeps every step; compact relies on a coarser stepSize instead.
-            autoSkip: false,
+            // Long history + fine viewport steps would mint thousands of labels; skip by pixel density.
+            autoSkip: true,
             maxRotation: 0,
-            maxTicksLimit: compact ? 6 : undefined,
+            maxTicksLimit: compact ? 6 : 16,
             font: compact ? { size: 10 } : undefined,
             callback: (value: string | number) =>
               fmtAxisTick(Number(value), xBounds.tickStep, compact),

@@ -66,31 +66,41 @@ describe("nearestBatchTs", () => {
 });
 
 describe("latency chart horizontal scroll layout", () => {
-  it("allows scroll mode for ranges at or below 24h, not for 3d", () => {
-    expect(isLatencyChartScrollable(30 * 60)).toBe(true);
-    expect(isLatencyChartScrollable(DAY_SEC)).toBe(true);
-    expect(isLatencyChartScrollable(3 * DAY_SEC)).toBe(false);
+  it("scrolls only when the full data span is longer than the selected viewport", () => {
+    expect(isLatencyChartScrollable(HOUR_SEC, HOUR_SEC)).toBe(false);
+    expect(isLatencyChartScrollable(6 * HOUR_SEC, HOUR_SEC)).toBe(true);
+    expect(isLatencyChartScrollable(3 * DAY_SEC, DAY_SEC)).toBe(true);
   });
 
-  it("widens longer ≤24h ranges and never shrinks below the container", () => {
-    // 30m fits in a typical viewport — no artificial widening past container.
-    expect(latencyChartScrollWidth(800, 30 * 60, false)).toBe(800);
-    // 24h targets ~6h visible ⇒ about 4× container.
-    expect(latencyChartScrollWidth(800, DAY_SEC, false)).toBeGreaterThan(2000);
-    expect(latencyChartScrollWidth(800, 3 * DAY_SEC, false)).toBe(800);
+  it("sizes chart width so the selected range fills the container", () => {
+    // span == viewport → fit to container
+    expect(latencyChartScrollWidth(800, HOUR_SEC, HOUR_SEC)).toBe(800);
+    // 6h of data at 1h viewport → 6× width
+    expect(latencyChartScrollWidth(800, HOUR_SEC, 6 * HOUR_SEC)).toBe(4800);
+    // span shorter than viewport → still container width
+    expect(latencyChartScrollWidth(800, DAY_SEC, HOUR_SEC)).toBe(800);
   });
 
-  it("enables scroll mode with fixed Y-axis and external legend for 24h", () => {
+  it("enables scroll mode with fixed Y-axis when history exceeds the selected range", () => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date(Date.UTC(2026, 5, 20, 14, 25, 5)));
-    setDisplayRangeSec(DAY_SEC);
+    // “Now” is well after the history start so a 1h viewport leaves older data off-screen.
+    const nowSec = 1_800_000_000;
+    vi.setSystemTime(new Date(nowSec * 1000));
+    setDisplayRangeSec(HOUR_SEC);
 
-    const records = parseTsv(sampleTsv);
-    const filtered = filterByPeriod(records, 1781967600);
-    const { successes, failures } = aggregateByServer(filtered);
-    expect(successes.length).toBeGreaterThan(0);
+    const historyStart = nowSec - 6 * HOUR_SEC;
+    const records = [
+      { ts: historyStart, dns_server: "1.1.1.1", domain: "example.com", latency_ms: 20 },
+      { ts: nowSec - 60, dns_server: "1.1.1.1", domain: "example.com", latency_ms: 25 },
+    ];
+    const { successes, failures } = aggregateByServer(records);
 
-    buildLatencyChart(filtered, successes, failures, 1781967600);
+    buildLatencyChart(records, successes, failures, historyStart - HOUR_SEC);
+
+    const chart = getLatencyChart()!;
+    const xMin = Number(chart.options.scales?.x?.min);
+    const xMax = Number(chart.options.scales?.x?.max);
+    expect(xMax - xMin).toBeGreaterThan(HOUR_SEC);
 
     expect(isLatencyScrollMode()).toBe(true);
     const container = document.getElementById("latencyChartContainer");
@@ -101,7 +111,6 @@ describe("latency chart horizontal scroll layout", () => {
     expect(legend.hidden).toBe(false);
     expect(legend.querySelectorAll(".latency-legend-item").length).toBeGreaterThan(0);
 
-    const chart = getLatencyChart()!;
     const yScale = chart.options.scales?.y as { ticks?: { display?: boolean }; title?: { display?: boolean } };
     expect(yScale.ticks?.display).toBe(false);
     expect(yScale.title?.display).toBe(false);
@@ -110,16 +119,20 @@ describe("latency chart horizontal scroll layout", () => {
     vi.useRealTimers();
   });
 
-  it("keeps a normal integrated Y-axis when the range fits the viewport", () => {
+  it("keeps a normal integrated Y-axis when history fits in one viewport", () => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date(Date.UTC(2026, 5, 20, 14, 25, 5)));
-    setDisplayRangeSec(30 * 60);
+    const nowSec = 1_800_000_000;
+    vi.setSystemTime(new Date(nowSec * 1000));
+    setDisplayRangeSec(DAY_SEC);
 
-    const records = parseTsv(sampleTsv);
-    const filtered = filterByPeriod(records, 1781967600);
-    const { successes, failures } = aggregateByServer(filtered);
+    // Only 30 minutes of data — shorter than the 24h viewport → no scroll.
+    const records = [
+      { ts: nowSec - 30 * 60, dns_server: "1.1.1.1", domain: "example.com", latency_ms: 20 },
+      { ts: nowSec - 60, dns_server: "1.1.1.1", domain: "example.com", latency_ms: 25 },
+    ];
+    const { successes, failures } = aggregateByServer(records);
 
-    buildLatencyChart(filtered, successes, failures, 1781967600);
+    buildLatencyChart(records, successes, failures, nowSec - DAY_SEC);
 
     expect(isLatencyScrollMode()).toBe(false);
     const yAxisWrap = document.getElementById("latencyYAxisWrap") as HTMLElement;
@@ -335,14 +348,15 @@ describe("buildLatencyChart", () => {
 
   it("renders when no records fall in the display window", () => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date(1900000000 * 1000));
+    vi.setSystemTime(new Date(1_900_000_000 * 1000));
 
+    // Cutoff after all sample rows → empty chart data (history is not trimmed by range).
     const records = parseTsv(sampleTsv);
-    const filtered = filterByPeriod(records, 0);
+    const filtered = filterByPeriod(records, 1_800_000_000);
     expect(filtered).toHaveLength(0);
 
     expect(() => {
-      buildLatencyChart(filtered, [], [], 0);
+      buildLatencyChart(filtered, [], [], 1_800_000_000);
       buildErrorChart({});
     }).not.toThrow();
 
