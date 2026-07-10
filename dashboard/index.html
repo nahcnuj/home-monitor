@@ -27,13 +27,12 @@
           <div class="latency-legend" id="latencyLegend" hidden></div>
         </div>
         <div class="chart-container chart-container--latency" id="latencyChartContainer">
-          <div class="chart-yaxis-wrap" id="latencyYAxisWrap" hidden aria-hidden="true">
-            <canvas id="latencyYAxis"></canvas>
+          <div class="chart-plot-frame">
+            <canvas id="latencyChart"></canvas>
           </div>
-          <div class="chart-scroll" id="latencyChartScroll">
-            <div class="chart-scroll-inner" id="latencyChartInner">
-              <canvas id="latencyChart"></canvas>
-            </div>
+          <!-- Wide spacer drives native scrollbar; chart X domain pans with scroll (no huge canvas). -->
+          <div class="chart-hscroll" id="latencyChartScroll" hidden>
+            <div class="chart-hscroll-inner" id="latencyChartInner"></div>
           </div>
         </div>
         <div class="stats-bar" id="statsGrid" aria-label="レイテンシ統計"></div>

@@ -7,14 +7,19 @@ import {
 import {
   HIDE_LATENCY_POINTS_RANGE_SEC,
   MAX_GAP_SEC,
-  SCROLLABLE_CHART_Y_AXIS_WIDTH_PX,
   SERVER_COLORS,
 } from "../constants.ts";
 import { formatErrorCode, isDnsErrorCode } from "../errors.ts";
 import { ceilingToHundred, percentile } from "../data.ts";
 import { displayRangeSec } from "../state.ts";
 import { buildRollingEnvelope, collectTimelineTimestamps } from "./rolling-envelope.ts";
-import { chartTimeBounds, fmtAxisTick, fmtJst, isCompactChartLayout } from "../time.ts";
+import {
+  chartTickStep,
+  chartTimeBounds,
+  fmtAxisTick,
+  fmtJst,
+  isCompactChartLayout,
+} from "../time.ts";
 import type {
   AggregatedSuccess,
   DnsFailureRecord,
@@ -22,6 +27,7 @@ import type {
   DnsSuccessRecord,
   FailurePoint,
   LatencySamplePoint,
+  TimeBounds,
 } from "../types.ts";
 import { minOf, timeoutRanges, withAlpha, withGaps } from "../utils.ts";
 
@@ -220,21 +226,25 @@ export function shouldShowLatencyPoints(rangeSec: number = displayRangeSec): boo
 const DEFAULT_VIEWPORT_SEC = 24 * 3600;
 
 let latencyChart: Chart | null = null;
-/** Whether the last layout pass put the latency chart in horizontal-scroll mode. */
+/** History longer than the selected range → show scrollbar and pan X domain. */
 let latencyScrollMode = false;
-/** Full X span (sec) and selected viewport duration for width = container * span / viewport. */
-let latencyChartSpanSec = 0;
+/** Full history domain on the X axis (data/cutoff … aligned now). */
+let latencySpanMin = 0;
+let latencySpanMax = 0;
+/** Selected range: seconds shown across the plot width. */
 let latencyChartViewportSec = DEFAULT_VIEWPORT_SEC;
+/** Right edge of the visible window (unix sec). First view = span max (latest). */
+let latencyViewMax = 0;
+let latencyScrollListenerBound = false;
+let latencyScrollRaf = 0;
 
 export function getLatencyChart(): Chart | null {
   return latencyChart;
 }
 
 /**
- * CSS width of the scrollable plot so that `viewportSec` of time fills the container width.
- * When history is longer than the selected range, the chart becomes wider and scrolls.
- *
- * visibleTime ≈ spanSec * (containerWidth / result) ⇒ equals viewportSec when span > viewport.
+ * Spacer width for the history scrollbar so the thumb size reflects viewport / span.
+ * (Native scrollbar thumb ≈ clientWidth² / scrollWidth when content width is this value.)
  */
 export function latencyChartScrollWidth(
   containerWidth: number,
@@ -246,321 +256,216 @@ export function latencyChartScrollWidth(
   return Math.max(containerWidth, Math.ceil(containerWidth * (spanSec / viewportSec)));
 }
 
-/** Seconds of X-domain visible in a plot of `visiblePx` out of `contentPx` width. */
+/** Visible time for a pan window (always the selected range when history is longer). */
 export function visibleTimeSec(spanSec: number, contentPx: number, visiblePx: number): number {
   if (contentPx <= 0 || visiblePx <= 0 || spanSec <= 0) return 0;
   return spanSec * (visiblePx / contentPx);
 }
 
-export function setLatencyChartGeometry(spanSec: number, viewportSec: number): void {
-  latencyChartSpanSec = Math.max(0, spanSec);
+export function setLatencyChartGeometry(spanMin: number, spanMax: number, viewportSec: number): void {
+  latencySpanMin = spanMin;
+  latencySpanMax = Math.max(spanMin, spanMax);
   latencyChartViewportSec = Math.max(1, viewportSec);
+  // Default first view: latest slice ending at span max.
+  latencyViewMax = latencySpanMax;
+}
+
+export function latencyChartSpanSec(): number {
+  return Math.max(0, latencySpanMax - latencySpanMin);
 }
 
 /** True when the full data span is longer than one viewport (selected range). */
 export function isLatencyChartScrollable(
-  spanSec: number = latencyChartSpanSec,
+  spanSec: number = latencyChartSpanSec(),
   viewportSec: number = latencyChartViewportSec,
 ): boolean {
   return spanSec > viewportSec + 1;
 }
 
-/** Last applied plot pixel size (scroll mode); used for explicit Chart.resize. */
-let latencyPlotCssWidth = 0;
-let latencyPlotCssHeight = 0;
-
-function resetLatencyPlotCssSize(): void {
-  latencyPlotCssWidth = 0;
-  latencyPlotCssHeight = 0;
-  const canvas = document.getElementById("latencyChart") as HTMLCanvasElement | null;
-  const { inner } = getLatencyLayoutElements();
-  if (inner) {
-    inner.style.width = "100%";
-    inner.style.height = "";
-  }
-  if (canvas) {
-    canvas.style.width = "";
-    canvas.style.height = "";
-  }
-}
-
 /**
- * Force the plot box to an explicit CSS size. Chart.js responsive mode sizes from the
- * parent; with overflow scrolling it often collapses to the viewport and the selected
- * range no longer maps to “one screen of time” — so scroll mode uses fixed pixels.
+ * Visible X window for the current pan position.
+ * viewMax is the right edge; width is the selected range (clamped to history).
  */
-function applyLatencyPlotCssSize(contentW: number, height: number): void {
-  const canvas = document.getElementById("latencyChart") as HTMLCanvasElement | null;
-  const { inner } = getLatencyLayoutElements();
-  latencyPlotCssWidth = contentW;
-  latencyPlotCssHeight = height;
-  if (inner) {
-    inner.style.width = `${contentW}px`;
-    inner.style.height = `${height}px`;
-  }
-  if (canvas) {
-    canvas.style.width = `${contentW}px`;
-    canvas.style.height = `${height}px`;
-  }
+export function visibleXWindow(
+  viewMax: number = latencyViewMax,
+  viewportSec: number = latencyChartViewportSec,
+  spanMin: number = latencySpanMin,
+  spanMax: number = latencySpanMax,
+): { min: number; max: number } {
+  const max = Math.min(spanMax, Math.max(spanMin, viewMax));
+  let min = max - viewportSec;
+  if (min < spanMin) min = spanMin;
+  return { min, max };
 }
 
-export function resizeLatencyChartToPlot(): void {
-  if (!latencyChart) return;
-  if (latencyScrollMode && latencyPlotCssWidth > 0 && latencyPlotCssHeight > 0) {
-    latencyChart.resize(latencyPlotCssWidth, latencyPlotCssHeight);
-  } else {
-    latencyChart.resize();
-  }
+/** Map scrollbar position t∈[0,1] (0=oldest, 1=latest) to viewMax. */
+export function viewMaxFromScrollRatio(
+  t: number,
+  viewportSec: number,
+  spanMin: number,
+  spanMax: number,
+): number {
+  const span = spanMax - spanMin;
+  const travel = Math.max(0, span - viewportSec);
+  const clamped = Math.min(1, Math.max(0, t));
+  return spanMin + viewportSec + clamped * travel;
 }
 
-/**
- * Pin the scrollport to the right edge so the first view shows the most recent viewport.
- * Uses computed plot width when scrollWidth has not updated yet after a CSS size change.
- */
-export function scrollLatencyChartToLatest(): void {
-  const { scroll } = getLatencyLayoutElements();
-  if (!scroll || !latencyScrollMode) return;
-
-  const plotW = scroll.clientWidth;
-  const contentW =
-    latencyPlotCssWidth > 0
-      ? latencyPlotCssWidth
-      : scroll.scrollWidth;
-  scroll.scrollLeft = Math.max(0, contentW - plotW);
-
-  // Second pass after the browser applies layout / scrollbar.
-  requestAnimationFrame(() => {
-    if (!latencyScrollMode) return;
-    const s = getLatencyLayoutElements().scroll;
-    if (!s) return;
-    s.scrollLeft = Math.max(0, s.scrollWidth - s.clientWidth);
-  });
-}
-
-function isLatencyChartScrolledToEnd(epsilonPx = 4): boolean {
-  const { scroll } = getLatencyLayoutElements();
-  if (!scroll || !latencyScrollMode) return true;
-  return scroll.scrollLeft + scroll.clientWidth >= scroll.scrollWidth - epsilonPx;
+export function scrollRatioFromViewMax(
+  viewMax: number,
+  viewportSec: number,
+  spanMin: number,
+  spanMax: number,
+): number {
+  const travel = Math.max(0, spanMax - spanMin - viewportSec);
+  if (travel <= 0) return 1;
+  return Math.min(1, Math.max(0, (viewMax - spanMin - viewportSec) / travel));
 }
 
 function getLatencyLayoutElements(): {
   container: HTMLElement | null;
-  yAxisWrap: HTMLElement | null;
   scroll: HTMLElement | null;
   inner: HTMLElement | null;
-  yAxisCanvas: HTMLCanvasElement | null;
   legend: HTMLElement | null;
 } {
   return {
     container: document.getElementById("latencyChartContainer"),
-    yAxisWrap: document.getElementById("latencyYAxisWrap"),
     scroll: document.getElementById("latencyChartScroll"),
     inner: document.getElementById("latencyChartInner"),
-    yAxisCanvas: document.getElementById("latencyYAxis") as HTMLCanvasElement | null,
     legend: document.getElementById("latencyLegend"),
   };
 }
 
+function applyVisibleWindowToChart(): void {
+  if (!latencyChart) return;
+  const { min, max } = visibleXWindow();
+  const x = latencyChart.options.scales?.x;
+  if (x && typeof x === "object") {
+    (x as { min?: number; max?: number }).min = min;
+    (x as { max?: number }).max = max;
+  }
+  latencyChart.update("none");
+}
+
+function onLatencyHistoryScroll(): void {
+  if (!latencyScrollMode) return;
+  if (latencyScrollRaf) cancelAnimationFrame(latencyScrollRaf);
+  latencyScrollRaf = requestAnimationFrame(() => {
+    latencyScrollRaf = 0;
+    const { scroll } = getLatencyLayoutElements();
+    if (!scroll) return;
+    const maxScroll = scroll.scrollWidth - scroll.clientWidth;
+    const t = maxScroll <= 0 ? 1 : scroll.scrollLeft / maxScroll;
+    latencyViewMax = viewMaxFromScrollRatio(
+      t,
+      latencyChartViewportSec,
+      latencySpanMin,
+      latencySpanMax,
+    );
+    applyVisibleWindowToChart();
+  });
+}
+
+function ensureLatencyScrollListener(): void {
+  if (latencyScrollListenerBound) return;
+  const { scroll } = getLatencyLayoutElements();
+  if (!scroll) return;
+  scroll.addEventListener("scroll", onLatencyHistoryScroll, { passive: true });
+  latencyScrollListenerBound = true;
+}
+
 /**
- * Size the plot area and toggle fixed Y-axis / scroll mode.
- * Selected range = time shown across the visible width; extra history scrolls left.
- * Default scroll position is the right edge (most recent data).
+ * Size the history scrollbar spacer and optionally pin to the latest viewport.
+ * Chart canvas always fills the plot frame; only the X domain pans.
  */
 export function applyLatencyChartLayout(scrollToEnd = false): boolean {
-  const { container, yAxisWrap, scroll, inner } = getLatencyLayoutElements();
+  const { container, scroll, inner } = getLatencyLayoutElements();
   if (!container || !scroll || !inner) {
     latencyScrollMode = false;
-    resetLatencyPlotCssSize();
     return false;
   }
 
-  // Measure without the Y-axis column first.
-  if (yAxisWrap) {
-    yAxisWrap.hidden = true;
-    yAxisWrap.style.paddingBottom = "";
-    yAxisWrap.style.height = "";
-    yAxisWrap.style.alignSelf = "";
-  }
-  container.classList.remove("is-scrollable");
-  resetLatencyPlotCssSize();
+  ensureLatencyScrollListener();
 
-  // Prefer the container’s content box; fall back if the scrollport is not laid out yet.
-  const baseW = scroll.clientWidth || container.clientWidth;
-  if (baseW <= 0 || !isLatencyChartScrollable()) {
+  const needsScroll = isLatencyChartScrollable();
+  container.classList.toggle("is-scrollable", needsScroll);
+  scroll.hidden = !needsScroll;
+
+  if (!needsScroll) {
+    inner.style.width = "100%";
     scroll.scrollLeft = 0;
     latencyScrollMode = false;
+    latencyViewMax = latencySpanMax;
     return false;
   }
 
-  let contentW = latencyChartScrollWidth(baseW, latencyChartViewportSec, latencyChartSpanSec);
-  let needsScroll = contentW > baseW + 1;
+  const trackW = scroll.clientWidth || container.clientWidth;
+  const spanSec = latencyChartSpanSec();
+  const contentW = latencyChartScrollWidth(trackW, latencyChartViewportSec, spanSec);
+  inner.style.width = `${contentW}px`;
+  latencyScrollMode = true;
 
-  if (needsScroll) {
-    if (yAxisWrap) {
-      yAxisWrap.hidden = false;
-      yAxisWrap.style.flexBasis = `${SCROLLABLE_CHART_Y_AXIS_WIDTH_PX}px`;
-      yAxisWrap.style.width = `${SCROLLABLE_CHART_Y_AXIS_WIDTH_PX}px`;
-    }
-    container.classList.add("is-scrollable");
-    const plotW = scroll.clientWidth || Math.max(1, baseW - SCROLLABLE_CHART_Y_AXIS_WIDTH_PX);
-    contentW = latencyChartScrollWidth(plotW, latencyChartViewportSec, latencyChartSpanSec);
-    // If showing the axis made the plot fit, fall back to a normal chart.
-    if (contentW <= plotW + 1) {
-      if (yAxisWrap) {
-        yAxisWrap.hidden = true;
-        yAxisWrap.style.height = "";
-        yAxisWrap.style.alignSelf = "";
-      }
-      container.classList.remove("is-scrollable");
-      resetLatencyPlotCssSize();
-      scroll.scrollLeft = 0;
-      latencyScrollMode = false;
-      return false;
-    }
-
-    const plotH = Math.max(1, scroll.clientHeight || container.clientHeight);
-    applyLatencyPlotCssSize(contentW, plotH);
-
-    // Match axis height to the plot above the horizontal scrollbar (not the full card).
-    if (yAxisWrap) {
-      yAxisWrap.style.paddingBottom = "";
-      yAxisWrap.style.height = `${plotH}px`;
-      yAxisWrap.style.alignSelf = "flex-start";
-    }
-    latencyScrollMode = true;
-    if (scrollToEnd) {
-      // Width reset above drops scrollLeft to 0; always re-pin to the latest viewport.
-      scroll.scrollLeft = Math.max(0, contentW - plotW);
-    }
-    return true;
+  if (scrollToEnd) {
+    latencyViewMax = latencySpanMax;
+    const maxScroll = Math.max(0, contentW - trackW);
+    scroll.scrollLeft = maxScroll;
+    // Layout may lag one frame for scrollWidth on some engines.
+    requestAnimationFrame(() => {
+      const s = getLatencyLayoutElements().scroll;
+      if (!s || !latencyScrollMode) return;
+      s.scrollLeft = Math.max(0, s.scrollWidth - s.clientWidth);
+      latencyViewMax = latencySpanMax;
+      applyVisibleWindowToChart();
+    });
   }
 
-  if (yAxisWrap) {
-    yAxisWrap.hidden = true;
-    yAxisWrap.style.height = "";
-    yAxisWrap.style.alignSelf = "";
-  }
-  resetLatencyPlotCssSize();
-  scroll.scrollLeft = 0;
-  latencyScrollMode = false;
-  return false;
+  return true;
+}
+
+/** Pin the history scrubber (and X window) to the most recent data. */
+export function scrollLatencyChartToLatest(): void {
+  latencyViewMax = latencySpanMax;
+  applyLatencyChartLayout(true);
+  applyVisibleWindowToChart();
 }
 
 export function isLatencyScrollMode(): boolean {
   return latencyScrollMode;
 }
 
-function clearLatencyLegend(): void {
-  const { legend } = getLatencyLayoutElements();
-  if (!legend) return;
-  legend.hidden = true;
-  legend.innerHTML = "";
-}
-
-function renderLatencyLegend(servers: readonly string[]): void {
-  const { legend } = getLatencyLayoutElements();
-  if (!legend) return;
-  if (!latencyScrollMode || !servers.length) {
-    clearLatencyLegend();
-    return;
-  }
-  legend.hidden = false;
-  legend.innerHTML = servers
-    .map((server, index) => {
-      const color = SERVER_COLORS[index % SERVER_COLORS.length];
-      return `<span class="latency-legend-item"><span class="swatch" style="background:${color}"></span>${server}</span>`;
-    })
-    .join("");
-}
-
-/** Draw fixed Y-axis labels aligned to the main chart's Y scale. */
-export function paintLatencyYAxis(): void {
-  const { yAxisWrap, yAxisCanvas } = getLatencyLayoutElements();
-  if (!latencyChart || !yAxisWrap || !yAxisCanvas || yAxisWrap.hidden || !latencyScrollMode) {
-    return;
-  }
-
-  const scale = latencyChart.scales.y;
-  if (!scale) return;
-
-  const cssW = SCROLLABLE_CHART_Y_AXIS_WIDTH_PX;
-  const cssH = yAxisWrap.clientHeight;
-  if (cssH <= 0) return;
-
-  const dpr = window.devicePixelRatio || 1;
-  yAxisCanvas.width = Math.max(1, Math.floor(cssW * dpr));
-  yAxisCanvas.height = Math.max(1, Math.floor(cssH * dpr));
-  yAxisCanvas.style.width = `${cssW}px`;
-  yAxisCanvas.style.height = `${cssH}px`;
-
-  const ctx = yAxisCanvas.getContext("2d");
-  if (!ctx) return;
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, cssW, cssH);
-
-  ctx.strokeStyle = "#2a2e3d";
-  ctx.fillStyle = "#8b90a0";
-  ctx.lineWidth = 1;
-
-  // Axis line on the right edge (adjacent to the plot).
-  ctx.beginPath();
-  ctx.moveTo(cssW - 0.5, scale.top);
-  ctx.lineTo(cssW - 0.5, scale.bottom);
-  ctx.stroke();
-
-  ctx.font = `11px "Segoe UI", system-ui, sans-serif`;
-  ctx.textAlign = "right";
-  ctx.textBaseline = "middle";
-
-  scale.ticks.forEach((tick, index) => {
-    const y = scale.getPixelForTick(index);
-    if (y < scale.top - 4 || y > scale.bottom + 4) return;
-    // Tick mark
-    ctx.beginPath();
-    ctx.moveTo(cssW - 0.5, y);
-    ctx.lineTo(cssW - 5, y);
-    ctx.stroke();
-    const raw = tick.label ?? tick.value;
-    const text = Array.isArray(raw) ? raw.join(" ") : String(raw);
-    ctx.fillText(text, cssW - 7, y);
-  });
-
-  // Rotated unit label
-  ctx.save();
-  ctx.translate(11, (scale.top + scale.bottom) / 2);
-  ctx.rotate(-Math.PI / 2);
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText("ms", 0, 0);
-  ctx.restore();
-}
-
 /**
  * Call after window resize or container size changes.
- * Reflow keeps the latest viewport when the user was already at the end (or when forced);
- * otherwise preserves relative scroll position across the width change.
+ * Rebuilds scrubber width; keeps latest view when already at the end (or forced).
  */
 export function resizeLatencyChartLayout(scrollToEnd = false): void {
   const { scroll } = getLatencyLayoutElements();
-  const pinToLatest = scrollToEnd || isLatencyChartScrolledToEnd();
-  let ratio = 1;
-  if (scroll && latencyScrollMode && !pinToLatest) {
+  const atEnd =
+    !scroll ||
+    scroll.hidden ||
+    scroll.scrollLeft + scroll.clientWidth >= scroll.scrollWidth - 4;
+  const pin = scrollToEnd || atEnd;
+
+  if (!pin && scroll && latencyScrollMode) {
     const maxScroll = Math.max(1, scroll.scrollWidth - scroll.clientWidth);
-    ratio = Math.min(1, Math.max(0, scroll.scrollLeft / maxScroll));
+    const t = scroll.scrollLeft / maxScroll;
+    latencyViewMax = viewMaxFromScrollRatio(
+      t,
+      latencyChartViewportSec,
+      latencySpanMin,
+      latencySpanMax,
+    );
   }
 
-  applyLatencyChartLayout(pinToLatest);
-  resizeLatencyChartToPlot();
-
-  if (latencyScrollMode && scroll) {
-    if (pinToLatest) {
-      scrollLatencyChartToLatest();
-    } else {
-      const contentW = latencyPlotCssWidth > 0 ? latencyPlotCssWidth : scroll.scrollWidth;
-      scroll.scrollLeft = Math.max(0, ratio * (contentW - scroll.clientWidth));
-    }
-    paintLatencyYAxis();
+  applyLatencyChartLayout(pin);
+  if (pin) {
+    latencyViewMax = latencySpanMax;
   }
+  applyVisibleWindowToChart();
+  latencyChart?.resize();
+}
+
+export function visibleWindowFromBounds(bounds: TimeBounds): { min: number; max: number } {
+  return visibleXWindow(bounds.max, bounds.viewportSec, bounds.min, bounds.max);
 }
 
 function isHiddenBand(label: string | undefined): boolean {
@@ -610,7 +515,12 @@ export function buildLatencyChart(
     dataMinTs,
     dataCutoffTs,
   });
-  setLatencyChartGeometry(xBounds.range, xBounds.viewportSec);
+  // Full history domain for pan; plot shows only the selected viewport window.
+  setLatencyChartGeometry(xBounds.min, xBounds.max, xBounds.viewportSec);
+  latencyViewMax = xBounds.max;
+  const view = visibleXWindow(xBounds.max, xBounds.viewportSec, xBounds.min, xBounds.max);
+  // Labels follow the zoom (selected range), not the full multi-day span.
+  const viewTickStep = chartTickStep(xBounds.viewportSec, compact);
   const { timestamps, step } = collectTimelineTimestamps(rawRecords, xBounds.min, xBounds.max);
   const maxGapSec = Math.max(MAX_GAP_SEC, MAX_GAP_SEC * step);
   const servers = [...new Set(rawRecords.filter(isSuccess).map((r) => r.dns_server))].sort();
@@ -713,9 +623,8 @@ export function buildLatencyChart(
   const canvas = document.getElementById("latencyChart") as HTMLCanvasElement | null;
   if (!canvas) return;
 
-  // Decide scroll mode + explicit plot size; pin to latest so first view is the recent window.
-  const scrollable = applyLatencyChartLayout(true);
-  renderLatencyLegend(scrollable ? servers : []);
+  // Scrubber + pin to latest (first view = most recent selected range).
+  applyLatencyChartLayout(true);
 
   latencyChart?.destroy();
 
@@ -724,41 +633,35 @@ export function buildLatencyChart(
     plugins: [createBatchTooltipPlugin(batchTimestamps)],
     data: { datasets },
     options: {
-      // Scroll mode: fixed pixel size so the selected range maps to one screen of time.
-      // Responsive mode collapses to the overflow viewport and shows the whole history at once.
-      responsive: !scrollable,
+      responsive: true,
       maintainAspectRatio: false,
       interaction: { mode: "nearest", axis: "x", intersect: false },
-      // Extra top padding when Chart.js legend is hidden (external legend is above the container).
-      layout: scrollable ? { padding: { top: 4 } } : undefined,
       scales: {
         x: {
           type: "linear",
-          min: xBounds.min,
-          max: xBounds.max,
+          // Only the selected duration is on screen; pan via history scrollbar.
+          min: view.min,
+          max: view.max,
           grid: { color: "#2a2e3d" },
           ticks: {
             color: "#8b90a0",
-            stepSize: xBounds.tickStep,
-            // Long history + fine viewport steps would mint thousands of labels; skip by pixel density.
+            stepSize: viewTickStep,
             autoSkip: true,
             maxRotation: 0,
-            maxTicksLimit: compact ? 6 : 16,
+            maxTicksLimit: compact ? 6 : 12,
             font: compact ? { size: 10 } : undefined,
             callback: (value: string | number) =>
-              fmtAxisTick(Number(value), xBounds.tickStep, compact),
+              fmtAxisTick(Number(value), viewTickStep, compact),
           },
         },
         y: {
           title: {
-            display: !scrollable,
+            display: true,
             text: "ms",
             color: "#8b90a0",
           },
           grid: { color: "#2a2e3d" },
-          border: { display: !scrollable },
           ticks: {
-            display: !scrollable,
             color: "#8b90a0",
           },
           min: 0,
@@ -774,8 +677,6 @@ export function buildLatencyChart(
           minTimeoutBarWidth: 1, // CSS px; short errors (e.g. 170ms no_response) stay visible
         },
         legend: {
-          // Scroll mode: fixed HTML legend above the chart so labels do not slide away.
-          display: !scrollable,
           labels: {
             color: "#e4e6ed",
             filter: (item: { text: string }) => !isHiddenBand(item.text) && !isFailureDataset(item.text),
@@ -799,17 +700,9 @@ export function buildLatencyChart(
   };
   latencyChart = new Chart(canvas, config as ChartConfiguration);
 
-  if (scrollable) {
-    // Pin size + scroll to the latest viewport for every range (30m…3d).
-    resizeLatencyChartToPlot();
+  // Ensure scrubber is at the right edge after Chart layout.
+  requestAnimationFrame(() => {
     scrollLatencyChartToLatest();
-    requestAnimationFrame(() => {
-      applyLatencyChartLayout(true);
-      resizeLatencyChartToPlot();
-      scrollLatencyChartToLatest();
-      paintLatencyYAxis();
-    });
-  } else {
-    clearLatencyLegend();
-  }
+    latencyChart?.resize();
+  });
 }
