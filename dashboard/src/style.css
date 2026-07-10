@@ -303,8 +303,16 @@ main {
 
 .chart-scroll-inner canvas {
   display: block;
-  width: 100% !important;
-  height: 100% !important;
+  /* Default: fill the plot box. Scroll mode sets explicit px width/height in JS
+     so Chart.js does not collapse to the overflow viewport. */
+  width: 100%;
+  height: 100%;
+}
+
+.chart-container--latency.is-scrollable .chart-scroll-inner,
+.chart-container--latency.is-scrollable .chart-scroll-inner canvas {
+  /* Inline styles from applyLatencyPlotCssSize win; avoid !important fights. */
+  max-width: none;
 }
 
 .chart-container--short {
