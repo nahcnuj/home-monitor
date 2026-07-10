@@ -1,6 +1,9 @@
 import { Chart, registerables } from "chart.js";
 import { buildErrorChart, getErrorChart } from "./charts/error.ts";
-import { buildLatencyChart, getLatencyChart } from "./charts/latency.ts";
+import {
+  buildLatencyChart,
+  resizeLatencyChartLayout,
+} from "./charts/latency.ts";
 import { chartRegionsPlugin, errorBandLabelsPlugin } from "./charts/plugins.ts";
 import { monitorConfig } from "./config.ts";
 import { aggregateByServer, computeStats, filterByPeriod, parseRecordsJson } from "./data.ts";
@@ -36,7 +39,7 @@ function resizeCharts(): void {
     render();
     return;
   }
-  getLatencyChart()?.resize();
+  resizeLatencyChartLayout();
   getErrorChart()?.resize();
 }
 

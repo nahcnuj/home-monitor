@@ -4,7 +4,14 @@ import {
   type Plugin,
   type TooltipItem,
 } from "chart.js";
-import { HIDE_LATENCY_POINTS_RANGE_SEC, MAX_GAP_SEC, SERVER_COLORS } from "../constants.ts";
+import {
+  HIDE_LATENCY_POINTS_RANGE_SEC,
+  MAX_GAP_SEC,
+  SCROLLABLE_CHART_MAX_RANGE_SEC,
+  SCROLLABLE_CHART_PX_PER_HOUR,
+  SCROLLABLE_CHART_PX_PER_HOUR_COMPACT,
+  SERVER_COLORS,
+} from "../constants.ts";
 import { formatErrorCode, isDnsErrorCode } from "../errors.ts";
 import { ceilingToHundred, percentile } from "../data.ts";
 import { displayRangeSec } from "../state.ts";
@@ -213,9 +220,157 @@ export function shouldShowLatencyPoints(rangeSec: number = displayRangeSec): boo
 }
 
 let latencyChart: Chart | null = null;
+let latencyYAxisChart: Chart | null = null;
 
 export function getLatencyChart(): Chart | null {
   return latencyChart;
+}
+
+export function isLatencyChartScrollable(rangeSec: number = displayRangeSec): boolean {
+  return rangeSec <= SCROLLABLE_CHART_MAX_RANGE_SEC;
+}
+
+export function latencyChartScrollWidth(
+  containerWidth: number,
+  rangeSec: number = displayRangeSec,
+  compact: boolean = isCompactChartLayout(),
+): number {
+  if (!isLatencyChartScrollable(rangeSec) || containerWidth <= 0) {
+    return Math.max(0, containerWidth);
+  }
+  const pxPerHour = compact ? SCROLLABLE_CHART_PX_PER_HOUR_COMPACT : SCROLLABLE_CHART_PX_PER_HOUR;
+  const contentWidth = Math.ceil((rangeSec / 3600) * pxPerHour);
+  return Math.max(containerWidth, contentWidth);
+}
+
+function getLatencyLayoutElements(): {
+  container: HTMLElement | null;
+  yAxisWrap: HTMLElement | null;
+  scroll: HTMLElement | null;
+  inner: HTMLElement | null;
+  yAxisCanvas: HTMLCanvasElement | null;
+} {
+  return {
+    container: document.getElementById("latencyChartContainer"),
+    yAxisWrap: document.getElementById("latencyYAxisWrap"),
+    scroll: document.getElementById("latencyChartScroll"),
+    inner: document.getElementById("latencyChartInner"),
+    yAxisCanvas: document.getElementById("latencyYAxis") as HTMLCanvasElement | null,
+  };
+}
+
+/** Size the scrollable plot area and toggle the fixed Y-axis column. */
+export function applyLatencyChartLayout(scrollToEnd = false): void {
+  const { container, yAxisWrap, scroll, inner } = getLatencyLayoutElements();
+  if (!container || !scroll || !inner) return;
+
+  const scrollable = isLatencyChartScrollable();
+  container.classList.toggle("is-scrollable", scrollable);
+
+  if (yAxisWrap) {
+    yAxisWrap.hidden = !scrollable;
+  }
+
+  if (!scrollable) {
+    inner.style.width = "100%";
+    scroll.scrollLeft = 0;
+    return;
+  }
+
+  const containerWidth = scroll.clientWidth;
+  const width = latencyChartScrollWidth(containerWidth, displayRangeSec, isCompactChartLayout());
+  inner.style.width = `${width}px`;
+
+  if (scrollToEnd) {
+    scroll.scrollLeft = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
+  }
+}
+
+function destroyLatencyYAxisChart(): void {
+  latencyYAxisChart?.destroy();
+  latencyYAxisChart = null;
+}
+
+function syncLatencyYAxisChart(yMax: number | undefined): void {
+  const { yAxisCanvas } = getLatencyLayoutElements();
+  if (!latencyChart || !yAxisCanvas || !isLatencyChartScrollable()) {
+    destroyLatencyYAxisChart();
+    return;
+  }
+
+  const top = latencyChart.chartArea?.top ?? 0;
+  const bottomPad = latencyChart.height - (latencyChart.chartArea?.bottom ?? latencyChart.height);
+  const yMin = typeof latencyChart.scales.y?.min === "number" ? latencyChart.scales.y.min : 0;
+  const resolvedYMax =
+    typeof latencyChart.scales.y?.max === "number"
+      ? latencyChart.scales.y.max
+      : yMax;
+
+  const scaleOpts = {
+    min: yMin,
+    ...(resolvedYMax != null ? { max: resolvedYMax } : {}),
+    title: { display: true, text: "ms", color: "#8b90a0" },
+    grid: { drawOnChartArea: false, drawTicks: true, color: "#2a2e3d" },
+    border: { display: true, color: "#2a2e3d" },
+    ticks: { color: "#8b90a0", mirror: false, padding: 4 },
+  };
+
+  if (latencyYAxisChart) {
+    latencyYAxisChart.options.layout = {
+      padding: { top, bottom: bottomPad, left: 0, right: 0 },
+    };
+    const yScale = latencyYAxisChart.options.scales?.y;
+    if (yScale && typeof yScale === "object") {
+      Object.assign(yScale, scaleOpts);
+    }
+    latencyYAxisChart.update("none");
+    latencyYAxisChart.resize();
+    return;
+  }
+
+  latencyYAxisChart = new Chart(yAxisCanvas, {
+    type: "line",
+    data: { datasets: [{ data: [] }] },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      events: [],
+      layout: {
+        padding: { top, bottom: bottomPad, left: 0, right: 0 },
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: { enabled: false },
+        chartRegions: {
+          xMin: 0,
+          cutoffEnd: 0,
+          timeoutRanges: [],
+          timeoutEdgeWidth: 0,
+          minTimeoutBarWidth: 0,
+        },
+      },
+      scales: {
+        x: { display: false, min: 0, max: 1 },
+        y: scaleOpts,
+      },
+    },
+  } as ChartConfiguration);
+}
+
+/** Call after window resize or container size changes. */
+export function resizeLatencyChartLayout(): void {
+  applyLatencyChartLayout(false);
+  latencyChart?.resize();
+  if (isLatencyChartScrollable()) {
+    syncLatencyYAxisChart(
+      typeof latencyChart?.options.scales?.y === "object"
+        ? (latencyChart.options.scales.y as { max?: number }).max
+        : undefined,
+    );
+  } else {
+    destroyLatencyYAxisChart();
+  }
 }
 
 function isHiddenBand(label: string | undefined): boolean {
@@ -362,7 +517,12 @@ export function buildLatencyChart(
   const canvas = document.getElementById("latencyChart") as HTMLCanvasElement | null;
   if (!canvas) return;
 
+  const scrollable = isLatencyChartScrollable();
+  applyLatencyChartLayout(scrollable);
+
   latencyChart?.destroy();
+  destroyLatencyYAxisChart();
+
   const config = {
     type: "line",
     plugins: [createBatchTooltipPlugin(batchTimestamps)],
@@ -390,9 +550,16 @@ export function buildLatencyChart(
           },
         },
         y: {
-          title: { display: true, text: "ms", color: "#8b90a0" },
+          title: {
+            display: !scrollable,
+            text: "ms",
+            color: "#8b90a0",
+          },
           grid: { color: "#2a2e3d" },
-          ticks: { color: "#8b90a0" },
+          ticks: {
+            display: !scrollable,
+            color: "#8b90a0",
+          },
           min: 0,
           ...(yMax != null ? { max: yMax } : {}),
         },
@@ -428,4 +595,13 @@ export function buildLatencyChart(
     },
   };
   latencyChart = new Chart(canvas, config as ChartConfiguration);
+
+  if (scrollable) {
+    // Layout after Chart measures legend/area so the fixed Y-axis aligns.
+    requestAnimationFrame(() => {
+      applyLatencyChartLayout(true);
+      latencyChart?.resize();
+      syncLatencyYAxisChart(yMax);
+    });
+  }
 }

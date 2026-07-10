@@ -98,7 +98,9 @@ GitHub の Actions タブで **Sync DNS Data** ワークフローが起動する
 
 GitHub Actions（**Sync DNS Data** / **Deploy Pages** の `prepare-pages`）が TSV を `DnsRecord[]` の JSON に変換し、ブラウザは `data/dns-latency.json` を読みます。変換は `npm run tsv-to-json`（`scripts/tsv-to-json.ts`、`parseTsv` と同じ規則）です。
 
-[`monitor.config.ts`](monitor.config.ts) の `data_cutoff_ts`（Unix 秒）より古い行は保存・表示・送信の対象外です。GitHub 上のデータは最大 7 日分保持されます。ダッシュボードの表示範囲（10m / 30m / 1h / 3h / 6h / 12h / 24h / 3d）は UI から切り替えでき、選択はブラウザに保存されます。`display_hours`（デフォルト 24）は初回表示の初期値のみです。
+[`monitor.config.ts`](monitor.config.ts) の `data_cutoff_ts`（Unix 秒）より古い行は保存・表示・送信の対象外です。GitHub 上のデータは最大 7 日分保持されます。ダッシュボードの表示範囲（30m / 1h / 3h / 6h / 12h / 24h / 3d）は UI から切り替えでき、選択はブラウザに保存されます。`display_hours`（デフォルト 24）は初回表示の初期値のみです。
+
+**24h 以下**の表示では、レイテンシ推移グラフが時間軸方向に広くなり横スクロールできます（初期位置は右端＝最新）。Y 軸（ms）のラベルは左端に固定したまま、プロットだけが横に動きます。**3d** は従来どおり画面幅にフィットします。
 
 ## 設定
 

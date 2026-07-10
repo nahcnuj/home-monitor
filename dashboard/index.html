@@ -23,8 +23,15 @@
     <div class="charts">
       <section class="chart-section chart-section--latency">
         <h2>レイテンシ推移</h2>
-        <div class="chart-container">
-          <canvas id="latencyChart"></canvas>
+        <div class="chart-container chart-container--latency" id="latencyChartContainer">
+          <div class="chart-yaxis-wrap" id="latencyYAxisWrap" hidden>
+            <canvas id="latencyYAxis"></canvas>
+          </div>
+          <div class="chart-scroll" id="latencyChartScroll">
+            <div class="chart-scroll-inner" id="latencyChartInner">
+              <canvas id="latencyChart"></canvas>
+            </div>
+          </div>
         </div>
         <div class="stats-bar" id="statsGrid" aria-label="レイテンシ統計"></div>
       </section>

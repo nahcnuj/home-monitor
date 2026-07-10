@@ -216,6 +216,56 @@ main {
   min-height: 220px;
 }
 
+/* Latency chart: optional horizontal scroll with a fixed Y-axis column */
+.chart-container--latency {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 0;
+  min-width: 0;
+}
+
+.chart-yaxis-wrap {
+  flex: 0 0 3.25rem;
+  width: 3.25rem;
+  position: relative;
+  min-height: 0;
+  z-index: 1;
+}
+
+.chart-yaxis-wrap canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.chart-scroll {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow-x: hidden;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+.chart-container--latency.is-scrollable .chart-scroll {
+  overflow-x: auto;
+}
+
+.chart-scroll-inner {
+  position: relative;
+  height: 100%;
+  min-width: 100%;
+  width: 100%;
+}
+
+.chart-scroll-inner canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
 .chart-container--short {
   height: min(28dvh, 200px);
   min-height: 160px;
