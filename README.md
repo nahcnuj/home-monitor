@@ -2,9 +2,12 @@
 
 自宅回線の DNS 応答レイテンシを監視し、GitHub Pages で可視化するツールです。
 
-![Dashboard preview (30m, with timeout outages)](assets/dashboard-preview.png)
+<p align="center">
+  <img src="assets/dashboard-preview-pc.png" alt="DNS Latency Monitor の PC 表示。30 分範囲のレイテンシ推移グラフと、その下の統計・エラー種別内訳。" height="420" />
+  <img src="assets/dashboard-preview-mobile.png" alt="DNS Latency Monitor のスマホ表示。同じ 30 分範囲を縦レイアウトで表示。" height="420" />
+</p>
 
-30 分表示のサンプル。赤い帯はタイムアウト区間、下部はエラー種別内訳です。
+30 分表示のサンプル（左: PC / 右: スマホ）。赤い帯はタイムアウト区間、レイテンシ直下に測定数・平均・P95・最大、下部はエラー種別内訳と Uptime です。
 
 ## ブランチ構成
 
