@@ -233,6 +233,8 @@ export function getLatencyChart(): Chart | null {
 /**
  * CSS width of the scrollable plot so that `viewportSec` of time fills the container width.
  * When history is longer than the selected range, the chart becomes wider and scrolls.
+ *
+ * visibleTime ≈ spanSec * (containerWidth / result) ⇒ equals viewportSec when span > viewport.
  */
 export function latencyChartScrollWidth(
   containerWidth: number,
@@ -242,6 +244,12 @@ export function latencyChartScrollWidth(
   if (containerWidth <= 0) return 0;
   if (viewportSec <= 0 || spanSec <= viewportSec) return containerWidth;
   return Math.max(containerWidth, Math.ceil(containerWidth * (spanSec / viewportSec)));
+}
+
+/** Seconds of X-domain visible in a plot of `visiblePx` out of `contentPx` width. */
+export function visibleTimeSec(spanSec: number, contentPx: number, visiblePx: number): number {
+  if (contentPx <= 0 || visiblePx <= 0 || spanSec <= 0) return 0;
+  return spanSec * (visiblePx / contentPx);
 }
 
 export function setLatencyChartGeometry(spanSec: number, viewportSec: number): void {
@@ -255,6 +263,54 @@ export function isLatencyChartScrollable(
   viewportSec: number = latencyChartViewportSec,
 ): boolean {
   return spanSec > viewportSec + 1;
+}
+
+/** Last applied plot pixel size (scroll mode); used for explicit Chart.resize. */
+let latencyPlotCssWidth = 0;
+let latencyPlotCssHeight = 0;
+
+function resetLatencyPlotCssSize(): void {
+  latencyPlotCssWidth = 0;
+  latencyPlotCssHeight = 0;
+  const canvas = document.getElementById("latencyChart") as HTMLCanvasElement | null;
+  const { inner } = getLatencyLayoutElements();
+  if (inner) {
+    inner.style.width = "100%";
+    inner.style.height = "";
+  }
+  if (canvas) {
+    canvas.style.width = "";
+    canvas.style.height = "";
+  }
+}
+
+/**
+ * Force the plot box to an explicit CSS size. Chart.js responsive mode sizes from the
+ * parent; with overflow scrolling it often collapses to the viewport and the selected
+ * range no longer maps to “one screen of time” — so scroll mode uses fixed pixels.
+ */
+function applyLatencyPlotCssSize(contentW: number, height: number): void {
+  const canvas = document.getElementById("latencyChart") as HTMLCanvasElement | null;
+  const { inner } = getLatencyLayoutElements();
+  latencyPlotCssWidth = contentW;
+  latencyPlotCssHeight = height;
+  if (inner) {
+    inner.style.width = `${contentW}px`;
+    inner.style.height = `${height}px`;
+  }
+  if (canvas) {
+    canvas.style.width = `${contentW}px`;
+    canvas.style.height = `${height}px`;
+  }
+}
+
+export function resizeLatencyChartToPlot(): void {
+  if (!latencyChart) return;
+  if (latencyScrollMode && latencyPlotCssWidth > 0 && latencyPlotCssHeight > 0) {
+    latencyChart.resize(latencyPlotCssWidth, latencyPlotCssHeight);
+  } else {
+    latencyChart.resize();
+  }
 }
 
 function getLatencyLayoutElements(): {
@@ -284,6 +340,7 @@ export function applyLatencyChartLayout(scrollToEnd = false): boolean {
   const { container, yAxisWrap, scroll, inner } = getLatencyLayoutElements();
   if (!container || !scroll || !inner) {
     latencyScrollMode = false;
+    resetLatencyPlotCssSize();
     return false;
   }
 
@@ -295,11 +352,18 @@ export function applyLatencyChartLayout(scrollToEnd = false): boolean {
     yAxisWrap.style.alignSelf = "";
   }
   container.classList.remove("is-scrollable");
-  inner.style.width = "100%";
+  resetLatencyPlotCssSize();
 
-  const baseW = scroll.clientWidth;
+  // Prefer the container’s content box; fall back if the scrollport is not laid out yet.
+  const baseW = scroll.clientWidth || container.clientWidth;
+  if (baseW <= 0 || !isLatencyChartScrollable()) {
+    scroll.scrollLeft = 0;
+    latencyScrollMode = false;
+    return false;
+  }
+
   let contentW = latencyChartScrollWidth(baseW, latencyChartViewportSec, latencyChartSpanSec);
-  const needsScroll = contentW > baseW + 1 && isLatencyChartScrollable();
+  let needsScroll = contentW > baseW + 1;
 
   if (needsScroll) {
     if (yAxisWrap) {
@@ -308,7 +372,7 @@ export function applyLatencyChartLayout(scrollToEnd = false): boolean {
       yAxisWrap.style.width = `${SCROLLABLE_CHART_Y_AXIS_WIDTH_PX}px`;
     }
     container.classList.add("is-scrollable");
-    const plotW = scroll.clientWidth;
+    const plotW = scroll.clientWidth || Math.max(1, baseW - SCROLLABLE_CHART_Y_AXIS_WIDTH_PX);
     contentW = latencyChartScrollWidth(plotW, latencyChartViewportSec, latencyChartSpanSec);
     // If showing the axis made the plot fit, fall back to a normal chart.
     if (contentW <= plotW + 1) {
@@ -318,20 +382,24 @@ export function applyLatencyChartLayout(scrollToEnd = false): boolean {
         yAxisWrap.style.alignSelf = "";
       }
       container.classList.remove("is-scrollable");
-      inner.style.width = "100%";
+      resetLatencyPlotCssSize();
       scroll.scrollLeft = 0;
       latencyScrollMode = false;
       return false;
     }
-    inner.style.width = `${contentW}px`;
+
+    const plotH = Math.max(1, scroll.clientHeight || container.clientHeight);
+    applyLatencyPlotCssSize(contentW, plotH);
+
     // Match axis height to the plot above the horizontal scrollbar (not the full card).
     if (yAxisWrap) {
       yAxisWrap.style.paddingBottom = "";
-      yAxisWrap.style.height = `${scroll.clientHeight}px`;
+      yAxisWrap.style.height = `${plotH}px`;
       yAxisWrap.style.alignSelf = "flex-start";
     }
     if (scrollToEnd) {
-      scroll.scrollLeft = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
+      // After width change, scrollWidth may not update until layout; use computed sizes.
+      scroll.scrollLeft = Math.max(0, contentW - plotW);
     }
     latencyScrollMode = true;
     return true;
@@ -342,7 +410,7 @@ export function applyLatencyChartLayout(scrollToEnd = false): boolean {
     yAxisWrap.style.height = "";
     yAxisWrap.style.alignSelf = "";
   }
-  inner.style.width = "100%";
+  resetLatencyPlotCssSize();
   scroll.scrollLeft = 0;
   latencyScrollMode = false;
   return false;
@@ -439,14 +507,8 @@ export function paintLatencyYAxis(): void {
 
 /** Call after window resize or container size changes. */
 export function resizeLatencyChartLayout(): void {
-  const wasScroll = latencyScrollMode;
-  const needsScroll = applyLatencyChartLayout(false);
-  // Entering/leaving scroll mode changes legend + Y-axis options; rebuild via caller if needed.
-  if (wasScroll !== needsScroll && latencyChart) {
-    // Options (legend/ticks) differ; force a full re-render path by resizing then painting.
-    // Main already owns rebuild on compact flip; here we only reflow width/axis paint.
-  }
-  latencyChart?.resize();
+  applyLatencyChartLayout(false);
+  resizeLatencyChartToPlot();
   if (latencyScrollMode) {
     paintLatencyYAxis();
   }
@@ -602,7 +664,7 @@ export function buildLatencyChart(
   const canvas = document.getElementById("latencyChart") as HTMLCanvasElement | null;
   if (!canvas) return;
 
-  // Decide scroll mode before Chart construction (affects legend / Y ticks).
+  // Decide scroll mode + explicit plot size before Chart construction.
   const scrollable = applyLatencyChartLayout(false);
   renderLatencyLegend(scrollable ? servers : []);
 
@@ -613,7 +675,9 @@ export function buildLatencyChart(
     plugins: [createBatchTooltipPlugin(batchTimestamps)],
     data: { datasets },
     options: {
-      responsive: true,
+      // Scroll mode: fixed pixel size so the selected range maps to one screen of time.
+      // Responsive mode collapses to the overflow viewport and shows the whole history at once.
+      responsive: !scrollable,
       maintainAspectRatio: false,
       interaction: { mode: "nearest", axis: "x", intersect: false },
       // Extra top padding when Chart.js legend is hidden (external legend is above the container).
@@ -687,10 +751,11 @@ export function buildLatencyChart(
   latencyChart = new Chart(canvas, config as ChartConfiguration);
 
   if (scrollable) {
-    // After Chart measures scales, pin scroll to the latest data and paint the fixed Y-axis.
+    // Pin size + scroll to the latest viewport; paint the fixed Y-axis after scales exist.
+    resizeLatencyChartToPlot();
     requestAnimationFrame(() => {
       applyLatencyChartLayout(true);
-      latencyChart?.resize();
+      resizeLatencyChartToPlot();
       paintLatencyYAxis();
     });
   } else {

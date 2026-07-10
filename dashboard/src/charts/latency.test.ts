@@ -15,6 +15,7 @@ import {
   latencyChartScrollWidth,
   nearestBatchTs,
   shouldShowLatencyPoints,
+  visibleTimeSec,
 } from "./latency.ts";
 import { buildErrorChart } from "./error.ts";
 import { sampleTsv } from "../test/fixtures.ts";
@@ -79,6 +80,13 @@ describe("latency chart horizontal scroll layout", () => {
     expect(latencyChartScrollWidth(800, HOUR_SEC, 6 * HOUR_SEC)).toBe(4800);
     // span shorter than viewport → still container width
     expect(latencyChartScrollWidth(800, DAY_SEC, HOUR_SEC)).toBe(800);
+
+    // 6h selected with multi-day history → one screen shows ~6h
+    const plotW = 800;
+    const span = 3 * DAY_SEC;
+    const viewport = 6 * HOUR_SEC;
+    const contentW = latencyChartScrollWidth(plotW, viewport, span);
+    expect(visibleTimeSec(span, contentW, plotW)).toBeCloseTo(viewport, 0);
   });
 
   it("enables scroll mode with fixed Y-axis when history exceeds the selected range", () => {
@@ -115,6 +123,13 @@ describe("latency chart horizontal scroll layout", () => {
     expect(yScale.ticks?.display).toBe(false);
     expect(yScale.title?.display).toBe(false);
     expect(chart.options.plugins?.legend?.display).toBe(false);
+    expect(chart.options.responsive).toBe(false);
+
+    const inner = document.getElementById("latencyChartInner")!;
+    const contentW = Number.parseInt(inner.style.width, 10);
+    expect(contentW).toBeGreaterThan(756);
+    // Visible plot width is ~756px; width ratio must map ~1h on screen.
+    expect(visibleTimeSec(xMax - xMin, contentW, 756)).toBeCloseTo(HOUR_SEC, 0);
 
     vi.useRealTimers();
   });
