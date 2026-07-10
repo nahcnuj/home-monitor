@@ -9,7 +9,9 @@ import {
   collectActiveElementsAtBatch,
   formatFailureLabel,
   getLatencyChart,
+  isLatencyChartScrollable,
   isTooltipDataset,
+  latencyChartScrollWidth,
   nearestBatchTs,
   shouldShowLatencyPoints,
 } from "./latency.ts";
@@ -23,7 +25,16 @@ Chart.register(...registerables, chartRegionsPlugin, errorBandLabelsPlugin);
 
 beforeAll(() => {
   document.body.innerHTML = `
-    <canvas id="latencyChart" width="800" height="400"></canvas>
+    <div class="chart-container chart-container--latency" id="latencyChartContainer" style="width:800px;height:400px">
+      <div class="chart-yaxis-wrap" id="latencyYAxisWrap" hidden style="width:52px;height:400px">
+        <canvas id="latencyYAxis" width="52" height="400"></canvas>
+      </div>
+      <div class="chart-scroll" id="latencyChartScroll" style="width:748px;height:400px">
+        <div class="chart-scroll-inner" id="latencyChartInner" style="width:800px;height:400px">
+          <canvas id="latencyChart" width="800" height="400"></canvas>
+        </div>
+      </div>
+    </div>
     <canvas id="errorChart" width="800" height="200"></canvas>
   `;
 });
@@ -34,6 +45,39 @@ describe("nearestBatchTs", () => {
     expect(nearestBatchTs(batches, 1000)).toBe(1000);
     expect(nearestBatchTs(batches, 1029)).toBe(1000);
     expect(nearestBatchTs(batches, 1031)).toBe(1060);
+  });
+});
+
+describe("latency chart horizontal scroll layout", () => {
+  it("enables scroll for ranges at or below 24h, not for 3d", () => {
+    expect(isLatencyChartScrollable(30 * 60)).toBe(true);
+    expect(isLatencyChartScrollable(DAY_SEC)).toBe(true);
+    expect(isLatencyChartScrollable(3 * DAY_SEC)).toBe(false);
+  });
+
+  it("widens the chart for dense short ranges and never shrinks below the container", () => {
+    expect(latencyChartScrollWidth(800, 30 * 60, false)).toBe(800);
+    expect(latencyChartScrollWidth(800, DAY_SEC, false)).toBeGreaterThan(800);
+    expect(latencyChartScrollWidth(800, 3 * DAY_SEC, false)).toBe(800);
+  });
+
+  it("marks the container scrollable and hides Y ticks on the plot chart for 24h", () => {
+    setDisplayRangeSec(DAY_SEC);
+    const records = parseTsv(sampleTsv);
+    const filtered = filterByPeriod(records, 0);
+    const { successes, failures } = aggregateByServer(filtered);
+
+    buildLatencyChart(filtered, successes, failures, 0);
+
+    const container = document.getElementById("latencyChartContainer");
+    const yAxisWrap = document.getElementById("latencyYAxisWrap") as HTMLElement;
+    expect(container?.classList.contains("is-scrollable")).toBe(true);
+    expect(yAxisWrap.hidden).toBe(false);
+
+    const chart = getLatencyChart()!;
+    const yScale = chart.options.scales?.y as { ticks?: { display?: boolean }; title?: { display?: boolean } };
+    expect(yScale.ticks?.display).toBe(false);
+    expect(yScale.title?.display).toBe(false);
   });
 });
 
