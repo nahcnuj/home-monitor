@@ -23,7 +23,7 @@ import type {
   FailurePoint,
   LatencySamplePoint,
 } from "../types.ts";
-import { timeoutRanges, withAlpha, withGaps } from "../utils.ts";
+import { minOf, timeoutRanges, withAlpha, withGaps } from "../utils.ts";
 
 function isSuccess(r: DnsRecord): r is DnsSuccessRecord {
   return !r.error;
@@ -493,9 +493,8 @@ export function buildLatencyChart(
   const yMax = p95 > 0 ? ceilingToHundred(p95 * 2) : undefined;
 
   const compact = isCompactChartLayout();
-  const dataMinTs = rawRecords.length
-    ? Math.min(...rawRecords.map((r) => r.ts))
-    : undefined;
+  // Loop min — Math.min(...ts) overflows the stack on multi-day datasets.
+  const dataMinTs = rawRecords.length ? minOf(rawRecords.map((r) => r.ts)) : undefined;
   const xBounds = chartTimeBounds(undefined, compact, {
     dataMinTs,
     dataCutoffTs,
