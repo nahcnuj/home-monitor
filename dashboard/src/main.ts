@@ -51,7 +51,8 @@ function resizeCharts(): void {
     return;
   }
   const wasScroll = isLatencyScrollMode();
-  resizeLatencyChartLayout();
+  // Keep (or restore) the latest viewport after reflow — range changes rebuild via render.
+  resizeLatencyChartLayout(false);
   // Entering/leaving scroll mode toggles legend placement and Y-axis options.
   // Defer rebuild so we never recurse render → resize → render on the same stack.
   if (wasScroll !== isLatencyScrollMode() && allRecords.length) {

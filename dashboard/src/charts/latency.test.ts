@@ -14,6 +14,7 @@ import {
   isTooltipDataset,
   latencyChartScrollWidth,
   nearestBatchTs,
+  scrollLatencyChartToLatest,
   shouldShowLatencyPoints,
   visibleTimeSec,
 } from "./latency.ts";
@@ -53,6 +54,11 @@ beforeAll(() => {
       const w = Number.parseInt(inner?.style.width ?? "756", 10);
       return Number.isFinite(w) ? w : 756;
     },
+  });
+  Object.defineProperty(scroll, "scrollLeft", {
+    configurable: true,
+    writable: true,
+    value: 0,
   });
   Object.defineProperty(container, "clientWidth", { configurable: true, get: () => 800 });
 });
@@ -130,6 +136,40 @@ describe("latency chart horizontal scroll layout", () => {
     expect(contentW).toBeGreaterThan(756);
     // Visible plot width is ~756px; width ratio must map ~1h on screen.
     expect(visibleTimeSec(xMax - xMin, contentW, 756)).toBeCloseTo(HOUR_SEC, 0);
+
+    // First view must show the latest slice (scrolled to the right end).
+    const scroll = document.getElementById("latencyChartScroll") as HTMLElement & {
+      scrollLeft: number;
+    };
+    scrollLatencyChartToLatest();
+    expect(scroll.scrollLeft).toBeGreaterThan(0);
+    expect(scroll.scrollLeft).toBe(contentW - 756);
+
+    vi.useRealTimers();
+  });
+
+  it("pins first view to the latest viewport for short ranges (30m) too", () => {
+    vi.useFakeTimers();
+    const nowSec = 1_800_000_000;
+    vi.setSystemTime(new Date(nowSec * 1000));
+    setDisplayRangeSec(30 * 60);
+
+    const historyStart = nowSec - DAY_SEC;
+    const records = [
+      { ts: historyStart, dns_server: "1.1.1.1", domain: "example.com", latency_ms: 20 },
+      { ts: nowSec - 30, dns_server: "1.1.1.1", domain: "example.com", latency_ms: 25 },
+    ];
+    const { successes, failures } = aggregateByServer(records);
+    buildLatencyChart(records, successes, failures, historyStart);
+
+    expect(isLatencyScrollMode()).toBe(true);
+    const inner = document.getElementById("latencyChartInner")!;
+    const contentW = Number.parseInt(inner.style.width, 10);
+    const scroll = document.getElementById("latencyChartScroll") as HTMLElement & {
+      scrollLeft: number;
+    };
+    scrollLatencyChartToLatest();
+    expect(scroll.scrollLeft).toBe(contentW - 756);
 
     vi.useRealTimers();
   });
