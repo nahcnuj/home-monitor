@@ -217,26 +217,67 @@ main {
 }
 
 /* Latency chart: optional horizontal scroll with a fixed Y-axis column */
+.section-heading--latency {
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+}
+
+.latency-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem 0.75rem;
+  min-width: 0;
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.latency-legend[hidden] {
+  display: none !important;
+}
+
+.latency-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.latency-legend-item .swatch {
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
 .chart-container--latency {
   display: flex;
   flex-direction: row;
   align-items: stretch;
   gap: 0;
   min-width: 0;
+  /* Keep plot + fixed axis on one surface */
+  padding-left: 0.25rem;
 }
 
 .chart-yaxis-wrap {
-  flex: 0 0 3.25rem;
-  width: 3.25rem;
+  flex: 0 0 2.75rem;
+  width: 2.75rem;
   position: relative;
   min-height: 0;
   z-index: 1;
+  /* Leave room for the horizontal scrollbar under the plot only */
+  box-sizing: border-box;
 }
 
 .chart-yaxis-wrap canvas {
   display: block;
-  width: 100% !important;
-  height: 100% !important;
+  width: 100%;
+  height: 100%;
 }
 
 .chart-scroll {

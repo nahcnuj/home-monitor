@@ -22,9 +22,12 @@
 
     <div class="charts">
       <section class="chart-section chart-section--latency">
-        <h2>レイテンシ推移</h2>
+        <div class="section-heading section-heading--latency">
+          <h2>レイテンシ推移</h2>
+          <div class="latency-legend" id="latencyLegend" hidden></div>
+        </div>
         <div class="chart-container chart-container--latency" id="latencyChartContainer">
-          <div class="chart-yaxis-wrap" id="latencyYAxisWrap" hidden>
+          <div class="chart-yaxis-wrap" id="latencyYAxisWrap" hidden aria-hidden="true">
             <canvas id="latencyYAxis"></canvas>
           </div>
           <div class="chart-scroll" id="latencyChartScroll">
