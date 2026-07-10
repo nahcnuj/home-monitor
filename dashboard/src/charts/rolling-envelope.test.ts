@@ -2,7 +2,33 @@ import { describe, expect, it } from "vitest";
 import { DAY_SEC, HOUR_SEC, MIN_SEC } from "../constants.ts";
 import { parseTsv } from "../data.ts";
 import { setDisplayRangeSec } from "../state.ts";
-import { buildRollingEnvelope, collectTimelineTimestamps, envelopeWindowSec } from "./rolling-envelope.ts";
+import {
+  buildRollingEnvelope,
+  collectTimelineTimestamps,
+  envelopeWindowSec,
+  lowerBound,
+  upperBound,
+  windowMoments,
+} from "./rolling-envelope.ts";
+
+describe("lowerBound / upperBound / windowMoments", () => {
+  it("binary-searches sorted timestamps", () => {
+    const sorted = [10, 20, 20, 30, 40];
+    expect(lowerBound(sorted, 20)).toBe(1);
+    expect(upperBound(sorted, 20)).toBe(3);
+    expect(lowerBound(sorted, 25)).toBe(3);
+    expect(upperBound(sorted, 40)).toBe(5);
+  });
+
+  it("computes min max mean std over a slice", () => {
+    const values = [10, 20, 30, 40];
+    const m = windowMoments(values, 1, 4)!;
+    expect(m.min).toBe(20);
+    expect(m.max).toBe(40);
+    expect(m.mean).toBe(30);
+    expect(m.count).toBe(3);
+  });
+});
 
 describe("envelopeWindowSec", () => {
   it("uses same-second samples below 6h and wider windows above", () => {
