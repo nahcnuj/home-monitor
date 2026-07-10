@@ -212,8 +212,7 @@ function createBatchTooltipPlugin(batchTimestamps: readonly number[]): Plugin<"l
   };
 }
 
-// Low tension keeps min/max σ bands responsive to spikes; 0.4+ looked overly smoothed.
-const BAND_TENSION = 0.12;
+const BAND_TENSION = 0.42;
 const SIGMA_BAND_ALPHA = 0.18;
 const SIGMA_BAND_ALPHA_LONG = 0.32;
 const MINMAX_BAND_ALPHA = 0.07;
