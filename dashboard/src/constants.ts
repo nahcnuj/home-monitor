@@ -16,18 +16,7 @@ export const RANGE_PRESETS: RangePreset[] = [
 
 export const HOUR_SEC = 3600;
 export const HIDE_LATENCY_POINTS_RANGE_SEC = 6 * HOUR_SEC;
-/** Ranges at or below this may use a wider, horizontally scrollable latency chart. */
-export const SCROLLABLE_CHART_MAX_RANGE_SEC = 24 * HOUR_SEC;
-/**
- * Target hours visible in the viewport when a ≤24h range is widened for scrolling.
- * e.g. 24h with 6 visible hours ⇒ chart is ~4× the container width.
- */
-export const SCROLLABLE_CHART_VISIBLE_HOURS = 6;
-export const SCROLLABLE_CHART_VISIBLE_HOURS_COMPACT = 3;
-/** Floor density so short ranges stay readable even on wide screens. */
-export const SCROLLABLE_CHART_PX_PER_HOUR = 120;
-export const SCROLLABLE_CHART_PX_PER_HOUR_COMPACT = 72;
-/** Reserved CSS width for the fixed Y-axis column when scrolling. */
+/** Reserved CSS width for the fixed Y-axis column when the chart scrolls. */
 export const SCROLLABLE_CHART_Y_AXIS_WIDTH_PX = 44;
 export const MIN_SEC = 60;
 export const DAY_SEC = 86400;

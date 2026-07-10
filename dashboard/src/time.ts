@@ -12,9 +12,13 @@ import type { TimeBounds } from "./types.ts";
 export const fmtJst = (unixSec: number): string =>
   jstFormatter.format(new Date(unixSec * 1000));
 
+/**
+ * Records older than this are excluded from the dashboard.
+ * The selected range preset no longer trims history — it only controls how much
+ * time fits across the visible chart width (see chartTimeBounds).
+ */
 export function getDisplayCutoff(dataCutoffTs: number): number {
-  const rolling = Math.floor(Date.now() / 1000) - displayRangeSec;
-  return Math.max(rolling, dataCutoffTs);
+  return dataCutoffTs;
 }
 
 function floorToJstDay(unixSec: number): number {
@@ -72,20 +76,64 @@ export function chartTickStep(rangeSec: number, compact = false): number {
   return DAY_SEC;
 }
 
-export function chartTimeBounds(nowSec?: number, compact?: boolean): TimeBounds {
+export interface ChartTimeBoundsOptions {
+  /** Earliest record timestamp (unix sec). Extends the chart left so history is scrollable. */
+  dataMinTs?: number;
+  /** Hard floor from config; never draw older than this. */
+  dataCutoffTs?: number;
+}
+
+/**
+ * X-axis domain for the latency chart.
+ * - `viewportSec` (selected range) = how much time the visible width represents.
+ * - Full span runs from available history (or one viewport) through aligned “now”.
+ * Default view scrolls to the right edge so the most recent viewport is on screen.
+ */
+export function chartTimeBounds(
+  nowSec?: number,
+  compact?: boolean,
+  options?: ChartTimeBoundsOptions,
+): TimeBounds {
   const now = nowSec ?? Math.floor(Date.now() / 1000);
-  const rangeSec = displayRangeSec;
+  const viewportSec = displayRangeSec;
   const useCompact = compact ?? isCompactChartLayout();
-  const tickStep = chartTickStep(rangeSec, useCompact);
   let max: number;
-  if (rangeSec > DAY_SEC) {
+  if (viewportSec > DAY_SEC) {
     max = nextJstDay(now);
-  } else if (rangeSec < HOUR_SEC) {
+  } else if (viewportSec < HOUR_SEC) {
     max = ceilToMinute(now);
   } else {
     max = ceilToJstHour(now);
   }
-  return { min: max - rangeSec, max, range: rangeSec, tickStep };
+
+  // At least one viewport ending at `max`; extend further left when older data exists.
+  let min = max - viewportSec;
+  const dataMin = options?.dataMinTs;
+  if (dataMin != null && Number.isFinite(dataMin) && dataMin < min) {
+    min = dataMin;
+  }
+  const cutoff = options?.dataCutoffTs ?? 0;
+  if (cutoff > 0) {
+    min = Math.max(min, cutoff);
+  }
+  if (min >= max) {
+    min = max - viewportSec;
+  }
+
+  const range = max - min;
+  // Tick density follows the zoom (viewport); for long history, coarsen so Chart.js
+  // does not try to mint thousands of major ticks across the full span.
+  const tickBasis =
+    range > viewportSec * 2 ? Math.max(viewportSec, range / 16) : viewportSec;
+  const tickStep = chartTickStep(tickBasis, useCompact);
+
+  return {
+    min,
+    max,
+    range,
+    viewportSec,
+    tickStep,
+  };
 }
 
 export function rangeLabel(seconds: number): string {

@@ -24,6 +24,7 @@ describe("chartTimeBounds", () => {
     expect(isJstOnTheHour(bounds.max)).toBe(true);
     expect(bounds.min).toBe(bounds.max - rangeSec);
     expect(bounds.range).toBe(rangeSec);
+    expect(bounds.viewportSec).toBe(rangeSec);
     expect(bounds.tickStep).toBe(chartTickStep(rangeSec));
   });
 
@@ -37,6 +38,7 @@ describe("chartTimeBounds", () => {
     expect(isJstMidnight(bounds.max)).toBe(true);
     expect(bounds.max).toBeGreaterThan(SAMPLE_NOW);
     expect(bounds.min).toBe(bounds.max - rangeSec);
+    expect(bounds.viewportSec).toBe(rangeSec);
   });
 
   it.each(
@@ -57,13 +59,30 @@ describe("chartTimeBounds", () => {
     expect(isJstOnTheHour(bounds.max)).toBe(true);
   });
 
-
   it("uses the next JST midnight for the 24h preset at 23:25 JST", () => {
     setDisplayRangeSec(DAY_SEC);
     const bounds = chartTimeBounds(SAMPLE_NOW);
     const expectedMax = Date.UTC(2026, 5, 20, 15, 0, 0) / 1000;
     expect(bounds.max).toBe(expectedMax);
     expect(isJstMidnight(bounds.max)).toBe(true);
+  });
+
+  it("extends the left edge to older data while keeping viewportSec as the selected range", () => {
+    setDisplayRangeSec(HOUR_SEC);
+    const dataMinTs = SAMPLE_NOW - 6 * HOUR_SEC;
+    const bounds = chartTimeBounds(SAMPLE_NOW, false, { dataMinTs });
+    expect(bounds.viewportSec).toBe(HOUR_SEC);
+    expect(bounds.min).toBe(dataMinTs);
+    expect(bounds.range).toBeGreaterThan(HOUR_SEC);
+    expect(bounds.max - bounds.min).toBe(bounds.range);
+  });
+
+  it("does not extend left past data_cutoff_ts", () => {
+    setDisplayRangeSec(HOUR_SEC);
+    const dataMinTs = SAMPLE_NOW - 6 * HOUR_SEC;
+    const dataCutoffTs = SAMPLE_NOW - 2 * HOUR_SEC;
+    const bounds = chartTimeBounds(SAMPLE_NOW, false, { dataMinTs, dataCutoffTs });
+    expect(bounds.min).toBe(dataCutoffTs);
   });
 });
 

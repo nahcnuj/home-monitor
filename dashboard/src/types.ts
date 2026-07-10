@@ -47,9 +47,17 @@ export interface Stats {
 }
 
 export interface TimeBounds {
+  /** Left edge of the full chart (may extend past one viewport when history exists). */
   min: number;
+  /** Right edge of the chart (aligned “now”). */
   max: number;
+  /** Full chart span in seconds (max - min). */
   range: number;
+  /**
+   * How many seconds of time the plot viewport width represents (selected range preset).
+   * Used for horizontal zoom: chart CSS width ∝ range / viewportSec.
+   */
+  viewportSec: number;
   tickStep: number;
 }
 
