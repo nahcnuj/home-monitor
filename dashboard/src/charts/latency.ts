@@ -490,9 +490,10 @@ export function isLatencyScrollMode(): boolean {
  */
 export function resizeLatencyChartLayout(scrollToEnd = false): void {
   const { scroll } = getLatencyLayoutElements();
+  // HTMLElement.hidden is boolean | "until-found"; force boolean for || chains (TS 5.5+).
   const atEnd =
     !scroll ||
-    scroll.hidden ||
+    !!scroll.hidden ||
     scroll.scrollLeft + scroll.clientWidth >= scroll.scrollWidth - 4;
   const pin = scrollToEnd || atEnd;
 
