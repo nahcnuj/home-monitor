@@ -149,7 +149,7 @@ jobs:
         # actually pushed (Deploy Pages no longer listens to this workflow via
         # workflow_run, so this is the sole deploy path for Sync).
         if: steps.commit-push.outputs.pushed == 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             await github.rest.actions.createWorkflowDispatch({
