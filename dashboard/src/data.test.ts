@@ -4,6 +4,7 @@ import {
   ceilingToHundred,
   computeStats,
   filterByPeriod,
+  filterByTimeWindow,
   parseRecordsJson,
   parseTsv,
   percentile,
@@ -147,6 +148,34 @@ describe("ceilingToHundred", () => {
     expect(ceilingToHundred(200)).toBe(200);
     expect(ceilingToHundred(999)).toBe(1000);
     expect(ceilingToHundred(1000)).toBe(1000);
+  });
+});
+
+describe("filterByTimeWindow", () => {
+  it("keeps only records inside the inclusive window", () => {
+    const records = parseTsv([
+      "1000\t1.1.1.1\td1\t10",
+      "2000\t1.1.1.1\td1\t20",
+      "3000\t1.1.1.1\td1\t30",
+      "4000\t1.1.1.1\td1\ttimeout",
+    ].join("\n"));
+
+    const windowed = filterByTimeWindow(records, 2000, 3000);
+    expect(windowed.map((r) => r.ts)).toEqual([2000, 3000]);
+  });
+
+  it("limits stats to the visible window", () => {
+    const records = parseTsv([
+      "1000\t1.1.1.1\td1\t10",
+      "2000\t1.1.1.1\td1\t100",
+      "3000\t1.1.1.1\td1\t200",
+      "9000\t1.1.1.1\td1\t9999",
+    ].join("\n"));
+
+    const stats = computeStats(filterByTimeWindow(records, 2000, 3000));
+    expect(stats.total).toBe(2);
+    expect(stats.avg).toBe(150);
+    expect(stats.max).toBe(200);
   });
 });
 
