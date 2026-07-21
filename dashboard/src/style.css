@@ -2,28 +2,52 @@
   color-scheme: dark;
   --bg: #0f1117;
   --surface: #1a1d27;
+  --surface-hover: #222633;
   --border: #2a2e3d;
   --text: #e4e6ed;
   --text-muted: #8b90a0;
   --accent: #5b8def;
+  --accent-hover: #4a7ad4;
+  --accent-soft: rgba(91, 141, 239, 0.18);
   --success: #4ade80;
   --error: #f87171;
+  --error-soft: rgba(248, 113, 113, 0.12);
+  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --header-pad-x: max(1rem, env(safe-area-inset-left));
+  --header-pad-x-end: max(1rem, env(safe-area-inset-right));
+  --main-pad-x: max(1rem, env(safe-area-inset-left));
+  --main-pad-x-end: max(1rem, env(safe-area-inset-right));
+  --main-pad-bottom: max(2rem, env(safe-area-inset-bottom));
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 body {
-  font-family: "Segoe UI", system-ui, sans-serif;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
   background: var(--bg);
   color: var(--text);
   line-height: 1.5;
   min-height: 100vh;
+  min-height: 100dvh;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--text);
 }
 
 /* Mobile-first defaults: keep latency chart in the first viewport. */
 header {
-  padding: 0.75rem 1rem 0.5rem;
+  padding: 0.75rem var(--header-pad-x-end) 0.5rem var(--header-pad-x);
   border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 92%, var(--surface));
 }
 
 .header-row {
@@ -34,9 +58,14 @@ header {
   flex-wrap: wrap;
 }
 
-.header-title { min-width: 0; }
+.header-title { min-width: 0; flex: 1 1 12rem; }
 
-header h1 { font-size: 1.125rem; font-weight: 600; }
+header h1 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
 
 .subtitle {
   color: var(--text-muted);
@@ -46,36 +75,67 @@ header h1 { font-size: 1.125rem; font-weight: 600; }
   -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  line-height: 1.35;
 }
 
 .range-selector {
   display: inline-flex;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   overflow-x: auto;
-  flex-shrink: 0;
+  flex: 0 1 auto;
   max-width: 100%;
   -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+  background: var(--surface);
+  /* Full-width segmented control when wrapped onto its own row */
+  flex-basis: min(100%, 22rem);
+}
+
+.range-selector::-webkit-scrollbar {
+  height: 4px;
+}
+
+.range-selector::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 2px;
 }
 
 .range-btn {
-  padding: 0.25rem 0.5rem;
-  font-size: 0.6875rem;
+  /* Prefer WCAG 2.5.5-ish targets on touch; keep compact on dense rows */
+  min-height: 2.25rem;
+  min-width: 2.5rem;
+  padding: 0.375rem 0.625rem;
+  font-size: 0.75rem;
   font-family: inherit;
   color: var(--text-muted);
-  background: var(--surface);
+  background: transparent;
   border: none;
   border-right: 1px solid var(--border);
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.15s ease, color 0.15s ease;
   white-space: nowrap;
+  flex: 1 0 auto;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .range-btn:last-child { border-right: none; }
 
 .range-btn:hover {
   color: var(--text);
-  background: #222633;
+  background: var(--surface-hover);
+}
+
+.range-btn:focus {
+  outline: none;
+}
+
+.range-btn:focus-visible {
+  position: relative;
+  z-index: 1;
+  color: var(--text);
+  box-shadow: var(--focus-ring);
 }
 
 .range-btn.active {
@@ -84,12 +144,16 @@ header h1 { font-size: 1.125rem; font-weight: 600; }
   font-weight: 600;
 }
 
-.range-btn.active:hover { background: #4a7ad4; }
+.range-btn.active:hover { background: var(--accent-hover); }
+
+.range-btn.active:focus-visible {
+  box-shadow: var(--focus-ring);
+}
 
 main {
   max-width: 1100px;
   margin: 0 auto;
-  padding: 0.75rem 1rem 2rem;
+  padding: 0.75rem var(--main-pad-x-end) var(--main-pad-bottom) var(--main-pad-x);
   display: flex;
   flex-direction: column;
 }
@@ -98,6 +162,37 @@ main {
   font-size: 0.75rem;
   color: var(--text-muted);
   margin-bottom: 0.5rem;
+  line-height: 1.4;
+}
+
+.last-updated.is-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.last-updated.is-loading::before {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0.85;
+  animation: pulse-dot 1.2s ease-in-out infinite;
+}
+
+.last-updated.is-error {
+  color: var(--error);
+  background: var(--error-soft);
+  border: 1px solid color-mix(in srgb, var(--error) 35%, transparent);
+  border-radius: var(--radius-sm);
+  padding: 0.375rem 0.625rem;
+  margin-bottom: 0.75rem;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 0.35; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1); }
 }
 
 /* Compact latency metrics under the chart (PC + mobile) */
@@ -105,10 +200,11 @@ main {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 0.25rem 0;
-  margin-top: 0.375rem;
-  padding: 0.25rem 0.125rem 0;
+  gap: 0.35rem 0;
+  margin-top: 0.5rem;
+  padding: 0.35rem 0.125rem 0;
   font-variant-numeric: tabular-nums;
+  row-gap: 0.35rem;
 }
 
 .stat-item {
@@ -134,7 +230,7 @@ main {
 }
 
 .stat-item .value {
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   font-weight: 600;
   color: var(--text);
 }
@@ -149,7 +245,7 @@ main {
 .charts {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 1.125rem;
 }
 
 .chart-section { margin-bottom: 0; }
@@ -174,6 +270,9 @@ main {
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
   line-height: 1.2;
+  padding: 0.125rem 0.375rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
 }
 
 .uptime-badge .label {
@@ -184,12 +283,21 @@ main {
 }
 
 .uptime-badge .value {
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   font-weight: 600;
   color: var(--text);
 }
 
+.uptime-badge.ok {
+  background: color-mix(in srgb, var(--success) 12%, transparent);
+}
+
 .uptime-badge.ok .value { color: var(--success); }
+
+.uptime-badge.warn {
+  background: color-mix(in srgb, var(--error) 12%, transparent);
+}
+
 .uptime-badge.warn .value { color: var(--error); }
 
 .chart-section h2 {
@@ -209,11 +317,12 @@ main {
 .chart-container {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   padding: 0.5rem 0.375rem 0.375rem;
   /* Fit graph + axis under the fold on typical phone viewports */
   height: min(48dvh, 300px);
   min-height: 220px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset;
 }
 
 /* Latency chart: full-width plot + optional history scrollbar (pan X domain) */
@@ -245,6 +354,10 @@ main {
   gap: 0.3rem;
   color: var(--text);
   white-space: nowrap;
+  padding: 0.125rem 0.35rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
 }
 
 .latency-legend-item .swatch {
@@ -281,9 +394,26 @@ main {
   overflow-x: auto;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
-  margin-top: 0.125rem;
+  margin-top: 0.25rem;
   /* Keep the bar easy to grab on touch devices */
   max-height: 0.875rem;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+  border-radius: 4px;
+}
+
+.chart-hscroll::-webkit-scrollbar {
+  height: 6px;
+}
+
+.chart-hscroll::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text-muted) 55%, transparent);
+  border-radius: 3px;
+}
+
+.chart-hscroll::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--border) 40%, transparent);
+  border-radius: 3px;
 }
 
 .chart-hscroll[hidden] {
@@ -295,31 +425,71 @@ main {
   /* width set in JS: plotWidth * (span / viewport) */
 }
 
+/* Error bar chart: prefer a tight strip — avoid large empty canvas below the band */
 .chart-container--short {
-  height: min(28dvh, 200px);
-  min-height: 160px;
+  height: auto;
+  min-height: 0;
+  /* bar (~36px) + tooltip room + vertical padding */
+  height: 7.25rem;
+  padding: 0.625rem 0.5rem 0.5rem;
+  display: flex;
+  align-items: stretch;
+}
+
+.chart-container--short canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* Comfortable sizes for mid-width / taller phones before the full PC layout */
 @media (min-width: 600px) and (max-width: 999px) {
-  header { padding: 1rem 1.5rem 0.75rem; }
+  :root {
+    --header-pad-x: max(1.5rem, env(safe-area-inset-left));
+    --header-pad-x-end: max(1.5rem, env(safe-area-inset-right));
+    --main-pad-x: max(1.5rem, env(safe-area-inset-left));
+    --main-pad-x-end: max(1.5rem, env(safe-area-inset-right));
+  }
+
+  header { padding-top: 1rem; padding-bottom: 0.75rem; }
   header h1 { font-size: 1.25rem; }
   .subtitle {
     display: block;
     -webkit-line-clamp: unset;
     font-size: 0.8125rem;
   }
-  main { padding: 1rem 1.5rem 2.5rem; }
+  main { padding-top: 1rem; padding-bottom: max(2.5rem, env(safe-area-inset-bottom)); }
   .chart-container {
     height: min(50dvh, 360px);
     padding: 0.75rem;
   }
-  .chart-container--short { height: 240px; }
-  .stat-item .value { font-size: 0.875rem; }
-  .uptime-badge .value { font-size: 0.875rem; }
+  .chart-container--short { height: 7.75rem; }
+  .stat-item .value { font-size: 0.9375rem; }
+  .uptime-badge .value { font-size: 0.9375rem; }
+  .range-btn {
+    min-height: 2.125rem;
+    font-size: 0.8125rem;
+  }
 }
 
 @media (min-width: 1000px) and (min-height: 600px) {
+  :root {
+    --header-pad-x: max(2rem, env(safe-area-inset-left));
+    --header-pad-x-end: max(2rem, env(safe-area-inset-right));
+    --main-pad-x: max(2rem, env(safe-area-inset-left));
+    --main-pad-x-end: max(2rem, env(safe-area-inset-right));
+  }
+
   html, body {
     height: 100%;
     overflow: hidden;
@@ -335,12 +505,17 @@ main {
 
   header {
     flex-shrink: 0;
-    padding: 0.5rem 2rem;
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
   }
 
   .header-row {
     gap: 0.5rem;
     flex-wrap: nowrap;
+  }
+
+  .header-title {
+    flex: 1 1 auto;
   }
 
   header h1 {
@@ -358,11 +533,16 @@ main {
   .range-selector {
     max-width: 100%;
     overflow-x: auto;
+    flex: 0 0 auto;
+    flex-basis: auto;
   }
 
   .range-btn {
-    padding: 0.1875rem 0.4375rem;
-    font-size: 0.625rem;
+    min-height: 1.75rem;
+    min-width: 2.25rem;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.6875rem;
+    flex: 0 0 auto;
   }
 
   main {
@@ -372,13 +552,18 @@ main {
     min-height: 0;
     max-width: none;
     width: 100%;
-    padding: 0.5rem 2rem;
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
   }
 
   .last-updated {
     flex-shrink: 0;
     font-size: 0.75rem;
     margin-bottom: 0.375rem;
+  }
+
+  .last-updated.is-error {
+    margin-bottom: 0.5rem;
   }
 
   .stats-bar {
@@ -396,7 +581,7 @@ main {
   }
 
   .stat-item .value {
-    font-size: 0.75rem;
+    font-size: 0.8125rem;
   }
 
   .stat-item .unit {
@@ -407,7 +592,7 @@ main {
     flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 0.375rem;
+    gap: 0.5rem;
     min-height: 0;
   }
 
@@ -424,7 +609,7 @@ main {
   }
 
   .chart-section--error {
-    flex: 1.15;
+    flex: 1.05;
     min-height: 0;
   }
 
@@ -438,12 +623,16 @@ main {
     margin-bottom: 0.2rem;
   }
 
+  .uptime-badge {
+    padding: 0.0625rem 0.35rem;
+  }
+
   .uptime-badge .label {
     font-size: 0.5625rem;
   }
 
   .uptime-badge .value {
-    font-size: 0.75rem;
+    font-size: 0.8125rem;
   }
 
   .chart-section h2 {
@@ -460,7 +649,14 @@ main {
     font-size: 0.625rem;
   }
 
-  .chart-container,
+  .chart-container {
+    flex: 1;
+    min-height: 0;
+    height: auto;
+    padding: 0.5rem;
+    border-radius: 8px;
+  }
+
   .chart-container--short {
     flex: 1;
     min-height: 0;
