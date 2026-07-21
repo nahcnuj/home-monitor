@@ -241,9 +241,23 @@ let latencyPinRaf = 0;
 /** Kept for pan-time scatter refresh when individual points are shown. */
 let latencySuccessesByServer: Map<string, DnsSuccessRecord[]> | null = null;
 let latencyShowPoints = false;
+/** Notified when the visible X window changes (initial layout + pan). */
+let onVisibleWindowChange: ((min: number, max: number) => void) | null = null;
 
 export function getLatencyChart(): Chart | null {
   return latencyChart;
+}
+
+/** Subscribe to visible time-window updates (for metrics limited to the plot view). */
+export function setOnVisibleWindowChange(
+  cb: ((min: number, max: number) => void) | null,
+): void {
+  onVisibleWindowChange = cb;
+}
+
+/** Current visible X window (same as chart scales.x min/max when the chart exists). */
+export function getVisibleTimeWindow(): { min: number; max: number } {
+  return visibleXWindow();
 }
 
 function destroyLatencyChartInstance(): void {
@@ -381,19 +395,21 @@ function refreshScatterForView(min: number, max: number): void {
 }
 
 function applyVisibleWindowToChart(): void {
-  if (!latencyChart?.canvas) return;
   const { min, max } = visibleXWindow();
-  const x = latencyChart.options.scales?.x;
-  if (x && typeof x === "object") {
-    (x as { min?: number; max?: number }).min = min;
-    (x as { max?: number }).max = max;
+  if (latencyChart?.canvas) {
+    const x = latencyChart.options.scales?.x;
+    if (x && typeof x === "object") {
+      (x as { min?: number; max?: number }).min = min;
+      (x as { max?: number }).max = max;
+    }
+    refreshScatterForView(min, max);
+    try {
+      latencyChart.update("none");
+    } catch {
+      // Chart may be destroyed between rAF schedules (tests / rapid rebuilds).
+    }
   }
-  refreshScatterForView(min, max);
-  try {
-    latencyChart.update("none");
-  } catch {
-    // Chart may be destroyed between rAF schedules (tests / rapid rebuilds).
-  }
+  onVisibleWindowChange?.(min, max);
 }
 
 function onLatencyHistoryScroll(): void {

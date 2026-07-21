@@ -118,6 +118,15 @@ export function filterByPeriod(records: DnsRecord[], dataCutoffTs: number): DnsR
   return records.filter((r) => r.ts >= cutoff);
 }
 
+/** Keep records whose timestamp falls in the inclusive chart window [minTs, maxTs]. */
+export function filterByTimeWindow(
+  records: DnsRecord[],
+  minTs: number,
+  maxTs: number,
+): DnsRecord[] {
+  return records.filter((r) => r.ts >= minTs && r.ts <= maxTs);
+}
+
 export function percentile(values: number[], p: number): number {
   if (!values.length) return 0;
   const sorted = [...values].sort((a, b) => a - b);
