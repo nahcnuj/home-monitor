@@ -51,8 +51,11 @@ export function renderStats(stats: Stats): void {
 }
 
 export function updateRangeUi(): void {
-  document.querySelectorAll(".range-btn").forEach((btn) => {
-    btn.classList.toggle("active", Number((btn as HTMLButtonElement).dataset.seconds) === displayRangeSec);
+  document.querySelectorAll(".range-btn").forEach((node) => {
+    const btn = node as HTMLButtonElement;
+    const active = Number(btn.dataset.seconds) === displayRangeSec;
+    btn.classList.toggle("active", active);
+    btn.setAttribute("aria-pressed", active ? "true" : "false");
   });
 }
 
@@ -62,7 +65,8 @@ export function initRangeSelector(onChange: () => void): void {
 
   if (!rangeSelectorReady) {
     el.innerHTML = RANGE_PRESETS.map(
-      (p) => `<button type="button" class="range-btn" data-seconds="${p.seconds}">${p.label}</button>`,
+      (p) =>
+        `<button type="button" class="range-btn" data-seconds="${p.seconds}" aria-pressed="false" aria-label="表示範囲 ${p.label}">${p.label}</button>`,
     ).join("");
     el.addEventListener("click", (e) => {
       const btn = (e.target as HTMLElement).closest(".range-btn") as HTMLButtonElement | null;

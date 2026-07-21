@@ -86,24 +86,42 @@ function initDashboard(): void {
   initRangeSelector(render);
 }
 
+function setLastUpdatedStatus(
+  el: HTMLElement | null,
+  text: string,
+  state: "loading" | "ready" | "error" | "empty" = "ready",
+): void {
+  if (!el) return;
+  el.textContent = text;
+  el.classList.toggle("is-loading", state === "loading");
+  el.classList.toggle("is-error", state === "error");
+}
+
 async function loadData(): Promise<void> {
   const lastUpdated = document.getElementById("lastUpdated");
   try {
     initDashboard();
+    setLastUpdatedStatus(lastUpdated, "読み込み中...", "loading");
 
     const res = await fetch(`data/dns-latency.json?t=${Date.now()}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     setAllRecords(parseRecordsJson(await res.text()));
-    if (lastUpdated) {
-      lastUpdated.textContent = allRecords.length
-        ? `最終データ: ${fmtJst(allRecords.at(-1)!.ts)}（JST）`
-        : "データなし";
+    if (!allRecords.length) {
+      setLastUpdatedStatus(lastUpdated, "データなし", "empty");
+    } else {
+      setLastUpdatedStatus(
+        lastUpdated,
+        `最終データ: ${fmtJst(allRecords.at(-1)!.ts)}（JST）`,
+        "ready",
+      );
     }
     render();
   } catch (err) {
-    if (lastUpdated) {
-      lastUpdated.textContent = `読み込みエラー: ${err instanceof Error ? err.message : String(err)}`;
-    }
+    setLastUpdatedStatus(
+      lastUpdated,
+      `読み込みエラー: ${err instanceof Error ? err.message : String(err)}`,
+      "error",
+    );
   }
 }
 

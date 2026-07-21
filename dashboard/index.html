@@ -18,33 +18,33 @@
   </header>
 
   <main>
-    <p class="last-updated" id="lastUpdated">読み込み中...</p>
+    <p class="last-updated is-loading" id="lastUpdated" role="status" aria-live="polite">読み込み中...</p>
 
     <div class="charts">
-      <section class="chart-section chart-section--latency">
+      <section class="chart-section chart-section--latency" aria-labelledby="latency-heading">
         <div class="section-heading section-heading--latency">
-          <h2>レイテンシ推移</h2>
-          <div class="latency-legend" id="latencyLegend" hidden></div>
+          <h2 id="latency-heading">レイテンシ推移</h2>
+          <div class="latency-legend" id="latencyLegend" hidden aria-label="DNS サーバー凡例"></div>
         </div>
         <div class="chart-container chart-container--latency" id="latencyChartContainer">
           <div class="chart-plot-frame">
-            <canvas id="latencyChart"></canvas>
+            <canvas id="latencyChart" role="img" aria-label="DNS レイテンシ推移グラフ"></canvas>
           </div>
           <!-- Wide spacer drives native scrollbar; chart X domain pans with scroll (no huge canvas). -->
-          <div class="chart-hscroll" id="latencyChartScroll" hidden>
+          <div class="chart-hscroll" id="latencyChartScroll" hidden aria-label="表示期間のスクロール">
             <div class="chart-hscroll-inner" id="latencyChartInner"></div>
           </div>
         </div>
         <div class="stats-bar" id="statsGrid" aria-label="レイテンシ統計"></div>
       </section>
 
-      <section class="chart-section chart-section--error">
+      <section class="chart-section chart-section--error" aria-labelledby="error-heading">
         <div class="section-heading">
-          <h2>エラー種別内訳</h2>
+          <h2 id="error-heading">エラー種別内訳</h2>
           <p class="uptime-badge" id="uptimeBadge" aria-label="Uptime"></p>
         </div>
         <div class="chart-container chart-container--short">
-          <canvas id="errorChart"></canvas>
+          <canvas id="errorChart" role="img" aria-label="エラー種別の内訳"></canvas>
         </div>
       </section>
     </div>

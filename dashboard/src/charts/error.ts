@@ -14,7 +14,9 @@ interface ErrorBarDataset {
 type TooltipBarElement = { x: number; base: number; y: number; height: number };
 
 const ERROR_TOOLTIP_GAP = 8;
-const ERROR_TOOLTIP_PADDING_BOTTOM = 72;
+/** Room under the band for the custom “below bar” tooltip (keep tight for mobile). */
+const ERROR_TOOLTIP_PADDING_BOTTOM = 48;
+const ERROR_TOOLTIP_PADDING_TOP = 4;
 
 let errorChart: Chart<"bar"> | null = null;
 let errorBarPositionerRegistered = false;
@@ -95,11 +97,12 @@ export function buildErrorChart(errors: Record<string, number>): void {
       maintainAspectRatio: false,
       layout: {
         padding: {
+          top: ERROR_TOOLTIP_PADDING_TOP,
           bottom: ERROR_TOOLTIP_PADDING_BOTTOM,
         },
       },
       indexAxis: "y",
-      datasets: { bar: { barThickness: 36 } },
+      datasets: { bar: { barThickness: 40 } },
       scales: {
         x: {
           stacked: true,

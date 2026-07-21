@@ -116,11 +116,15 @@ export const errorBandLabelsPlugin: Plugin<"bar"> = {
       const count = dataset.data[0] as number;
       const pct = Math.round((count / total) * 100);
       const label = dataset.label ?? "";
-      const text =
-        width >= 96 ? `${label} ${count} (${pct}%)`
-        : width >= 64 ? `${label} ${count}`
-        : width >= 40 ? label
-        : "";
+      // Prefer full label when possible; fall back so small segments still show a cue.
+      const full = `${label} ${count} (${pct}%)`;
+      const medium = `${label} ${count}`;
+      const short = width >= 28 ? `${pct}%` : "";
+      let text = "";
+      if (width >= 100) text = full;
+      else if (width >= 72) text = medium;
+      else if (width >= 48) text = label;
+      else text = short;
 
       if (!text) return;
 
@@ -130,6 +134,13 @@ export const errorBandLabelsPlugin: Plugin<"bar"> = {
       const cy = bar.y;
 
       ctx.font = "600 11px Segoe UI, system-ui, sans-serif";
+      // Avoid drawing labels that still overflow after truncation tiers.
+      if (ctx.measureText(text).width > width - 6) {
+        if (width >= 28) text = `${pct}%`;
+        else return;
+        if (ctx.measureText(text).width > width - 4) return;
+      }
+
       ctx.fillStyle = fill === "#fff" ? "rgba(0, 0, 0, 0.4)" : "rgba(255, 255, 255, 0.35)";
       ctx.fillText(text, cx + 1, cy + 1);
       ctx.fillStyle = fill;
