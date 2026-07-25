@@ -12,6 +12,7 @@ import {
 import { formatErrorCode, isDnsErrorCode } from "../errors.ts";
 import { ceilingToHundred, percentile } from "../data.ts";
 import { displayRangeSec } from "../state.ts";
+import { CHART_THEME, chartTooltipDefaults } from "../theme.ts";
 import { buildRollingEnvelope, collectTimelineTimestamps } from "./rolling-envelope.ts";
 import {
   chartTickStep,
@@ -745,27 +746,42 @@ export function buildLatencyChart(
           // Only the selected duration is on screen; pan via history scrollbar.
           min: view.min,
           max: view.max,
-          grid: { color: "#2a2e3d" },
+          border: { display: false },
+          grid: {
+            color: CHART_THEME.grid,
+            drawTicks: false,
+          },
           ticks: {
-            color: "#8b90a0",
+            color: CHART_THEME.tick,
             stepSize: viewTickStep,
             autoSkip: true,
             maxRotation: 0,
             maxTicksLimit: compact ? 6 : 12,
-            font: compact ? { size: 10 } : undefined,
+            padding: 8,
+            font: {
+              family: CHART_THEME.fontFamily,
+              size: compact ? 10 : 11,
+            },
             callback: (value: string | number) =>
               fmtAxisTick(Number(value), viewTickStep, compact),
           },
         },
         y: {
+          border: { display: false },
           title: {
             display: true,
             text: "ms",
-            color: "#8b90a0",
+            color: CHART_THEME.axisTitle,
+            font: { family: CHART_THEME.fontFamily, size: 11, weight: "bold" },
           },
-          grid: { color: "#2a2e3d" },
+          grid: {
+            color: CHART_THEME.grid,
+            drawTicks: false,
+          },
           ticks: {
-            color: "#8b90a0",
+            color: CHART_THEME.tick,
+            padding: 8,
+            font: { family: CHART_THEME.fontFamily, size: compact ? 10 : 11 },
           },
           min: 0,
           ...(yMax != null ? { max: yMax } : {}),
@@ -780,12 +796,20 @@ export function buildLatencyChart(
           minTimeoutBarWidth: 1, // CSS px; short errors (e.g. 170ms no_response) stay visible
         },
         legend: {
+          align: "end",
           labels: {
-            color: "#e4e6ed",
+            color: CHART_THEME.legend,
+            boxWidth: 10,
+            boxHeight: 10,
+            padding: 12,
+            usePointStyle: true,
+            pointStyle: "rectRounded",
+            font: { family: CHART_THEME.fontFamily, size: 11 },
             filter: (item: { text: string }) => !isHiddenBand(item.text) && !isFailureDataset(item.text),
           },
         },
         tooltip: {
+          ...chartTooltipDefaults,
           filter: (item: TooltipItem<"line">) => isTooltipDataset(item.dataset.label),
           itemSort: (a: TooltipItem<"line">, b: TooltipItem<"line">) => {
             const aFail = isFailureDataset(a.dataset.label);
