@@ -12,71 +12,70 @@
 <body>
   <a class="skip-link" href="#main">メインコンテンツへ</a>
 
-  <div class="shell">
-    <header class="masthead">
-      <div class="masthead-text">
+  <header class="site-header">
+    <div class="site-header__row">
+      <div class="site-header__brand">
         <h1>DNS Latency Monitor</h1>
-        <p class="masthead-sub" id="subtitle">自宅回線の DNS 応答レイテンシ — DNS サーバー別</p>
+        <p class="site-header__sub" id="subtitle">自宅回線の DNS 応答レイテンシ — DNS サーバー別</p>
       </div>
       <div
-        class="range"
+        class="range-selector"
         id="rangeSelector"
         role="group"
-        aria-label="表示範囲（グラフの横幅）"
+        aria-label="表示範囲"
       ></div>
-    </header>
+    </div>
+  </header>
 
-    <main class="page" id="main">
-      <p class="status" id="lastUpdated" role="status" aria-live="polite">読み込み中...</p>
+  <main class="site-main" id="main">
+    <p class="status-line" id="lastUpdated" role="status" aria-live="polite">読み込み中...</p>
 
-      <!-- Primary: latency timeline -->
-      <section class="primary" aria-labelledby="latency-heading">
-        <div class="primary-head">
+    <section class="panel panel--latency" aria-labelledby="latency-heading">
+      <div class="panel__head">
+        <div class="panel__titles">
           <h2 id="latency-heading">レイテンシ推移</h2>
-          <p class="view-meta" id="viewMeta"></p>
-          <div class="latency-legend" id="latencyLegend" hidden aria-hidden="true"></div>
+          <p class="panel__meta" id="viewMeta"></p>
         </div>
+        <div class="latency-legend" id="latencyLegend" hidden aria-hidden="true"></div>
+      </div>
 
+      <div
+        class="chart-box chart-container chart-container--latency"
+        id="latencyChartContainer"
+      >
+        <div class="chart-box__plot chart-plot-frame">
+          <canvas
+            id="latencyChart"
+            role="img"
+            aria-label="DNS レイテンシ推移グラフ"
+          ></canvas>
+        </div>
         <div
-          class="plot chart-container chart-container--latency"
-          id="latencyChartContainer"
+          class="chart-box__pan chart-hscroll"
+          id="latencyChartScroll"
+          hidden
+          role="scrollbar"
+          aria-controls="latencyChart"
+          aria-orientation="horizontal"
+          aria-label="履歴のスクロール"
         >
-          <div class="plot-body chart-plot-frame">
-            <canvas
-              id="latencyChart"
-              role="img"
-              aria-label="DNS レイテンシ推移グラフ"
-            ></canvas>
-          </div>
-          <!-- History pan: shown only when full history exceeds the selected range -->
-          <div
-            class="pan chart-hscroll"
-            id="latencyChartScroll"
-            hidden
-            role="scrollbar"
-            aria-controls="latencyChart"
-            aria-orientation="horizontal"
-            aria-label="履歴のスクロール"
-          >
-            <div class="pan-spacer chart-hscroll-inner" id="latencyChartInner"></div>
-          </div>
+          <div class="chart-box__pan-inner chart-hscroll-inner" id="latencyChartInner"></div>
         </div>
+      </div>
 
-        <div class="metrics" id="statsGrid" aria-label="レイテンシ統計"></div>
-      </section>
+      <div class="stats" id="statsGrid" aria-label="レイテンシ統計"></div>
+    </section>
 
-      <!-- Secondary: failures -->
-      <section class="secondary" aria-labelledby="error-heading">
-        <div class="secondary-head">
-          <h2 id="error-heading">エラー種別内訳</h2>
-          <p class="uptime" id="uptimeBadge" aria-label="Uptime"></p>
-        </div>
-        <div class="band chart-container chart-container--short">
-          <canvas id="errorChart" role="img" aria-label="エラー種別の内訳"></canvas>
-        </div>
-      </section>
-    </main>
-  </div>
+    <section class="panel panel--errors" aria-labelledby="error-heading">
+      <div class="panel__head">
+        <h2 id="error-heading">エラー種別内訳</h2>
+        <p class="uptime" id="uptimeBadge" aria-label="Uptime"></p>
+      </div>
+      <div class="chart-box chart-box--band chart-container chart-container--short">
+        <canvas id="errorChart" role="img" aria-label="エラー種別の内訳"></canvas>
+      </div>
+    </section>
+  </main>
 
   <script type="module" src="/src/main.ts"></script>
 

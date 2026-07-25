@@ -454,7 +454,7 @@ export function applyLatencyChartLayout(scrollToEnd = false): boolean {
 
   const needsScroll = isLatencyChartScrollable();
   container.classList.toggle("is-scrollable", needsScroll);
-  // Unhide before measuring so clientWidth is valid after display:none.
+  // Unhide before measure so clientWidth is valid after display:none.
   scroll.hidden = !needsScroll;
 
   if (!needsScroll) {

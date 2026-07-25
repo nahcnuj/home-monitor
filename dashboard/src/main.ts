@@ -36,7 +36,7 @@ Chart.register(...registerables, chartRegionsPlugin, errorBandLabelsPlugin);
 
 let lastCompactLayout = isCompactChartLayout();
 let renderScheduled = false;
-/** Records after data_cutoff (full chart history); metrics use a visible slice of this. */
+/** Records after data_cutoff; metrics use the visible chart window. */
 let chartRecords: DnsRecord[] = [];
 
 function updateMetricsForVisibleWindow(min: number, max: number): void {
@@ -87,10 +87,10 @@ function initDashboard(): void {
   initRangeSelector(render);
 }
 
-function setStatus(el: HTMLElement | null, text: string, error = false): void {
+function setStatus(el: HTMLElement | null, text: string, isError = false): void {
   if (!el) return;
   el.textContent = text;
-  el.classList.toggle("is-error", error);
+  el.classList.toggle("is-error", isError);
 }
 
 async function loadData(): Promise<void> {

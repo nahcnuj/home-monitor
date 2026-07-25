@@ -1,29 +1,28 @@
-/* =============================================================================
-   DNS Latency Monitor UI
-   Design: docs/design/dashboard-ui.md
-   Hero = latency plot. Controls and secondary metrics stay quiet.
-   ============================================================================= */
+/* DNS Latency Monitor — feature-first layout (see design/dashboard-ui.md) */
 
 :root {
   color-scheme: dark;
   --bg: #0f1117;
   --surface: #1a1d27;
-  --hover: #222633;
-  --line: #2a2e3d;
+  --surface-hover: #222633;
+  --border: #2a2e3d;
   --text: #e4e6ed;
   --muted: #8b90a0;
-  --faint: #6d7285;
   --accent: #5b8def;
-  --accent-dim: #4a7ad4;
+  --accent-hover: #4a7ad4;
   --ok: #4ade80;
-  --bad: #f87171;
+  --error: #f87171;
   --focus: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
-  --px: max(1rem, env(safe-area-inset-left, 0px));
-  --px-end: max(1rem, env(safe-area-inset-right, 0px));
-  --pb: max(1.25rem, env(safe-area-inset-bottom, 0px));
+  --radius: 10px;
+  --space-1: 0.35rem;
+  --space-2: 0.6rem;
+  --space-3: 0.85rem;
+  --space-4: 1.15rem;
+  --pad-x: max(1.1rem, env(safe-area-inset-left, 0px));
+  --pad-x-end: max(1.1rem, env(safe-area-inset-right, 0px));
+  --pad-b: max(1.5rem, env(safe-area-inset-bottom, 0px));
   --font: "Segoe UI", system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
   --mono: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
-  --r: 10px;
 }
 
 *,
@@ -43,7 +42,7 @@ body {
   font-family: var(--font);
   background: var(--bg);
   color: var(--text);
-  line-height: 1.45;
+  line-height: 1.5;
   min-height: 100vh;
   min-height: 100dvh;
   -webkit-font-smoothing: antialiased;
@@ -53,9 +52,9 @@ body {
   position: absolute;
   left: 1rem;
   top: -3rem;
-  z-index: 50;
-  padding: 0.4rem 0.65rem;
-  border-radius: 4px;
+  z-index: 100;
+  padding: 0.45rem 0.7rem;
+  border-radius: 6px;
   background: var(--accent);
   color: #fff;
   font-weight: 600;
@@ -63,84 +62,76 @@ body {
 }
 
 .skip-link:focus {
-  top: 0.65rem;
+  top: 0.75rem;
   outline: none;
   box-shadow: var(--focus);
 }
 
-.shell {
-  min-height: 100vh;
-  min-height: 100dvh;
-  display: flex;
-  flex-direction: column;
+/* Header */
+
+.site-header {
+  padding:
+    max(0.85rem, env(safe-area-inset-top, 0px))
+    var(--pad-x-end)
+    var(--space-3)
+    var(--pad-x);
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 90%, var(--surface));
 }
 
-/* ----- Masthead ----- */
-
-.masthead {
+.site-header__row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem 0.75rem;
-  padding:
-    max(0.65rem, env(safe-area-inset-top, 0px))
-    var(--px-end)
-    0.5rem
-    var(--px);
-  border-bottom: 1px solid var(--line);
-  background: color-mix(in srgb, var(--bg) 92%, var(--surface));
+  gap: var(--space-2) var(--space-3);
+  max-width: 1120px;
+  margin: 0 auto;
 }
 
-.masthead-text {
+.site-header__brand {
   min-width: 0;
-  flex: 1 1 11rem;
+  flex: 1 1 14rem;
 }
 
-.masthead h1 {
-  font-size: 1.0625rem;
+.site-header h1 {
+  font-size: 1.2rem;
   font-weight: 600;
   letter-spacing: -0.02em;
-  line-height: 1.2;
+  line-height: 1.25;
 }
 
-.masthead-sub {
-  margin-top: 0.1rem;
-  font-size: 0.75rem;
+.site-header__sub {
+  margin-top: 0.2rem;
+  font-size: 0.8125rem;
   color: var(--muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.35;
 }
 
-.range {
+.range-selector {
   display: inline-flex;
   max-width: 100%;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-  border: 1px solid var(--line);
-  border-radius: 6px;
+  scrollbar-width: thin;
+  border: 1px solid var(--border);
+  border-radius: 8px;
   background: var(--surface);
   flex: 0 1 auto;
-}
-
-.range::-webkit-scrollbar {
-  display: none;
 }
 
 .range-btn {
   appearance: none;
   border: none;
-  border-right: 1px solid var(--line);
+  border-right: 1px solid var(--border);
   background: transparent;
   color: var(--muted);
   font: inherit;
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
   font-weight: 500;
-  min-height: 2.125rem;
-  min-width: 2.35rem;
-  padding: 0.3rem 0.55rem;
+  min-height: 2.4rem;
+  min-width: 2.6rem;
+  padding: 0.4rem 0.7rem;
   cursor: pointer;
   white-space: nowrap;
   flex: 1 0 auto;
@@ -154,7 +145,7 @@ body {
 
 .range-btn:hover {
   color: var(--text);
-  background: var(--hover);
+  background: var(--surface-hover);
 }
 
 .range-btn:focus {
@@ -174,69 +165,73 @@ body {
 }
 
 .range-btn.active:hover {
-  background: var(--accent-dim);
+  background: var(--accent-hover);
 }
 
-/* ----- Page ----- */
+/* Main */
 
-.page {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 0.55rem;
-  min-height: 0;
-  width: 100%;
-  max-width: 1100px;
+.site-main {
+  max-width: 1120px;
   margin: 0 auto;
-  padding: 0.6rem var(--px-end) var(--pb) var(--px);
-}
-
-.status {
-  font-size: 0.75rem;
-  color: var(--muted);
-  line-height: 1.35;
-  flex-shrink: 0;
-}
-
-.status.is-error {
-  color: var(--bad);
-}
-
-/* ----- Primary (chart) ----- */
-
-.primary {
+  padding: var(--space-3) var(--pad-x-end) var(--pad-b) var(--pad-x);
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
-  min-width: 0;
-  min-height: 0;
-  flex: 1;
+  gap: var(--space-4);
 }
 
-.primary-head {
+.status-line {
+  font-size: 0.8125rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.status-line.is-error {
+  color: var(--error);
+  background: color-mix(in srgb, var(--error) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--error) 30%, transparent);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+}
+
+/* Panels */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.panel__head {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 0.25rem 0.75rem;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-3);
+}
+
+.panel__titles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.85rem;
   min-width: 0;
-  flex-shrink: 0;
 }
 
-.primary-head h2,
-.secondary-head h2 {
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: var(--muted);
+.panel__head h2 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
 }
 
-.view-meta {
+.panel__meta {
   font-family: var(--mono);
-  font-size: 0.6875rem;
-  color: var(--faint);
+  font-size: 0.75rem;
+  color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 
-.view-meta:empty {
+.panel__meta:empty {
   display: none;
 }
 
@@ -244,21 +239,25 @@ body {
   display: none !important;
 }
 
-.plot {
-  flex: 1;
+/* Chart boxes — room to breathe, graph still large */
+
+.chart-box {
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  height: min(52dvh, 340px);
-  min-height: 240px;
   background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  padding: 0.45rem 0.4rem 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-2) var(--space-2);
 }
 
-.plot-body,
+.panel--latency .chart-box {
+  height: min(50dvh, 360px);
+  min-height: 260px;
+}
+
+.chart-box__plot,
 .chart-plot-frame {
   flex: 1;
   min-height: 0;
@@ -266,82 +265,78 @@ body {
   position: relative;
 }
 
-.plot-body canvas,
+.chart-box__plot canvas,
 .chart-plot-frame canvas {
   display: block;
   width: 100% !important;
   height: 100% !important;
 }
 
-/* Pan: quiet, grabable; hidden when not needed (JS sets [hidden]) */
-.pan,
+/* History pan: only when needed; tall enough to use */
+
+.chart-box__pan,
 .chart-hscroll {
   flex: 0 0 auto;
   width: 100%;
-  height: 1.25rem;
-  margin-top: 0.25rem;
+  height: 1.35rem;
+  margin-top: var(--space-2);
   overflow-x: auto;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
-  border-radius: 4px;
-  background: rgba(0, 0, 0, 0.2);
-  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--muted) 70%, transparent) transparent;
   cursor: grab;
 }
 
-.pan:active,
+.chart-box__pan:active,
 .chart-hscroll:active {
   cursor: grabbing;
 }
 
-.pan::-webkit-scrollbar,
+.chart-box__pan::-webkit-scrollbar,
 .chart-hscroll::-webkit-scrollbar {
-  height: 8px;
+  height: 10px;
 }
 
-.pan::-webkit-scrollbar-thumb,
+.chart-box__pan::-webkit-scrollbar-thumb,
 .chart-hscroll::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--muted) 55%, transparent);
-  border-radius: 4px;
+  background: color-mix(in srgb, var(--muted) 60%, transparent);
+  border-radius: 5px;
 }
 
-.pan[hidden],
+.chart-box__pan[hidden],
 .chart-hscroll[hidden] {
   display: none !important;
 }
 
-.pan-spacer,
+.chart-box__pan-inner,
 .chart-hscroll-inner {
   height: 100%;
-  min-height: 1rem;
+  min-height: 1.1rem;
   min-width: 100%;
 }
 
-.plot.is-scrollable .pan,
-.plot.is-scrollable .chart-hscroll {
-  /* class toggled by latency layout */
-}
+/* Stats under latency chart */
 
-/* Metrics under chart */
-.metrics {
+.stats {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 0.2rem 0;
+  gap: 0.45rem 0;
   font-variant-numeric: tabular-nums;
-  flex-shrink: 0;
-  padding-top: 0.1rem;
+  padding: var(--space-1) 0 0;
 }
 
 .stat {
   display: inline-flex;
   align-items: baseline;
-  gap: 0.28rem;
-  padding: 0 0.55rem;
-  border-right: 1px solid var(--line);
-  line-height: 1.2;
+  gap: 0.35rem;
+  padding: 0 0.75rem;
+  border-right: 1px solid var(--border);
+  line-height: 1.25;
 }
 
 .stat:first-child {
@@ -354,58 +349,41 @@ body {
 }
 
 .stat .label {
-  font-size: 0.625rem;
+  font-size: 0.7rem;
   color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
 }
 
 .stat .value {
-  font-size: 0.875rem;
+  font-size: 0.95rem;
   font-weight: 600;
 }
 
 .stat .unit {
-  margin-left: 0.1rem;
-  font-size: 0.625rem;
+  margin-left: 0.12rem;
+  font-size: 0.7rem;
   font-weight: 500;
   color: var(--muted);
 }
 
-/* ----- Secondary ----- */
-
-.secondary {
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-  min-width: 0;
-}
-
-.secondary-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.75rem;
-}
+/* Errors */
 
 .uptime {
   display: inline-flex;
   align-items: baseline;
-  gap: 0.3rem;
+  gap: 0.35rem;
   font-variant-numeric: tabular-nums;
-  line-height: 1.2;
+  line-height: 1.25;
 }
 
 .uptime .label {
-  font-size: 0.625rem;
+  font-size: 0.7rem;
   color: var(--muted);
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.04em;
 }
 
 .uptime .value {
-  font-size: 0.875rem;
+  font-size: 0.95rem;
   font-weight: 600;
 }
 
@@ -414,21 +392,18 @@ body {
 }
 
 .uptime.warn .value {
-  color: var(--bad);
+  color: var(--error);
 }
 
-.band,
+.chart-box--band,
 .chart-container--short {
-  height: 6.5rem;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  padding: 0.5rem 0.45rem;
+  height: 7.5rem;
+  padding: 0.7rem 0.65rem;
   display: flex;
   align-items: stretch;
 }
 
-.band canvas,
+.chart-box--band canvas,
 .chart-container--short canvas {
   display: block;
   width: 100% !important;
@@ -445,44 +420,46 @@ body {
   }
 }
 
-/* Tablet */
+/* Tablet+ */
 
 @media (min-width: 640px) {
   :root {
-    --px: max(1.35rem, env(safe-area-inset-left, 0px));
-    --px-end: max(1.35rem, env(safe-area-inset-right, 0px));
+    --pad-x: max(1.5rem, env(safe-area-inset-left, 0px));
+    --pad-x-end: max(1.5rem, env(safe-area-inset-right, 0px));
   }
 
-  .masthead h1 {
-    font-size: 1.125rem;
+  .site-header h1 {
+    font-size: 1.35rem;
   }
 
-  .masthead-sub {
-    white-space: normal;
+  .site-main {
+    gap: 1.35rem;
+    padding-top: var(--space-4);
   }
 
-  .plot {
-    height: min(54dvh, 400px);
-    min-height: 280px;
-    padding: 0.55rem 0.5rem 0.35rem;
+  .panel--latency .chart-box {
+    height: min(52dvh, 420px);
+    min-height: 300px;
+    padding: var(--space-3);
   }
 
-  .stat .value {
-    font-size: 0.9375rem;
+  .stat .value,
+  .uptime .value {
+    font-size: 1rem;
   }
 
-  .band,
+  .chart-box--band,
   .chart-container--short {
-    height: 7rem;
+    height: 8rem;
   }
 }
 
-/* Desktop app shell: no page scroll; plot expands */
+/* Desktop: fill viewport, graph takes remaining height */
 
 @media (min-width: 1000px) and (min-height: 600px) {
   :root {
-    --px: max(1.75rem, env(safe-area-inset-left, 0px));
-    --px-end: max(1.75rem, env(safe-area-inset-right, 0px));
+    --pad-x: max(2rem, env(safe-area-inset-left, 0px));
+    --pad-x-end: max(2rem, env(safe-area-inset-right, 0px));
   }
 
   html,
@@ -491,62 +468,60 @@ body {
     overflow: hidden;
   }
 
-  .shell {
-    height: 100%;
-    min-height: 0;
+  body {
+    display: flex;
+    flex-direction: column;
   }
 
-  .masthead {
+  .site-header {
     flex-shrink: 0;
-    flex-wrap: nowrap;
-    padding-top: 0.45rem;
-    padding-bottom: 0.4rem;
+  }
+
+  .site-header__row {
+    max-width: none;
   }
 
   .range-btn {
-    min-height: 1.75rem;
-    font-size: 0.6875rem;
-    padding: 0.2rem 0.45rem;
+    min-height: 2rem;
+    font-size: 0.75rem;
     flex: 0 0 auto;
   }
 
-  .page {
+  .site-main {
     flex: 1;
     min-height: 0;
     max-width: none;
     width: 100%;
-    padding-top: 0.4rem;
-    padding-bottom: 0.45rem;
-    gap: 0.4rem;
+    gap: 0.85rem;
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
   }
 
-  .primary {
-    flex: 1;
-    min-height: 0;
-  }
-
-  .plot {
-    flex: 1;
-    height: auto;
-    min-height: 0;
-    border-radius: 8px;
-  }
-
-  .metrics {
+  .status-line {
     flex-shrink: 0;
   }
 
-  .stat .value {
-    font-size: 0.8125rem;
+  .panel--latency {
+    flex: 1;
+    min-height: 0;
   }
 
-  .band,
+  .panel--latency .chart-box {
+    flex: 1;
+    height: auto;
+    min-height: 0;
+  }
+
+  .stats {
+    flex-shrink: 0;
+  }
+
+  .panel--errors {
+    flex-shrink: 0;
+  }
+
+  .chart-box--band,
   .chart-container--short {
-    height: 6rem;
-    border-radius: 8px;
-  }
-
-  .uptime .value {
-    font-size: 0.8125rem;
+    height: 6.75rem;
   }
 }

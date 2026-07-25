@@ -27,7 +27,7 @@ function rangeLabel(seconds: number = displayRangeSec): string {
   return RANGE_PRESETS.find((p) => p.seconds === seconds)?.label ?? `${seconds}s`;
 }
 
-/** Quiet one-liner under the section title (design §5). */
+/** Current window: "30m · start – end" next to the section title. */
 export function renderViewMeta(min: number, max: number): void {
   const el = document.getElementById("viewMeta");
   if (!el) return;
