@@ -31,9 +31,8 @@ async function prepareDashboard(page) {
   await page.goto(BASE, { waitUntil: "networkidle" });
   await page.waitForSelector("#latencyChart");
   await page.waitForSelector(".range-btn");
-  // Metric tiles: legacy .stat-item or redesigned .kpi / uptime value
-  await page.waitForSelector("#statsGrid .kpi, #statsGrid .stat-item");
-  await page.waitForSelector("#uptimeBadge .uptime-value, #uptimeBadge .value");
+  await page.waitForSelector("#statsGrid .stat, #statsGrid .stat-item, #statsGrid .kpi");
+  await page.waitForSelector("#uptimeBadge .value, #uptimeBadge .uptime-value");
 
   const active = (await page.locator(".range-btn.active").textContent())?.trim();
   if (active !== "30m") {
