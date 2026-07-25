@@ -96,8 +96,12 @@ body {
 
 .command {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 0.75rem;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "identity pulse"
+    "range range";
+  gap: 0.65rem 1rem;
+  align-items: center;
   padding: var(--pad-t) var(--pad-r) 0.75rem var(--pad-l);
   border-bottom: 1px solid var(--line);
   background: color-mix(in srgb, var(--panel) 92%, transparent);
@@ -107,6 +111,10 @@ body {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
+
+.command-identity { grid-area: identity; }
+.pulse { grid-area: pulse; justify-self: end; }
+.range-block { grid-area: range; min-width: 0; }
 
 .command-identity {
   display: flex;
@@ -189,16 +197,45 @@ body {
   50% { opacity: 1; }
 }
 
-/* Range: underline tabs (not production segmented control) */
+/* Range block: selected duration = chart viewport width */
+.range-block {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.range-block-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.75rem;
+}
+
+.range-block-title {
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.range-block-caption {
+  font-size: 0.6875rem;
+  color: var(--ink-dim);
+  font-family: var(--mono);
+}
+
 .range {
   display: flex;
-  gap: 0;
+  gap: 0.25rem;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
-  border-bottom: 1px solid var(--line);
-  margin: 0 calc(-1 * var(--pad-l)) 0 calc(-1 * var(--pad-r));
-  padding: 0 var(--pad-l);
+  padding: 0.25rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.28);
 }
 
 .range::-webkit-scrollbar {
@@ -207,25 +244,27 @@ body {
 
 .range-btn {
   appearance: none;
-  border: none;
+  border: 1px solid transparent;
   background: transparent;
   color: var(--ink-faint);
   font-family: var(--mono);
   font-size: 0.8125rem;
   font-weight: 600;
   letter-spacing: 0.02em;
-  min-height: 2.5rem;
-  padding: 0.5rem 0.85rem;
+  min-height: 2.35rem;
+  padding: 0.4rem 0.75rem;
   cursor: pointer;
   position: relative;
   white-space: nowrap;
   flex: 0 0 auto;
+  border-radius: 4px;
   -webkit-tap-highlight-color: transparent;
-  transition: color 0.12s ease;
+  transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
 }
 
 .range-btn:hover {
   color: var(--ink);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .range-btn:focus {
@@ -235,23 +274,16 @@ body {
 .range-btn:focus-visible {
   color: var(--ink);
   box-shadow: var(--focus);
-  border-radius: 4px;
 }
 
+/* Active range = viewport window size (outlined like the chart frame) */
 .range-btn.active {
-  color: var(--ink);
-}
-
-.range-btn.active::after {
-  content: "";
-  position: absolute;
-  left: 0.5rem;
-  right: 0.5rem;
-  bottom: 0;
-  height: 2px;
-  background: var(--cyan);
-  border-radius: 2px 2px 0 0;
-  box-shadow: 0 0 12px rgba(61, 222, 168, 0.55);
+  color: var(--cyan);
+  border-color: color-mix(in srgb, var(--cyan) 70%, transparent);
+  background: var(--cyan-dim);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--cyan) 35%, transparent),
+    inset 0 0 0 1px rgba(61, 222, 168, 0.12);
 }
 
 /* ----- Workspace ----- */
@@ -277,10 +309,16 @@ body {
 
 .stage-bar {
   display: flex;
-  align-items: baseline;
+  flex-wrap: wrap;
+  align-items: flex-end;
   justify-content: space-between;
-  gap: 0.75rem;
+  gap: 0.5rem 0.75rem;
   margin-bottom: 0.5rem;
+}
+
+.stage-bar-text {
+  flex: 1 1 8rem;
+  min-width: 0;
 }
 
 .stage-bar-text h2 {
@@ -297,6 +335,38 @@ body {
   color: var(--ink-faint);
 }
 
+.viewport-chip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.55rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--cyan) 45%, var(--line));
+  background: var(--cyan-dim);
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  max-width: 100%;
+}
+
+.viewport-chip-kicker {
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--cyan);
+}
+
+.viewport-chip-duration {
+  font-weight: 700;
+  color: var(--cyan);
+}
+
+.viewport-chip-bounds {
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+}
+
 .latency-legend[hidden] {
   display: none !important;
 }
@@ -307,13 +377,77 @@ body {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  /* Mobile hero height: dominate first screen after command */
-  height: min(52dvh, 360px);
-  min-height: 260px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
+  /* Chart + history nav; mobile still prioritizes plot */
+  height: min(58dvh, 420px);
+  min-height: 300px;
+  gap: 0.55rem;
+}
+
+/* Chart outline = the selected display window */
+.viewport-frame {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  border: 2px solid color-mix(in srgb, var(--cyan) 65%, transparent);
+  border-radius: 6px;
   background: var(--panel);
-  padding: 0.35rem 0.25rem 0.25rem;
+  box-shadow:
+    0 0 0 1px rgba(61, 222, 168, 0.12),
+    0 12px 40px rgba(0, 0, 0, 0.35);
+  padding: 0.35rem 0.3rem 0.25rem;
+}
+
+.viewport-frame-tag {
+  position: absolute;
+  top: 0;
+  left: 0.65rem;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.12rem 0.45rem;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--cyan) 55%, transparent);
+  background: var(--void);
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--cyan);
+  z-index: 2;
+  pointer-events: none;
+}
+
+.viewport-frame-tag strong {
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink);
+}
+
+.viewport-frame-ends {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.15rem 0.35rem 0.25rem;
+  font-family: var(--mono);
+  font-size: 0.625rem;
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.viewport-end--start::before {
+  content: "始 ";
+  color: var(--ink-faint);
+}
+
+.viewport-end--end::before {
+  content: "終 ";
+  color: var(--ink-faint);
 }
 
 .stage-canvas,
@@ -331,40 +465,144 @@ body {
   height: 100% !important;
 }
 
-.scrub,
-.chart-hscroll {
+/* History navigator — full-span track + outlined window */
+.history-nav {
   flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.45rem 0.5rem 0.4rem;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--panel-2) 90%, #000);
+}
+
+.history-nav[data-active="true"] {
+  border-color: color-mix(in srgb, var(--blue) 40%, var(--line));
+}
+
+.history-nav[data-active="false"] .history-track-wrap {
+  opacity: 0.72;
+}
+
+.history-nav-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 0.75rem;
+}
+
+.history-nav-title {
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.history-nav-hint {
+  font-size: 0.6875rem;
+  color: var(--ink-dim);
+  font-family: var(--mono);
+}
+
+.history-track-wrap {
+  position: relative;
+  height: 2.25rem;
+  border-radius: 4px;
+  background:
+    linear-gradient(90deg, rgba(91, 143, 255, 0.06), transparent 18%, transparent 82%, rgba(61, 222, 168, 0.08)),
+    rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+
+/* Outlined window = current chart viewport within full history */
+.history-window {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 0;
   width: 100%;
-  margin-top: 0.2rem;
-  max-height: 0.75rem;
+  border: 2px solid var(--cyan);
+  border-radius: 3px;
+  background: rgba(61, 222, 168, 0.14);
+  box-shadow: 0 0 0 1px rgba(61, 222, 168, 0.2), inset 0 0 12px rgba(61, 222, 168, 0.08);
+  pointer-events: none;
+  z-index: 2;
+  transition: left 0.05s linear, width 0.05s linear;
+}
+
+.history-nav[data-active="false"] .history-window {
+  border-color: color-mix(in srgb, var(--cyan) 45%, var(--line));
+}
+
+/* Scroll surface: must be tall enough to grab (this was broken at 0.75rem) */
+.history-track,
+.chart-hscroll {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  width: 100%;
+  height: 100%;
   overflow-x: auto;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
-  border-radius: 2px;
-  background: rgba(0, 0, 0, 0.25);
-  scrollbar-width: thin;
-  scrollbar-color: var(--blue) transparent;
+  scrollbar-width: auto;
+  scrollbar-color: color-mix(in srgb, var(--blue) 85%, #fff) transparent;
+  cursor: grab;
+  background: transparent;
 }
 
-.scrub::-webkit-scrollbar,
+.history-track:active,
+.chart-hscroll:active {
+  cursor: grabbing;
+}
+
+.history-track::-webkit-scrollbar,
 .chart-hscroll::-webkit-scrollbar {
-  height: 6px;
+  height: 10px;
 }
 
-.scrub::-webkit-scrollbar-thumb,
+.history-track::-webkit-scrollbar-thumb,
 .chart-hscroll::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--blue) 70%, transparent);
-  border-radius: 3px;
+  background: linear-gradient(180deg, var(--blue-hot), var(--blue));
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 
-.scrub[hidden],
-.chart-hscroll[hidden] {
-  display: none !important;
+.history-track::-webkit-scrollbar-track,
+.chart-hscroll::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
 }
 
-.scrub-inner,
+/* [hidden] keeps native display:none when history fits in one viewport */
+.history-track-spacer,
 .chart-hscroll-inner {
-  height: 1px;
+  /* Height fills track so hit-testing / scrollWidth works reliably */
+  height: 100%;
+  min-height: 2rem;
+  min-width: 100%;
+}
+
+.history-nav-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-family: var(--mono);
+  font-size: 0.625rem;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.history-foot-mid {
+  color: var(--ink-dim);
+  text-align: center;
+  flex: 1;
+  min-width: 0;
 }
 
 /* ----- Rail (health / metrics / failures) ----- */
@@ -518,27 +756,21 @@ body {
   }
 
   .command {
-    grid-template-columns: auto 1fr auto;
-    align-items: end;
+    grid-template-columns: auto 1fr;
+    grid-template-areas:
+      "identity pulse"
+      "range range";
+    align-items: center;
     column-gap: 1.25rem;
-    row-gap: 0.5rem;
+    row-gap: 0.55rem;
   }
 
-  .command-identity {
-    grid-column: 1;
-  }
-
+  .command-identity { grid-area: identity; }
   .pulse {
-    grid-column: 2;
-    align-self: center;
-    justify-self: start;
+    grid-area: pulse;
+    justify-self: end;
   }
-
-  .range {
-    grid-column: 1 / -1;
-    margin: 0;
-    padding: 0;
-  }
+  .range-block { grid-area: range; }
 
   .stage-plot {
     height: min(54dvh, 420px);
@@ -609,29 +841,24 @@ body {
   .command {
     position: static;
     flex-shrink: 0;
-    grid-template-columns: minmax(12rem, auto) minmax(12rem, 1fr) auto;
+    grid-template-columns: minmax(11rem, auto) minmax(10rem, 1fr) minmax(18rem, 28rem);
+    grid-template-areas: "identity pulse range";
     align-items: center;
     padding-top: 0.55rem;
     padding-bottom: 0.55rem;
-    gap: 1rem 1.5rem;
+    gap: 0.75rem 1.25rem;
   }
 
-  .command-identity {
-    grid-column: 1;
-  }
-
+  .command-identity { grid-area: identity; }
   .pulse {
-    grid-column: 2;
+    grid-area: pulse;
     justify-self: start;
   }
-
-  .range {
-    grid-column: 3;
-    margin: 0;
-    padding: 0;
-    border-bottom: none;
+  .range-block {
+    grid-area: range;
     justify-self: end;
-    max-width: 32rem;
+    width: 100%;
+    max-width: 28rem;
   }
 
   .range-btn {

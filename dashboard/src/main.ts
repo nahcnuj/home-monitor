@@ -24,7 +24,12 @@ import {
 } from "./state.ts";
 import { fmtJst, isCompactChartLayout } from "./time.ts";
 import type { DnsRecord } from "./types.ts";
-import { initRangeSelector, loadDisplayRangeFromConfig, renderStats } from "./ui.ts";
+import {
+  initRangeSelector,
+  loadDisplayRangeFromConfig,
+  renderStats,
+  renderViewportChrome,
+} from "./ui.ts";
 import "./style.css";
 
 Chart.register(...registerables, chartRegionsPlugin, errorBandLabelsPlugin);
@@ -35,6 +40,7 @@ let renderScheduled = false;
 let chartRecords: DnsRecord[] = [];
 
 function updateMetricsForVisibleWindow(min: number, max: number): void {
+  renderViewportChrome(min, max);
   const stats = computeStats(filterByTimeWindow(chartRecords, min, max));
   renderStats(stats);
   buildErrorChart(stats.errors);

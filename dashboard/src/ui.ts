@@ -12,7 +12,7 @@ import {
   setDisplayRangeSec,
   setRangeSelectorReady,
 } from "./state.ts";
-import { isValidDisplayRangeSec } from "./time.ts";
+import { fmtJst, isValidDisplayRangeSec } from "./time.ts";
 import type { Stats } from "./types.ts";
 
 function escapeHtml(value: string): string {
@@ -21,6 +21,43 @@ function escapeHtml(value: string): string {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+/** Preset label for the selected display range (viewport width in time). */
+export function rangePresetLabel(seconds: number = displayRangeSec): string {
+  return RANGE_PRESETS.find((p) => p.seconds === seconds)?.label ?? `${seconds}s`;
+}
+
+/**
+ * Labels for the chart outline / chip: selected range = visible window on the plot.
+ * `min`/`max` are the current pan window (unix sec).
+ */
+export function renderViewportChrome(min: number, max: number): void {
+  const duration = rangePresetLabel();
+  const startText = Number.isFinite(min) ? fmtJst(min) : "—";
+  const endText = Number.isFinite(max) ? fmtJst(max) : "—";
+  const bounds = `${startText} → ${endText}`;
+
+  const setText = (id: string, text: string) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+  };
+
+  setText("viewportDuration", duration);
+  setText("viewportFrameDuration", duration);
+  setText("viewportBounds", bounds);
+  setText("viewportStartLabel", startText);
+  setText("viewportEndLabel", endText);
+
+  const caption = document.getElementById("rangeCaption");
+  if (caption) {
+    caption.textContent = `${duration} = グラフ横幅の時間 · 枠の「始〜終」がいまの窓`;
+  }
+
+  const chip = document.getElementById("viewportChip");
+  if (chip) {
+    chip.setAttribute("aria-label", `表示中 ${duration}、${startText} から ${endText}`);
+  }
 }
 
 export function renderStats(stats: Stats): void {
@@ -78,11 +115,17 @@ export function renderStats(stats: Stats): void {
 }
 
 export function updateRangeUi(): void {
+  const label = rangePresetLabel();
   document.querySelectorAll(".range-btn").forEach((node) => {
     const btn = node as HTMLButtonElement;
     const active = Number(btn.dataset.seconds) === displayRangeSec;
     btn.classList.toggle("active", active);
     btn.setAttribute("aria-pressed", active ? "true" : "false");
+    if (active) {
+      btn.setAttribute("title", `表示範囲 ${label}（グラフの横幅）`);
+    } else {
+      btn.removeAttribute("title");
+    }
   });
 }
 

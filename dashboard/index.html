@@ -13,7 +13,6 @@
   <a class="skip-link" href="#workspace">メインコンテンツへ</a>
 
   <div class="app">
-    <!-- Command bar: identity, freshness, time window -->
     <header class="command">
       <div class="command-identity">
         <div class="command-mark" aria-hidden="true"></div>
@@ -25,31 +24,78 @@
 
       <p class="pulse" id="lastUpdated" role="status" aria-live="polite">読み込み中...</p>
 
-      <div class="range" id="rangeSelector" role="group" aria-label="表示範囲"></div>
+      <div class="range-block">
+        <div class="range-block-head">
+          <span class="range-block-title">表示範囲（グラフ横幅）</span>
+          <span class="range-block-caption" id="rangeCaption">選択した長さが 1 画面分の時間です</span>
+        </div>
+        <div class="range" id="rangeSelector" role="group" aria-label="表示範囲"></div>
+      </div>
     </header>
 
     <div class="workspace" id="workspace">
-      <!-- Primary: full-bleed timeline (always visual priority) -->
       <section class="stage" aria-labelledby="latency-heading">
         <div class="stage-bar">
           <div class="stage-bar-text">
             <h2 id="latency-heading">Timeline</h2>
-            <p class="stage-bar-hint">表示窓の統計のみ · スクラブで履歴を移動</p>
+            <p class="stage-bar-hint">枠内がいま見ている時間窓 · 統計もこの窓のみ</p>
+          </div>
+          <div class="viewport-chip" id="viewportChip" aria-live="polite">
+            <span class="viewport-chip-kicker">表示中</span>
+            <span class="viewport-chip-duration" id="viewportDuration">—</span>
+            <span class="viewport-chip-bounds" id="viewportBounds">—</span>
           </div>
           <div class="latency-legend" id="latencyLegend" hidden aria-hidden="true"></div>
         </div>
 
         <div class="stage-plot chart-container chart-container--latency" id="latencyChartContainer">
-          <div class="stage-canvas chart-plot-frame">
-            <canvas id="latencyChart" role="img" aria-label="DNS レイテンシ推移グラフ"></canvas>
+          <!-- Cyan outline = selected time window (display range) -->
+          <div class="viewport-frame" id="viewportFrame">
+            <div class="viewport-frame-tag">
+              <span>表示窓</span>
+              <strong id="viewportFrameDuration">—</strong>
+            </div>
+            <div class="viewport-frame-ends">
+              <span class="viewport-end viewport-end--start" id="viewportStartLabel">—</span>
+              <span class="viewport-end viewport-end--end" id="viewportEndLabel">—</span>
+            </div>
+            <div class="stage-canvas chart-plot-frame">
+              <canvas id="latencyChart" role="img" aria-label="DNS レイテンシ推移グラフ"></canvas>
+            </div>
           </div>
-          <div class="scrub chart-hscroll" id="latencyChartScroll" hidden aria-label="表示期間のスクロール">
-            <div class="scrub-inner chart-hscroll-inner" id="latencyChartInner"></div>
+
+          <!-- History navigator: pan when full history &gt; display range -->
+          <div class="history-nav" id="historyNav" data-active="false">
+            <div class="history-nav-head">
+              <span class="history-nav-title">履歴ナビ</span>
+              <span class="history-nav-hint" id="historyNavHint">履歴が1画面に収まっています</span>
+            </div>
+            <div class="history-track-wrap">
+              <!-- Visual window (where the chart is looking within full history) -->
+              <div class="history-window" id="historyWindow" aria-hidden="true"></div>
+              <!-- Native h-scroll drives pan (tests + a11y); sized to be grabable -->
+              <div
+                class="history-track chart-hscroll"
+                id="latencyChartScroll"
+                hidden
+                role="scrollbar"
+                aria-controls="latencyChart"
+                aria-orientation="horizontal"
+                aria-label="表示期間の横スクロール"
+                tabindex="0"
+              >
+                <div class="history-track-spacer chart-hscroll-inner" id="latencyChartInner"></div>
+              </div>
+            </div>
+            <div class="history-nav-foot">
+              <span class="history-foot-start" id="historyStartLabel">古い</span>
+              <span class="history-foot-mid" id="historySpanLabel"></span>
+              <span class="history-foot-end" id="historyEndLabel">新しい</span>
+            </div>
           </div>
         </div>
       </section>
 
-      <!-- Secondary: health rail (metrics + failure mix) -->
       <aside class="rail" aria-label="表示期間の指標">
         <section class="rail-block rail-block--uptime">
           <p class="rail-kicker">Health</p>
@@ -60,13 +106,13 @@
         </section>
 
         <section class="rail-block rail-block--metrics">
-          <p class="rail-kicker">Latency</p>
+          <p class="rail-kicker">Latency（表示窓）</p>
           <div class="kpi-grid" id="statsGrid" aria-label="レイテンシ統計"></div>
         </section>
 
         <section class="rail-block rail-block--errors" aria-labelledby="error-heading">
           <div class="rail-errors-head">
-            <p class="rail-kicker" id="error-heading">Failures</p>
+            <p class="rail-kicker" id="error-heading">Failures（表示窓）</p>
           </div>
           <div class="error-plot chart-container chart-container--short">
             <canvas id="errorChart" role="img" aria-label="エラー種別の内訳"></canvas>

@@ -394,6 +394,52 @@ function refreshScatterForView(min: number, max: number): void {
   }
 }
 
+function updateHistoryNavChrome(scrollable: boolean, min: number, max: number): void {
+  const nav = document.getElementById("historyNav");
+  const windowEl = document.getElementById("historyWindow");
+  const hint = document.getElementById("historyNavHint");
+  const spanLabel = document.getElementById("historySpanLabel");
+  const startLabel = document.getElementById("historyStartLabel");
+  const endLabel = document.getElementById("historyEndLabel");
+
+  if (nav) nav.dataset.active = scrollable ? "true" : "false";
+
+  if (startLabel) startLabel.textContent = fmtJst(latencySpanMin);
+  if (endLabel) endLabel.textContent = fmtJst(latencySpanMax);
+
+  const spanSec = latencyChartSpanSec();
+  if (spanLabel) {
+    spanLabel.textContent =
+      spanSec > 0
+        ? `全履歴 ${Math.max(1, Math.round(spanSec / 60))} 分`
+        : "";
+  }
+
+  if (hint) {
+    hint.textContent = scrollable
+      ? "トラックを横スクロールして表示窓を移動"
+      : "履歴が1画面に収まっています（スクロール不要）";
+  }
+
+  if (!windowEl) return;
+
+  if (spanSec <= 0) {
+    windowEl.style.left = "0%";
+    windowEl.style.width = "100%";
+    return;
+  }
+
+  // Window box = current chart viewport within full history (matches range preset width).
+  const widthPct = Math.min(100, Math.max(2, (latencyChartViewportSec / spanSec) * 100));
+  const leftPct = Math.min(
+    100 - widthPct,
+    Math.max(0, ((min - latencySpanMin) / spanSec) * 100),
+  );
+  windowEl.style.width = `${widthPct}%`;
+  windowEl.style.left = `${leftPct}%`;
+  windowEl.title = `${fmtJst(min)} → ${fmtJst(max)}`;
+}
+
 function applyVisibleWindowToChart(): void {
   const { min, max } = visibleXWindow();
   if (latencyChart?.canvas) {
@@ -409,6 +455,7 @@ function applyVisibleWindowToChart(): void {
       // Chart may be destroyed between rAF schedules (tests / rapid rebuilds).
     }
   }
+  updateHistoryNavChrome(latencyScrollMode, min, max);
   onVisibleWindowChange?.(min, max);
 }
 
@@ -454,6 +501,7 @@ export function applyLatencyChartLayout(scrollToEnd = false): boolean {
 
   const needsScroll = isLatencyChartScrollable();
   container.classList.toggle("is-scrollable", needsScroll);
+  // Unhide before measuring width so clientWidth is non-zero after display:none.
   scroll.hidden = !needsScroll;
 
   if (!needsScroll) {
@@ -461,10 +509,17 @@ export function applyLatencyChartLayout(scrollToEnd = false): boolean {
     scroll.scrollLeft = 0;
     latencyScrollMode = false;
     latencyViewMax = latencySpanMax;
+    updateHistoryNavChrome(false, latencySpanMin, latencySpanMax);
     return false;
   }
 
-  const trackW = scroll.clientWidth || container.clientWidth;
+  // Force layout after unhiding so track width is real (flex/absolute parent).
+  const trackW =
+    scroll.clientWidth ||
+    scroll.getBoundingClientRect().width ||
+    container.clientWidth ||
+    container.getBoundingClientRect().width ||
+    1;
   const spanSec = latencyChartSpanSec();
   const contentW = latencyChartScrollWidth(trackW, latencyChartViewportSec, spanSec);
   inner.style.width = `${contentW}px`;
@@ -484,6 +539,9 @@ export function applyLatencyChartLayout(scrollToEnd = false): boolean {
       latencyViewMax = latencySpanMax;
       applyVisibleWindowToChart();
     });
+  } else {
+    const { min, max } = visibleXWindow();
+    updateHistoryNavChrome(true, min, max);
   }
 
   return true;
