@@ -23,19 +23,19 @@ function escapeHtml(value: string): string {
     .replaceAll('"', "&quot;");
 }
 
-export function rangePresetLabel(seconds: number = displayRangeSec): string {
+function rangeLabel(seconds: number = displayRangeSec): string {
   return RANGE_PRESETS.find((p) => p.seconds === seconds)?.label ?? `${seconds}s`;
 }
 
-/** Quiet one-line meta under the chart title: "30m · start – end". */
-export function renderViewportChrome(min: number, max: number): void {
+/** Quiet one-liner under the section title (design §5). */
+export function renderViewMeta(min: number, max: number): void {
   const el = document.getElementById("viewMeta");
   if (!el) return;
   if (!Number.isFinite(min) || !Number.isFinite(max)) {
     el.textContent = "";
     return;
   }
-  el.textContent = `${rangePresetLabel()} · ${fmtJst(min)} – ${fmtJst(max)}`;
+  el.textContent = `${rangeLabel()} · ${fmtJst(min)} – ${fmtJst(max)}`;
 }
 
 export function renderStats(stats: Stats): void {
@@ -45,21 +45,20 @@ export function renderStats(stats: Stats): void {
       { label: "測定数", value: stats.total.toLocaleString() },
       {
         label: "平均",
-        value: stats.avg != null && stats.avg > 0 ? `${Math.round(stats.avg)}` : "—",
+        value: stats.avg ? `${Math.round(stats.avg)}` : "—",
         unit: "ms",
       },
       {
         label: "P95",
-        value: stats.p95 != null && stats.p95 > 0 ? `${Math.round(stats.p95)}` : "—",
+        value: stats.p95 ? `${Math.round(stats.p95)}` : "—",
         unit: "ms",
       },
       {
         label: "最大",
-        value: stats.max != null && stats.max > 0 ? `${stats.max}` : "—",
+        value: stats.max ? `${stats.max}` : "—",
         unit: "ms",
       },
     ];
-
     grid.innerHTML = items
       .map(
         (item) => `
@@ -77,9 +76,7 @@ export function renderStats(stats: Stats): void {
   if (uptime) {
     if (!stats.total) {
       uptime.classList.remove("ok", "warn");
-      uptime.innerHTML =
-        `<span class="label">Uptime</span>` +
-        `<span class="value">—</span>`;
+      uptime.innerHTML = `<span class="label">Uptime</span><span class="value">—</span>`;
       return;
     }
     const cls = stats.uptime < 95 ? "warn" : "ok";

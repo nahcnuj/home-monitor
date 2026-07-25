@@ -394,35 +394,6 @@ function refreshScatterForView(min: number, max: number): void {
   }
 }
 
-/** Quiet pan strip: show only when history exceeds the selected range. */
-function updateHistoryNavChrome(scrollable: boolean, min: number, max: number): void {
-  const nav = document.getElementById("historyNav");
-  const windowEl = document.getElementById("historyWindow");
-
-  if (nav) {
-    nav.dataset.active = scrollable ? "true" : "false";
-    nav.hidden = !scrollable;
-  }
-
-  if (!windowEl || !scrollable) return;
-
-  const spanSec = latencyChartSpanSec();
-  if (spanSec <= 0) {
-    windowEl.style.left = "0%";
-    windowEl.style.width = "100%";
-    return;
-  }
-
-  const widthPct = Math.min(100, Math.max(2, (latencyChartViewportSec / spanSec) * 100));
-  const leftPct = Math.min(
-    100 - widthPct,
-    Math.max(0, ((min - latencySpanMin) / spanSec) * 100),
-  );
-  windowEl.style.width = `${widthPct}%`;
-  windowEl.style.left = `${leftPct}%`;
-  windowEl.title = `${fmtJst(min)} – ${fmtJst(max)}`;
-}
-
 function applyVisibleWindowToChart(): void {
   const { min, max } = visibleXWindow();
   if (latencyChart?.canvas) {
@@ -438,7 +409,6 @@ function applyVisibleWindowToChart(): void {
       // Chart may be destroyed between rAF schedules (tests / rapid rebuilds).
     }
   }
-  updateHistoryNavChrome(latencyScrollMode, min, max);
   onVisibleWindowChange?.(min, max);
 }
 
@@ -484,9 +454,7 @@ export function applyLatencyChartLayout(scrollToEnd = false): boolean {
 
   const needsScroll = isLatencyChartScrollable();
   container.classList.toggle("is-scrollable", needsScroll);
-  // Unhide pan strip + track before measuring so clientWidth is non-zero.
-  const nav = document.getElementById("historyNav");
-  if (nav) nav.hidden = !needsScroll;
+  // Unhide before measuring so clientWidth is valid after display:none.
   scroll.hidden = !needsScroll;
 
   if (!needsScroll) {
@@ -494,16 +462,13 @@ export function applyLatencyChartLayout(scrollToEnd = false): boolean {
     scroll.scrollLeft = 0;
     latencyScrollMode = false;
     latencyViewMax = latencySpanMax;
-    updateHistoryNavChrome(false, latencySpanMin, latencySpanMax);
     return false;
   }
 
-  // Force layout after unhiding so track width is real (flex/absolute parent).
   const trackW =
     scroll.clientWidth ||
     scroll.getBoundingClientRect().width ||
     container.clientWidth ||
-    container.getBoundingClientRect().width ||
     1;
   const spanSec = latencyChartSpanSec();
   const contentW = latencyChartScrollWidth(trackW, latencyChartViewportSec, spanSec);
@@ -524,9 +489,6 @@ export function applyLatencyChartLayout(scrollToEnd = false): boolean {
       latencyViewMax = latencySpanMax;
       applyVisibleWindowToChart();
     });
-  } else {
-    const { min, max } = visibleXWindow();
-    updateHistoryNavChrome(true, min, max);
   }
 
   return true;
@@ -788,49 +750,27 @@ export function buildLatencyChart(
           // Only the selected duration is on screen; pan via history scrollbar.
           min: view.min,
           max: view.max,
-          border: { display: false },
-          grid: {
-            color: "rgba(255, 255, 255, 0.06)",
-            drawTicks: false,
-          },
+          grid: { color: "#2a2e3d" },
           ticks: {
-            color: "#8b93a7",
+            color: "#8b90a0",
             stepSize: viewTickStep,
             autoSkip: true,
             maxRotation: 0,
             maxTicksLimit: compact ? 6 : 12,
-            padding: 6,
-            font: {
-              family: '"Cascadia Mono", "Segoe UI Mono", ui-monospace, monospace',
-              size: compact ? 10 : 11,
-            },
+            font: compact ? { size: 10 } : undefined,
             callback: (value: string | number) =>
               fmtAxisTick(Number(value), viewTickStep, compact),
           },
         },
         y: {
-          border: { display: false },
           title: {
             display: true,
             text: "ms",
-            color: "#5c6478",
-            font: {
-              family: '"Cascadia Mono", "Segoe UI Mono", ui-monospace, monospace',
-              size: 11,
-              weight: "bold",
-            },
+            color: "#8b90a0",
           },
-          grid: {
-            color: "rgba(255, 255, 255, 0.06)",
-            drawTicks: false,
-          },
+          grid: { color: "#2a2e3d" },
           ticks: {
-            color: "#8b93a7",
-            padding: 6,
-            font: {
-              family: '"Cascadia Mono", "Segoe UI Mono", ui-monospace, monospace',
-              size: compact ? 10 : 11,
-            },
+            color: "#8b90a0",
           },
           min: 0,
           ...(yMax != null ? { max: yMax } : {}),
@@ -845,31 +785,12 @@ export function buildLatencyChart(
           minTimeoutBarWidth: 1, // CSS px; short errors (e.g. 170ms no_response) stay visible
         },
         legend: {
-          align: "end",
           labels: {
-            color: "#e8ecf4",
-            boxWidth: 10,
-            boxHeight: 10,
-            padding: 14,
-            usePointStyle: true,
-            pointStyle: "rectRounded",
-            font: {
-              family: '"Segoe UI", system-ui, sans-serif',
-              size: 11,
-            },
+            color: "#e4e6ed",
             filter: (item: { text: string }) => !isHiddenBand(item.text) && !isFailureDataset(item.text),
           },
         },
         tooltip: {
-          backgroundColor: "rgba(8, 10, 14, 0.94)",
-          titleColor: "#e8ecf4",
-          bodyColor: "#8b93a7",
-          borderColor: "rgba(255, 255, 255, 0.12)",
-          borderWidth: 1,
-          cornerRadius: 4,
-          padding: 10,
-          displayColors: true,
-          boxPadding: 4,
           filter: (item: TooltipItem<"line">) => isTooltipDataset(item.dataset.label),
           itemSort: (a: TooltipItem<"line">, b: TooltipItem<"line">) => {
             const aFail = isFailureDataset(a.dataset.label);

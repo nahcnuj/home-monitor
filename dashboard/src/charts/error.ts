@@ -14,9 +14,7 @@ interface ErrorBarDataset {
 type TooltipBarElement = { x: number; base: number; y: number; height: number };
 
 const ERROR_TOOLTIP_GAP = 8;
-/** Room under the band for the custom “below bar” tooltip (keep tight for mobile). */
-const ERROR_TOOLTIP_PADDING_BOTTOM = 48;
-const ERROR_TOOLTIP_PADDING_TOP = 4;
+const ERROR_TOOLTIP_PADDING_BOTTOM = 72;
 
 let errorChart: Chart<"bar"> | null = null;
 let errorBarPositionerRegistered = false;
@@ -51,9 +49,9 @@ function registerErrorBarTooltipPositioner(): void {
 }
 
 function errorBandRadius(index: number, count: number): BorderRadius {
-  if (count <= 1) return 4;
-  if (index === 0) return { topLeft: 4, bottomLeft: 4, topRight: 0, bottomRight: 0 };
-  if (index === count - 1) return { topLeft: 0, bottomLeft: 0, topRight: 4, bottomRight: 4 };
+  if (count <= 1) return 6;
+  if (index === 0) return { topLeft: 6, bottomLeft: 6, topRight: 0, bottomRight: 0 };
+  if (index === count - 1) return { topLeft: 0, bottomLeft: 0, topRight: 6, bottomRight: 6 };
   return 0;
 }
 
@@ -84,9 +82,9 @@ export function buildErrorChart(errors: Record<string, number>): void {
         label: "なし",
         errorCode: "",
         data: [1],
-        backgroundColor: "rgba(255, 255, 255, 0.08)",
+        backgroundColor: "#2a2e3d",
         borderWidth: 0,
-        borderRadius: 4,
+        borderRadius: 6,
       }];
 
   errorChart = new Chart(canvas, {
@@ -97,7 +95,6 @@ export function buildErrorChart(errors: Record<string, number>): void {
       maintainAspectRatio: false,
       layout: {
         padding: {
-          top: ERROR_TOOLTIP_PADDING_TOP,
           bottom: ERROR_TOOLTIP_PADDING_BOTTOM,
         },
       },
@@ -121,13 +118,6 @@ export function buildErrorChart(errors: Record<string, number>): void {
         },
         legend: { display: false },
         tooltip: {
-          backgroundColor: "rgba(8, 10, 14, 0.94)",
-          titleColor: "#e8ecf4",
-          bodyColor: "#8b93a7",
-          borderColor: "rgba(255, 255, 255, 0.12)",
-          borderWidth: 1,
-          cornerRadius: 4,
-          padding: 10,
           filter: () => codes.length > 0,
           position: "errorBarBelow",
           xAlign: "center",

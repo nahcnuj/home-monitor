@@ -28,7 +28,7 @@ import {
   initRangeSelector,
   loadDisplayRangeFromConfig,
   renderStats,
-  renderViewportChrome,
+  renderViewMeta,
 } from "./ui.ts";
 import "./style.css";
 
@@ -40,7 +40,7 @@ let renderScheduled = false;
 let chartRecords: DnsRecord[] = [];
 
 function updateMetricsForVisibleWindow(min: number, max: number): void {
-  renderViewportChrome(min, max);
+  renderViewMeta(min, max);
   const stats = computeStats(filterByTimeWindow(chartRecords, min, max));
   renderStats(stats);
   buildErrorChart(stats.errors);
@@ -50,7 +50,6 @@ function render(): void {
   chartRecords = filterByPeriod(allRecords, monitorConfig.data_cutoff_ts);
   const { successes, failures } = aggregateByServer(chartRecords);
   buildLatencyChart(chartRecords, successes, failures, monitorConfig.data_cutoff_ts);
-  // Chart build pins the view to the latest viewport; metrics match that window.
   const { min, max } = getVisibleTimeWindow();
   updateMetricsForVisibleWindow(min, max);
   lastCompactLayout = isCompactChartLayout();
@@ -68,16 +67,12 @@ function scheduleRender(): void {
 
 function resizeCharts(): void {
   const compact = isCompactChartLayout();
-  // Tick density / label format differ between compact and PC; rebuild when it flips.
   if (compact !== lastCompactLayout && allRecords.length) {
     scheduleRender();
     return;
   }
   const wasScroll = isLatencyScrollMode();
-  // Keep (or restore) the latest viewport after reflow — range changes rebuild via render.
   resizeLatencyChartLayout(false);
-  // Entering/leaving scroll mode toggles legend placement and Y-axis options.
-  // Defer rebuild so we never recurse render → resize → render on the same stack.
   if (wasScroll !== isLatencyScrollMode() && allRecords.length) {
     scheduleRender();
     return;
@@ -92,42 +87,32 @@ function initDashboard(): void {
   initRangeSelector(render);
 }
 
-function setLastUpdatedStatus(
-  el: HTMLElement | null,
-  text: string,
-  state: "loading" | "ready" | "error" | "empty" = "ready",
-): void {
+function setStatus(el: HTMLElement | null, text: string, error = false): void {
   if (!el) return;
   el.textContent = text;
-  el.classList.toggle("is-loading", state === "loading");
-  el.classList.toggle("is-ready", state === "ready");
-  el.classList.toggle("is-error", state === "error");
+  el.classList.toggle("is-error", error);
 }
 
 async function loadData(): Promise<void> {
   const lastUpdated = document.getElementById("lastUpdated");
   try {
     initDashboard();
-    setLastUpdatedStatus(lastUpdated, "読み込み中...", "loading");
+    setStatus(lastUpdated, "読み込み中...");
 
     const res = await fetch(`data/dns-latency.json?t=${Date.now()}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     setAllRecords(parseRecordsJson(await res.text()));
     if (!allRecords.length) {
-      setLastUpdatedStatus(lastUpdated, "データなし", "empty");
+      setStatus(lastUpdated, "データなし");
     } else {
-      setLastUpdatedStatus(
-        lastUpdated,
-        `最終データ: ${fmtJst(allRecords.at(-1)!.ts)}（JST）`,
-        "ready",
-      );
+      setStatus(lastUpdated, `最終データ: ${fmtJst(allRecords.at(-1)!.ts)}（JST）`);
     }
     render();
   } catch (err) {
-    setLastUpdatedStatus(
+    setStatus(
       lastUpdated,
       `読み込みエラー: ${err instanceof Error ? err.message : String(err)}`,
-      "error",
+      true,
     );
   }
 }
