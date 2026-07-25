@@ -1,7 +1,6 @@
 import { Chart, Tooltip, type TooltipItem } from "chart.js";
 import { ERROR_COLORS, SERVER_COLORS } from "../constants.ts";
 import { formatErrorCode, formatErrorDescription } from "../errors.ts";
-import { CHART_THEME, chartTooltipDefaults } from "../theme.ts";
 
 interface ErrorBarDataset {
   label: string;
@@ -52,9 +51,9 @@ function registerErrorBarTooltipPositioner(): void {
 }
 
 function errorBandRadius(index: number, count: number): BorderRadius {
-  if (count <= 1) return 8;
-  if (index === 0) return { topLeft: 8, bottomLeft: 8, topRight: 0, bottomRight: 0 };
-  if (index === count - 1) return { topLeft: 0, bottomLeft: 0, topRight: 8, bottomRight: 8 };
+  if (count <= 1) return 6;
+  if (index === 0) return { topLeft: 6, bottomLeft: 6, topRight: 0, bottomRight: 0 };
+  if (index === count - 1) return { topLeft: 0, bottomLeft: 0, topRight: 6, bottomRight: 6 };
   return 0;
 }
 
@@ -85,9 +84,9 @@ export function buildErrorChart(errors: Record<string, number>): void {
         label: "なし",
         errorCode: "",
         data: [1],
-        backgroundColor: CHART_THEME.emptyBar,
+        backgroundColor: "#2a2e3d",
         borderWidth: 0,
-        borderRadius: 8,
+        borderRadius: 6,
       }];
 
   errorChart = new Chart(canvas, {
@@ -103,7 +102,7 @@ export function buildErrorChart(errors: Record<string, number>): void {
         },
       },
       indexAxis: "y",
-      datasets: { bar: { barThickness: 44, categoryPercentage: 1, barPercentage: 1 } },
+      datasets: { bar: { barThickness: 40 } },
       scales: {
         x: {
           stacked: true,
@@ -122,7 +121,6 @@ export function buildErrorChart(errors: Record<string, number>): void {
         },
         legend: { display: false },
         tooltip: {
-          ...chartTooltipDefaults,
           filter: () => codes.length > 0,
           position: "errorBarBelow",
           xAlign: "center",

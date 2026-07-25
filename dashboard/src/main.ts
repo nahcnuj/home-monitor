@@ -94,9 +94,7 @@ function setLastUpdatedStatus(
   if (!el) return;
   el.textContent = text;
   el.classList.toggle("is-loading", state === "loading");
-  el.classList.toggle("is-ready", state === "ready");
   el.classList.toggle("is-error", state === "error");
-  el.classList.toggle("is-empty", state === "empty");
 }
 
 async function loadData(): Promise<void> {
