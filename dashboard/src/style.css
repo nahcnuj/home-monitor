@@ -1,28 +1,26 @@
-/* DNS Latency Monitor — feature-first layout (see design/dashboard-ui.md) */
+/* Studio layout: left control rail + right monitor (design/dashboard-ui.md) */
 
 :root {
   color-scheme: dark;
-  --bg: #0f1117;
-  --surface: #1a1d27;
-  --surface-hover: #222633;
-  --border: #2a2e3d;
-  --text: #e4e6ed;
-  --muted: #8b90a0;
+  --bg: #0b0d12;
+  --rail: #10141c;
+  --surface: #161b26;
+  --line: #2a3142;
+  --text: #e8ebf2;
+  --muted: #8b93a7;
+  --faint: #5c6578;
   --accent: #5b8def;
-  --accent-hover: #4a7ad4;
-  --ok: #4ade80;
-  --error: #f87171;
+  --accent-soft: rgba(91, 141, 239, 0.15);
+  --ok: #3ecf8e;
+  --bad: #f07178;
   --focus: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
-  --radius: 10px;
-  --space-1: 0.35rem;
-  --space-2: 0.6rem;
-  --space-3: 0.85rem;
-  --space-4: 1.15rem;
-  --pad-x: max(1.1rem, env(safe-area-inset-left, 0px));
-  --pad-x-end: max(1.1rem, env(safe-area-inset-right, 0px));
-  --pad-b: max(1.5rem, env(safe-area-inset-bottom, 0px));
+  --rail-w: 16.5rem;
   --font: "Segoe UI", system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
   --mono: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
+  --safe-l: max(1rem, env(safe-area-inset-left, 0px));
+  --safe-r: max(1rem, env(safe-area-inset-right, 0px));
+  --safe-t: max(0.75rem, env(safe-area-inset-top, 0px));
+  --safe-b: max(1rem, env(safe-area-inset-bottom, 0px));
 }
 
 *,
@@ -42,7 +40,7 @@ body {
   font-family: var(--font);
   background: var(--bg);
   color: var(--text);
-  line-height: 1.5;
+  line-height: 1.45;
   min-height: 100vh;
   min-height: 100dvh;
   -webkit-font-smoothing: antialiased;
@@ -67,85 +65,124 @@ body {
   box-shadow: var(--focus);
 }
 
-/* Header */
+/* ===== Mobile first: chart, then controls ===== */
 
-.site-header {
-  padding:
-    max(0.85rem, env(safe-area-inset-top, 0px))
-    var(--pad-x-end)
-    var(--space-3)
-    var(--pad-x);
-  border-bottom: 1px solid var(--border);
-  background: color-mix(in srgb, var(--bg) 90%, var(--surface));
+.studio {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
 }
 
-.site-header__row {
+.rail {
+  order: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1.1rem var(--safe-r) var(--safe-b) var(--safe-l);
+  background: var(--rail);
+  border-top: 1px solid var(--line);
+}
+
+.rail-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.rail-kicker {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.rail-title {
+  font-size: 1.35rem;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+
+.rail-status {
+  margin-top: 0.35rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.rail-status.is-error {
+  color: var(--bad);
+}
+
+.rail-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.rail-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.rail-hint {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-top: -0.2rem;
+}
+
+.rail-label-row {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
-  gap: var(--space-2) var(--space-3);
-  max-width: 1120px;
-  margin: 0 auto;
+  gap: 0.35rem 0.75rem;
 }
 
-.site-header__brand {
-  min-width: 0;
-  flex: 1 1 14rem;
-}
-
-.site-header h1 {
-  font-size: 1.2rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  line-height: 1.25;
-}
-
-.site-header__sub {
-  margin-top: 0.2rem;
-  font-size: 0.8125rem;
+.rail-window {
+  font-family: var(--mono);
+  font-size: 0.7rem;
   color: var(--muted);
-  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
 }
+
+.rail-window:empty {
+  display: none;
+}
+
+/* Range: horizontal on mobile */
 
 .range-selector {
-  display: inline-flex;
-  max-width: 100%;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: thin;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  flex: 0 1 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
 }
 
 .range-btn {
   appearance: none;
-  border: none;
-  border-right: 1px solid var(--border);
-  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
   color: var(--muted);
   font: inherit;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  min-height: 2.4rem;
-  min-width: 2.6rem;
-  padding: 0.4rem 0.7rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  min-height: 2.5rem;
+  min-width: 3rem;
+  padding: 0.4rem 0.75rem;
   cursor: pointer;
-  white-space: nowrap;
-  flex: 1 0 auto;
   -webkit-tap-highlight-color: transparent;
-  transition: background 0.12s ease, color 0.12s ease;
-}
-
-.range-btn:last-child {
-  border-right: none;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
 }
 
 .range-btn:hover {
   color: var(--text);
-  background: var(--surface-hover);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
 }
 
 .range-btn:focus {
@@ -153,199 +190,32 @@ body {
 }
 
 .range-btn:focus-visible {
-  position: relative;
-  z-index: 1;
   box-shadow: var(--focus);
 }
 
 .range-btn.active {
   color: #fff;
   background: var(--accent);
-  font-weight: 600;
+  border-color: var(--accent);
 }
 
-.range-btn.active:hover {
-  background: var(--accent-hover);
-}
-
-/* Main */
-
-.site-main {
-  max-width: 1120px;
-  margin: 0 auto;
-  padding: var(--space-3) var(--pad-x-end) var(--pad-b) var(--pad-x);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-
-.status-line {
-  font-size: 0.8125rem;
-  color: var(--muted);
-  line-height: 1.4;
-}
-
-.status-line.is-error {
-  color: var(--error);
-  background: color-mix(in srgb, var(--error) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--error) 30%, transparent);
-  border-radius: 8px;
-  padding: 0.5rem 0.75rem;
-}
-
-/* Panels */
-
-.panel {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  min-width: 0;
-}
-
-.panel__head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-1) var(--space-3);
-}
-
-.panel__titles {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.35rem 0.85rem;
-  min-width: 0;
-}
-
-.panel__head h2 {
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.panel__meta {
-  font-family: var(--mono);
-  font-size: 0.75rem;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.panel__meta:empty {
-  display: none;
-}
-
-.latency-legend[hidden] {
-  display: none !important;
-}
-
-/* Chart boxes — room to breathe, graph still large */
-
-.chart-box {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: var(--space-2) var(--space-2) var(--space-2);
-}
-
-.panel--latency .chart-box {
-  height: min(50dvh, 360px);
-  min-height: 260px;
-}
-
-.chart-box__plot,
-.chart-plot-frame {
-  flex: 1;
-  min-height: 0;
-  min-width: 0;
-  position: relative;
-}
-
-.chart-box__plot canvas,
-.chart-plot-frame canvas {
-  display: block;
-  width: 100% !important;
-  height: 100% !important;
-}
-
-/* History pan: only when needed; tall enough to use */
-
-.chart-box__pan,
-.chart-hscroll {
-  flex: 0 0 auto;
-  width: 100%;
-  height: 1.35rem;
-  margin-top: var(--space-2);
-  overflow-x: auto;
-  overflow-y: hidden;
-  -webkit-overflow-scrolling: touch;
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.22);
-  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--muted) 70%, transparent) transparent;
-  cursor: grab;
-}
-
-.chart-box__pan:active,
-.chart-hscroll:active {
-  cursor: grabbing;
-}
-
-.chart-box__pan::-webkit-scrollbar,
-.chart-hscroll::-webkit-scrollbar {
-  height: 10px;
-}
-
-.chart-box__pan::-webkit-scrollbar-thumb,
-.chart-hscroll::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--muted) 60%, transparent);
-  border-radius: 5px;
-}
-
-.chart-box__pan[hidden],
-.chart-hscroll[hidden] {
-  display: none !important;
-}
-
-.chart-box__pan-inner,
-.chart-hscroll-inner {
-  height: 100%;
-  min-height: 1.1rem;
-  min-width: 100%;
-}
-
-/* Stats under latency chart */
+/* Stats stacked in rail */
 
 .stats {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.45rem 0;
-  font-variant-numeric: tabular-nums;
-  padding: var(--space-1) 0 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.65rem;
 }
 
 .stat {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0.35rem;
-  padding: 0 0.75rem;
-  border-right: 1px solid var(--border);
-  line-height: 1.25;
-}
-
-.stat:first-child {
-  padding-left: 0;
-}
-
-.stat:last-child {
-  border-right: none;
-  padding-right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
 }
 
 .stat .label {
@@ -354,25 +224,30 @@ body {
 }
 
 .stat .value {
-  font-size: 0.95rem;
-  font-weight: 600;
+  font-size: 1.15rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
 }
 
 .stat .unit {
-  margin-left: 0.12rem;
-  font-size: 0.7rem;
+  margin-left: 0.15rem;
+  font-size: 0.75rem;
   font-weight: 500;
   color: var(--muted);
 }
 
-/* Errors */
-
 .uptime {
-  display: inline-flex;
+  display: flex;
   align-items: baseline;
-  gap: 0.35rem;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
   font-variant-numeric: tabular-nums;
-  line-height: 1.25;
 }
 
 .uptime .label {
@@ -383,8 +258,8 @@ body {
 }
 
 .uptime .value {
-  font-size: 0.95rem;
-  font-weight: 600;
+  font-size: 1.15rem;
+  font-weight: 650;
 }
 
 .uptime.ok .value {
@@ -392,18 +267,133 @@ body {
 }
 
 .uptime.warn .value {
-  color: var(--error);
+  color: var(--bad);
 }
 
-.chart-box--band,
+/* Stage / monitor — first on mobile */
+
+.stage {
+  order: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  padding: var(--safe-t) var(--safe-r) 0.75rem var(--safe-l);
+  gap: 0.75rem;
+}
+
+.monitor {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+.plot {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  height: min(55dvh, 380px);
+  min-height: 260px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.55rem 0.45rem 0.4rem;
+}
+
+.plot-frame,
+.chart-plot-frame {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  position: relative;
+}
+
+.plot-frame canvas,
+.chart-plot-frame canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.plot-pan,
+.chart-hscroll {
+  flex: 0 0 auto;
+  width: 100%;
+  height: 1.35rem;
+  margin-top: 0.4rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--muted) 65%, transparent) transparent;
+  cursor: grab;
+}
+
+.plot-pan:active,
+.chart-hscroll:active {
+  cursor: grabbing;
+}
+
+.plot-pan::-webkit-scrollbar,
+.chart-hscroll::-webkit-scrollbar {
+  height: 10px;
+}
+
+.plot-pan::-webkit-scrollbar-thumb,
+.chart-hscroll::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--muted) 55%, transparent);
+  border-radius: 5px;
+}
+
+.plot-pan[hidden],
+.chart-hscroll[hidden] {
+  display: none !important;
+}
+
+.plot-pan-inner,
+.chart-hscroll-inner {
+  height: 100%;
+  min-height: 1.1rem;
+  min-width: 100%;
+}
+
+.latency-legend[hidden] {
+  display: none !important;
+}
+
+.failures {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.failures-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.failures-plot,
 .chart-container--short {
-  height: 7.5rem;
-  padding: 0.7rem 0.65rem;
+  height: 7.25rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.65rem 0.6rem;
   display: flex;
   align-items: stretch;
 }
 
-.chart-box--band canvas,
+.failures-plot canvas,
 .chart-container--short canvas {
   display: block;
   width: 100% !important;
@@ -420,108 +410,110 @@ body {
   }
 }
 
-/* Tablet+ */
+/* ===== Desktop studio: rail left, monitor right ===== */
 
-@media (min-width: 640px) {
-  :root {
-    --pad-x: max(1.5rem, env(safe-area-inset-left, 0px));
-    --pad-x-end: max(1.5rem, env(safe-area-inset-right, 0px));
-  }
-
-  .site-header h1 {
-    font-size: 1.35rem;
-  }
-
-  .site-main {
-    gap: 1.35rem;
-    padding-top: var(--space-4);
-  }
-
-  .panel--latency .chart-box {
-    height: min(52dvh, 420px);
-    min-height: 300px;
-    padding: var(--space-3);
-  }
-
-  .stat .value,
-  .uptime .value {
-    font-size: 1rem;
-  }
-
-  .chart-box--band,
-  .chart-container--short {
-    height: 8rem;
-  }
-}
-
-/* Desktop: fill viewport, graph takes remaining height */
-
-@media (min-width: 1000px) and (min-height: 600px) {
-  :root {
-    --pad-x: max(2rem, env(safe-area-inset-left, 0px));
-    --pad-x-end: max(2rem, env(safe-area-inset-right, 0px));
-  }
-
+@media (min-width: 900px) {
   html,
   body {
     height: 100%;
     overflow: hidden;
   }
 
-  body {
-    display: flex;
+  .studio {
+    flex-direction: row;
+    height: 100%;
+    min-height: 0;
+  }
+
+  .rail {
+    order: 0;
+    flex: 0 0 var(--rail-w);
+    width: var(--rail-w);
+    max-width: var(--rail-w);
+    height: 100%;
+    overflow: auto;
+    border-top: none;
+    border-right: 1px solid var(--line);
+    padding:
+      max(1.1rem, env(safe-area-inset-top, 0px))
+      1.1rem
+      max(1.1rem, env(safe-area-inset-bottom, 0px))
+      max(1.1rem, env(safe-area-inset-left, 0px));
+    gap: 1.5rem;
+  }
+
+  .rail-block--grow {
+    margin-top: auto;
+  }
+
+  /* Vertical range list */
+  .range-selector--stack {
     flex-direction: column;
+    flex-wrap: nowrap;
+    gap: 0.35rem;
   }
 
-  .site-header {
-    flex-shrink: 0;
-  }
-
-  .site-header__row {
-    max-width: none;
-  }
-
-  .range-btn {
-    min-height: 2rem;
-    font-size: 0.75rem;
-    flex: 0 0 auto;
-  }
-
-  .site-main {
-    flex: 1;
-    min-height: 0;
-    max-width: none;
+  .range-selector--stack .range-btn {
     width: 100%;
-    gap: 0.85rem;
-    padding-top: 0.75rem;
-    padding-bottom: 0.75rem;
+    justify-content: flex-start;
+    text-align: left;
+    min-height: 2.35rem;
+    padding-left: 0.85rem;
+    border-radius: 8px;
   }
 
-  .status-line {
-    flex-shrink: 0;
-  }
-
-  .panel--latency {
-    flex: 1;
-    min-height: 0;
-  }
-
-  .panel--latency .chart-box {
-    flex: 1;
-    height: auto;
-    min-height: 0;
+  .range-selector--stack .range-btn.active {
+    box-shadow: inset 3px 0 0 #fff;
   }
 
   .stats {
-    flex-shrink: 0;
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
   }
 
-  .panel--errors {
-    flex-shrink: 0;
+  .stat .value {
+    font-size: 1.25rem;
   }
 
-  .chart-box--band,
+  .stage {
+    order: 0;
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    padding:
+      max(0.85rem, env(safe-area-inset-top, 0px))
+      max(1rem, env(safe-area-inset-right, 0px))
+      max(0.85rem, env(safe-area-inset-bottom, 0px))
+      0.85rem;
+    gap: 0.65rem;
+  }
+
+  .monitor {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .plot {
+    flex: 1;
+    height: auto;
+    min-height: 0;
+    border-radius: 10px;
+    padding: 0.65rem 0.55rem 0.45rem;
+  }
+
+  .failures-plot,
   .chart-container--short {
-    height: 6.75rem;
+    height: 6.5rem;
+    border-radius: 10px;
+  }
+}
+
+@media (min-width: 1200px) {
+  :root {
+    --rail-w: 17.5rem;
+  }
+
+  .plot {
+    padding: 0.75rem 0.65rem 0.5rem;
   }
 }

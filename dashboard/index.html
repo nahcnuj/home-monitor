@@ -3,79 +3,90 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="theme-color" content="#0f1117">
+  <meta name="theme-color" content="#0b0d12">
   <meta name="color-scheme" content="dark">
   <meta name="description" content="自宅回線の DNS 応答レイテンシをサーバー別に可視化するモニター">
   <title>DNS Latency Monitor</title>
   <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1645913691678081" crossorigin="anonymous"></script>
 </head>
 <body>
-  <a class="skip-link" href="#main">メインコンテンツへ</a>
+  <a class="skip-link" href="#stage">メインのグラフへ</a>
 
-  <header class="site-header">
-    <div class="site-header__row">
-      <div class="site-header__brand">
-        <h1>DNS Latency Monitor</h1>
-        <p class="site-header__sub" id="subtitle">自宅回線の DNS 応答レイテンシ — DNS サーバー別</p>
-      </div>
-      <div
-        class="range-selector"
-        id="rangeSelector"
-        role="group"
-        aria-label="表示範囲"
-      ></div>
-    </div>
-  </header>
-
-  <main class="site-main" id="main">
-    <p class="status-line" id="lastUpdated" role="status" aria-live="polite">読み込み中...</p>
-
-    <section class="panel panel--latency" aria-labelledby="latency-heading">
-      <div class="panel__head">
-        <div class="panel__titles">
-          <h2 id="latency-heading">レイテンシ推移</h2>
-          <p class="panel__meta" id="viewMeta"></p>
-        </div>
-        <div class="latency-legend" id="latencyLegend" hidden aria-hidden="true"></div>
+  <div class="studio">
+    <!-- Control room: identity, range, metrics -->
+    <aside class="rail" aria-label="操作と要約">
+      <div class="rail-brand">
+        <p class="rail-kicker">Home</p>
+        <h1 class="rail-title">DNS Latency</h1>
+        <p
+          class="rail-status"
+          id="lastUpdated"
+          role="status"
+          aria-live="polite"
+        >読み込み中...</p>
       </div>
 
-      <div
-        class="chart-box chart-container chart-container--latency"
-        id="latencyChartContainer"
-      >
-        <div class="chart-box__plot chart-plot-frame">
-          <canvas
-            id="latencyChart"
-            role="img"
-            aria-label="DNS レイテンシ推移グラフ"
-          ></canvas>
-        </div>
+      <div class="rail-block">
+        <h2 class="rail-label">表示範囲</h2>
+        <p class="rail-hint">グラフ 1 画面分の時間</p>
         <div
-          class="chart-box__pan chart-hscroll"
-          id="latencyChartScroll"
-          hidden
-          role="scrollbar"
-          aria-controls="latencyChart"
-          aria-orientation="horizontal"
-          aria-label="履歴のスクロール"
-        >
-          <div class="chart-box__pan-inner chart-hscroll-inner" id="latencyChartInner"></div>
-        </div>
+          class="range-selector range-selector--stack"
+          id="rangeSelector"
+          role="group"
+          aria-label="表示範囲"
+        ></div>
       </div>
 
-      <div class="stats" id="statsGrid" aria-label="レイテンシ統計"></div>
-    </section>
-
-    <section class="panel panel--errors" aria-labelledby="error-heading">
-      <div class="panel__head">
-        <h2 id="error-heading">エラー種別内訳</h2>
+      <div class="rail-block rail-block--grow">
+        <div class="rail-label-row">
+          <h2 class="rail-label">表示中の区間</h2>
+          <p class="rail-window" id="viewMeta"></p>
+        </div>
+        <div class="stats" id="statsGrid" aria-label="レイテンシ統計"></div>
         <p class="uptime" id="uptimeBadge" aria-label="Uptime"></p>
       </div>
-      <div class="chart-box chart-box--band chart-container chart-container--short">
-        <canvas id="errorChart" role="img" aria-label="エラー種別の内訳"></canvas>
-      </div>
-    </section>
-  </main>
+    </aside>
+
+    <!-- Monitor: chart + failures -->
+    <div class="stage" id="stage">
+      <section class="monitor" aria-label="レイテンシ時系列">
+        <div
+          class="plot chart-container chart-container--latency"
+          id="latencyChartContainer"
+        >
+          <div class="plot-frame chart-plot-frame">
+            <canvas
+              id="latencyChart"
+              role="img"
+              aria-label="DNS レイテンシ推移グラフ"
+            ></canvas>
+          </div>
+          <div
+            class="plot-pan chart-hscroll"
+            id="latencyChartScroll"
+            hidden
+            role="scrollbar"
+            aria-controls="latencyChart"
+            aria-orientation="horizontal"
+            aria-label="履歴のスクロール"
+          >
+            <div class="plot-pan-inner chart-hscroll-inner" id="latencyChartInner"></div>
+          </div>
+        </div>
+        <!-- Required by chart layout API; not shown as a chrome bar -->
+        <div class="latency-legend" id="latencyLegend" hidden aria-hidden="true"></div>
+      </section>
+
+      <section class="failures" aria-label="エラー種別内訳">
+        <div class="failures-head">
+          <h2 class="failures-title">エラー種別</h2>
+        </div>
+        <div class="failures-plot chart-container chart-container--short">
+          <canvas id="errorChart" role="img" aria-label="エラー種別の内訳"></canvas>
+        </div>
+      </section>
+    </div>
+  </div>
 
   <script type="module" src="/src/main.ts"></script>
 
