@@ -15,21 +15,45 @@ import {
 import { isValidDisplayRangeSec } from "./time.ts";
 import type { Stats } from "./types.ts";
 
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
 export function renderStats(stats: Stats): void {
   const grid = document.getElementById("statsGrid");
   if (grid) {
-    grid.innerHTML = [
+    const items: Array<{ label: string; value: string; unit?: string }> = [
       { label: "測定数", value: stats.total.toLocaleString() },
-      { label: "平均", value: stats.avg ? `${Math.round(stats.avg)}` : "-", unit: "ms" },
-      { label: "P95", value: stats.p95 ? `${Math.round(stats.p95)}` : "-", unit: "ms" },
-      { label: "最大", value: stats.max ? `${stats.max}` : "-", unit: "ms" },
-    ]
+      {
+        label: "平均",
+        value: stats.avg != null && stats.avg > 0 ? `${Math.round(stats.avg)}` : "—",
+        unit: "ms",
+      },
+      {
+        label: "P95",
+        value: stats.p95 != null && stats.p95 > 0 ? `${Math.round(stats.p95)}` : "—",
+        unit: "ms",
+      },
+      {
+        label: "最大",
+        value: stats.max != null && stats.max > 0 ? `${stats.max}` : "—",
+        unit: "ms",
+      },
+    ];
+
+    grid.innerHTML = items
       .map(
         (item) => `
-    <div class="stat-item">
-      <span class="label">${item.label}</span>
-      <span class="value">${item.value}${item.unit ? `<span class="unit">${item.unit}</span>` : ""}</span>
-    </div>`,
+      <div class="kpi">
+        <span class="label">${escapeHtml(item.label)}</span>
+        <span class="value">${escapeHtml(item.value)}${
+          item.unit ? `<span class="unit">${escapeHtml(item.unit)}</span>` : ""
+        }</span>
+      </div>`,
       )
       .join("");
   }
@@ -37,16 +61,19 @@ export function renderStats(stats: Stats): void {
   const uptime = document.getElementById("uptimeBadge");
   if (uptime) {
     if (!stats.total) {
-      uptime.innerHTML = `<span class="label">Uptime</span><span class="value">—</span>`;
       uptime.classList.remove("ok", "warn");
+      uptime.innerHTML =
+        `<span class="uptime-label">Uptime</span>` +
+        `<span class="uptime-value">—</span>`;
       return;
     }
     const cls = stats.uptime < 95 ? "warn" : "ok";
     uptime.classList.toggle("ok", cls === "ok");
     uptime.classList.toggle("warn", cls === "warn");
+    const pct = stats.uptime.toFixed(1);
     uptime.innerHTML =
-      `<span class="label">Uptime</span>` +
-      `<span class="value">${stats.uptime.toFixed(1)}%</span>`;
+      `<span class="uptime-label">Uptime</span>` +
+      `<span class="uptime-value">${pct}<span class="unit">%</span></span>`;
   }
 }
 

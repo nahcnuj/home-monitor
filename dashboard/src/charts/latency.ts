@@ -745,27 +745,49 @@ export function buildLatencyChart(
           // Only the selected duration is on screen; pan via history scrollbar.
           min: view.min,
           max: view.max,
-          grid: { color: "#2a2e3d" },
+          border: { display: false },
+          grid: {
+            color: "rgba(255, 255, 255, 0.06)",
+            drawTicks: false,
+          },
           ticks: {
-            color: "#8b90a0",
+            color: "#8b93a7",
             stepSize: viewTickStep,
             autoSkip: true,
             maxRotation: 0,
             maxTicksLimit: compact ? 6 : 12,
-            font: compact ? { size: 10 } : undefined,
+            padding: 6,
+            font: {
+              family: '"Cascadia Mono", "Segoe UI Mono", ui-monospace, monospace',
+              size: compact ? 10 : 11,
+            },
             callback: (value: string | number) =>
               fmtAxisTick(Number(value), viewTickStep, compact),
           },
         },
         y: {
+          border: { display: false },
           title: {
             display: true,
             text: "ms",
-            color: "#8b90a0",
+            color: "#5c6478",
+            font: {
+              family: '"Cascadia Mono", "Segoe UI Mono", ui-monospace, monospace',
+              size: 11,
+              weight: "bold",
+            },
           },
-          grid: { color: "#2a2e3d" },
+          grid: {
+            color: "rgba(255, 255, 255, 0.06)",
+            drawTicks: false,
+          },
           ticks: {
-            color: "#8b90a0",
+            color: "#8b93a7",
+            padding: 6,
+            font: {
+              family: '"Cascadia Mono", "Segoe UI Mono", ui-monospace, monospace',
+              size: compact ? 10 : 11,
+            },
           },
           min: 0,
           ...(yMax != null ? { max: yMax } : {}),
@@ -780,12 +802,31 @@ export function buildLatencyChart(
           minTimeoutBarWidth: 1, // CSS px; short errors (e.g. 170ms no_response) stay visible
         },
         legend: {
+          align: "end",
           labels: {
-            color: "#e4e6ed",
+            color: "#e8ecf4",
+            boxWidth: 10,
+            boxHeight: 10,
+            padding: 14,
+            usePointStyle: true,
+            pointStyle: "rectRounded",
+            font: {
+              family: '"Segoe UI", system-ui, sans-serif',
+              size: 11,
+            },
             filter: (item: { text: string }) => !isHiddenBand(item.text) && !isFailureDataset(item.text),
           },
         },
         tooltip: {
+          backgroundColor: "rgba(8, 10, 14, 0.94)",
+          titleColor: "#e8ecf4",
+          bodyColor: "#8b93a7",
+          borderColor: "rgba(255, 255, 255, 0.12)",
+          borderWidth: 1,
+          cornerRadius: 4,
+          padding: 10,
+          displayColors: true,
+          boxPadding: 4,
           filter: (item: TooltipItem<"line">) => isTooltipDataset(item.dataset.label),
           itemSort: (a: TooltipItem<"line">, b: TooltipItem<"line">) => {
             const aFail = isFailureDataset(a.dataset.label);

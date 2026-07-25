@@ -2,53 +2,79 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#080a0e">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="自宅回線の DNS 応答レイテンシをサーバー別に可視化するモニター">
   <title>DNS Latency Monitor</title>
   <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1645913691678081" crossorigin="anonymous"></script>
 </head>
 <body>
-  <header>
-    <div class="header-row">
-      <div class="header-title">
-        <h1>DNS Latency Monitor</h1>
-        <p class="subtitle" id="subtitle">自宅回線の DNS 応答レイテンシ — DNS サーバー別</p>
-      </div>
-      <div class="range-selector" id="rangeSelector" role="group" aria-label="表示範囲"></div>
-    </div>
-  </header>
+  <a class="skip-link" href="#workspace">メインコンテンツへ</a>
 
-  <main>
-    <p class="last-updated is-loading" id="lastUpdated" role="status" aria-live="polite">読み込み中...</p>
-
-    <div class="charts">
-      <section class="chart-section chart-section--latency" aria-labelledby="latency-heading">
-        <div class="section-heading section-heading--latency">
-          <h2 id="latency-heading">レイテンシ推移</h2>
-          <div class="latency-legend" id="latencyLegend" hidden aria-label="DNS サーバー凡例"></div>
+  <div class="app">
+    <!-- Command bar: identity, freshness, time window -->
+    <header class="command">
+      <div class="command-identity">
+        <div class="command-mark" aria-hidden="true"></div>
+        <div class="command-titles">
+          <p class="command-product">Home Monitor</p>
+          <h1 class="command-title">DNS Latency</h1>
         </div>
-        <div class="chart-container chart-container--latency" id="latencyChartContainer">
-          <div class="chart-plot-frame">
+      </div>
+
+      <p class="pulse" id="lastUpdated" role="status" aria-live="polite">読み込み中...</p>
+
+      <div class="range" id="rangeSelector" role="group" aria-label="表示範囲"></div>
+    </header>
+
+    <div class="workspace" id="workspace">
+      <!-- Primary: full-bleed timeline (always visual priority) -->
+      <section class="stage" aria-labelledby="latency-heading">
+        <div class="stage-bar">
+          <div class="stage-bar-text">
+            <h2 id="latency-heading">Timeline</h2>
+            <p class="stage-bar-hint">表示窓の統計のみ · スクラブで履歴を移動</p>
+          </div>
+          <div class="latency-legend" id="latencyLegend" hidden aria-hidden="true"></div>
+        </div>
+
+        <div class="stage-plot chart-container chart-container--latency" id="latencyChartContainer">
+          <div class="stage-canvas chart-plot-frame">
             <canvas id="latencyChart" role="img" aria-label="DNS レイテンシ推移グラフ"></canvas>
           </div>
-          <!-- Wide spacer drives native scrollbar; chart X domain pans with scroll (no huge canvas). -->
-          <div class="chart-hscroll" id="latencyChartScroll" hidden aria-label="表示期間のスクロール">
-            <div class="chart-hscroll-inner" id="latencyChartInner"></div>
+          <div class="scrub chart-hscroll" id="latencyChartScroll" hidden aria-label="表示期間のスクロール">
+            <div class="scrub-inner chart-hscroll-inner" id="latencyChartInner"></div>
           </div>
         </div>
-        <div class="stats-bar" id="statsGrid" aria-label="レイテンシ統計"></div>
       </section>
 
-      <section class="chart-section chart-section--error" aria-labelledby="error-heading">
-        <div class="section-heading">
-          <h2 id="error-heading">エラー種別内訳</h2>
-          <p class="uptime-badge" id="uptimeBadge" aria-label="Uptime"></p>
-        </div>
-        <div class="chart-container chart-container--short">
-          <canvas id="errorChart" role="img" aria-label="エラー種別の内訳"></canvas>
-        </div>
-      </section>
+      <!-- Secondary: health rail (metrics + failure mix) -->
+      <aside class="rail" aria-label="表示期間の指標">
+        <section class="rail-block rail-block--uptime">
+          <p class="rail-kicker">Health</p>
+          <div class="uptime" id="uptimeBadge" aria-label="Uptime">
+            <span class="uptime-label">Uptime</span>
+            <span class="uptime-value">—</span>
+          </div>
+        </section>
+
+        <section class="rail-block rail-block--metrics">
+          <p class="rail-kicker">Latency</p>
+          <div class="kpi-grid" id="statsGrid" aria-label="レイテンシ統計"></div>
+        </section>
+
+        <section class="rail-block rail-block--errors" aria-labelledby="error-heading">
+          <div class="rail-errors-head">
+            <p class="rail-kicker" id="error-heading">Failures</p>
+          </div>
+          <div class="error-plot chart-container chart-container--short">
+            <canvas id="errorChart" role="img" aria-label="エラー種別の内訳"></canvas>
+          </div>
+        </section>
+      </aside>
     </div>
-  </main>
+  </div>
 
   <script type="module" src="/src/main.ts"></script>
 
