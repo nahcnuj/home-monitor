@@ -412,8 +412,9 @@ function applyVisibleWindowToChart(): void {
           }
         }
       }
-      const p95 = percentile(visibleLatencies, 95);
-      const yMax = p95 > 0 ? ceilingToHundred(p95 * 2) : undefined;
+      const sum = visibleLatencies.reduce((a, b) => a + b, 0);
+      const avg = visibleLatencies.length ? sum / visibleLatencies.length : 0;
+      const yMax = avg > 0 ? ceilingToHundred(avg * 2) : undefined;
       const y = latencyChart.options.scales?.y;
       if (y && typeof y === "object") {
         if (yMax != null) {
@@ -614,8 +615,9 @@ export function buildLatencyChart(
   }
 
   const batchTimestamps = [...batchTsSet].sort((a, b) => a - b);
-  const p95 = percentile(latencies, 95);
-  const yMax = p95 > 0 ? ceilingToHundred(p95 * 2) : undefined;
+  const sum = latencies.reduce((a, b) => a + b, 0);
+  const avg = latencies.length ? sum / latencies.length : 0;
+  const yMax = avg > 0 ? ceilingToHundred(avg * 2) : undefined;
 
   const compact = isCompactChartLayout();
   const xBounds = chartTimeBounds(undefined, compact, {
