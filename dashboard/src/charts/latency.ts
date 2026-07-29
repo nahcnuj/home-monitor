@@ -402,6 +402,29 @@ function applyVisibleWindowToChart(): void {
       (x as { min?: number; max?: number }).min = min;
       (x as { max?: number }).max = max;
     }
+
+    if (latencySuccessesByServer) {
+      const visibleLatencies: number[] = [];
+      for (const samples of latencySuccessesByServer.values()) {
+        for (const r of samples) {
+          if (r.ts >= min && r.ts <= max) {
+            visibleLatencies.push(r.latency_ms);
+          }
+        }
+      }
+      const sum = visibleLatencies.reduce((a, b) => a + b, 0);
+      const avg = visibleLatencies.length ? sum / visibleLatencies.length : 0;
+      const yMax = avg > 0 ? ceilingToHundred(avg * 2) : undefined;
+      const y = latencyChart.options.scales?.y;
+      if (y && typeof y === "object") {
+        if (yMax != null) {
+          (y as { max?: number }).max = yMax;
+        } else {
+          delete (y as { max?: number }).max;
+        }
+      }
+    }
+
     refreshScatterForView(min, max);
     try {
       latencyChart.update("none");
@@ -592,8 +615,9 @@ export function buildLatencyChart(
   }
 
   const batchTimestamps = [...batchTsSet].sort((a, b) => a - b);
-  const p95 = percentile(latencies, 95);
-  const yMax = p95 > 0 ? ceilingToHundred(p95 * 2) : undefined;
+  const sum = latencies.reduce((a, b) => a + b, 0);
+  const avg = latencies.length ? sum / latencies.length : 0;
+  const yMax = avg > 0 ? ceilingToHundred(avg * 2) : undefined;
 
   const compact = isCompactChartLayout();
   const xBounds = chartTimeBounds(undefined, compact, {
