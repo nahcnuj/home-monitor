@@ -18,7 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: main
+          ref: master
           path: source
 
       - uses: actions/checkout@v7
@@ -126,7 +126,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git fetch origin
-          git merge origin/main --no-edit -m "merge main into gh-pages"
+          git merge origin/master --no-edit -m "merge master into gh-pages"
 
           if [[ -d docs/config ]]; then
             git rm -rf docs/config

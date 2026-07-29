@@ -13,10 +13,10 @@
 
 | ブランチ | 内容 |
 |----------|------|
-| `main` | ソース（ダッシュボード、スクリプト、ワークフロー、`monitor.config.ts`） |
-| `gh-pages` | 公開用ブランチ（`main` + `docs/data`） |
+| `master` | ソース（ダッシュボード、スクリプト、ワークフロー、`monitor.config.ts`） |
+| `gh-pages` | 公開用ブランチ（`master` + `docs/data`） |
 
-`main` への push で **Merge to gh-pages** が走り、ソースを `gh-pages` にマージします（`docs/data/` はそのまま残ります）。**Sync DNS Data** は計測データを `gh-pages` の `docs/data/` に直接書き込みます。続けて **Deploy Pages** が `gh-pages` からビルドして公開します（bot による push では後続ワークフローが起動しないため、`workflow_run` で連鎖させています）。
+`master` への push で **Merge to gh-pages** が走り、ソースを `gh-pages` にマージします（`docs/data/` はそのまま残ります）。**Sync DNS Data** は計測データを `gh-pages` の `docs/data/` に直接書き込みます。続けて **Deploy Pages** が `gh-pages` からビルドして公開します（bot による push では後続ワークフローが起動しないため、`workflow_run` で連鎖させています）。
 
 GitHub Pages は **GitHub Actions** でデプロイします（Settings → Pages → GitHub Actions）。
 
@@ -33,7 +33,7 @@ GitHub Pages は **GitHub Actions** でデプロイします（Settings → Page
 
 ```powershell
 git remote add origin https://github.com/nahcnuj/home-monitor.git
-git push -u origin main
+git push -u origin master
 ```
 
 GitHub の **Settings → Pages → Build and deployment → GitHub Actions** を有効化してください。
@@ -143,7 +143,7 @@ npm run bench    # レイテンシチャート描画のベンチ（7日分合成
 .\scripts\fetch-data-branch.ps1   # gh-pages の docs/data を取得（gitignore 済み）
 ```
 
-UI や設定を `main` に push すると **Merge to gh-pages** → **Deploy Pages** が順に走ります。
+UI や設定を `master` に push すると **Merge to gh-pages** → **Deploy Pages** が順に走ります。
 
 ## ファイル構成
 
@@ -152,7 +152,7 @@ monitor.config.ts         共通設定（唯一のソース）
 scripts/collect-dns.ps1   計測スクリプト
 scripts/publish-data.ps1  データ送信
 scripts/Get-MonitorConfig.ps1  PS から設定を読むヘルパー
-scripts/merge-gh-pages.sh main → gh-pages マージ
+scripts/merge-gh-pages.sh master → gh-pages マージ
 scripts/install-scheduled-task.ps1  タスク登録
 dashboard/                ダッシュボードソース (Vite + TS)
 data/local/               ローカルデータ (gitignore)

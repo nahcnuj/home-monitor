@@ -125,7 +125,7 @@ function Invoke-SyncDnsWorkflow {
     )
 
     $payload = @{ data_b64 = $DataB64 } | ConvertTo-Json -Compress
-    $payload | & $GhExe workflow run sync-dns-data.yml --repo $RepoSlug --ref main --json 2>&1 | Out-Null
+    $payload | & $GhExe workflow run sync-dns-data.yml --repo $RepoSlug --json 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) {
         throw "gh workflow run failed"
     }
