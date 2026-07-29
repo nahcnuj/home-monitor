@@ -267,7 +267,7 @@ describe("buildLatencyChart", () => {
     vi.useRealTimers();
   });
 
-  it("sets y-axis max to p95 * 2 (consistent with computeStats), including when outliers exceed it", () => {
+  it("sets y-axis max to avg * 2 (consistent with computeStats), including when outliers exceed it", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(Date.UTC(2026, 5, 20, 15, 10, 0)));
     setDisplayRangeSec(DAY_SEC);
@@ -287,7 +287,7 @@ describe("buildLatencyChart", () => {
     expect(stats.p95).toBeGreaterThan(0);
     expect(stats.max).toBe(5000);
     const yMax = chart.options.scales?.y?.max;
-    const expectedYMax = ceilingToHundred(stats.p95 * 2);
+    const expectedYMax = ceilingToHundred(stats.avg * 2);
     expect(yMax).toBe(expectedYMax);
     expect(yMax).toBeLessThan(stats.max);
     expect(chart.scales?.y?.max).toBe(expectedYMax);
