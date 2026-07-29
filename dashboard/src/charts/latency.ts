@@ -402,6 +402,28 @@ function applyVisibleWindowToChart(): void {
       (x as { min?: number; max?: number }).min = min;
       (x as { max?: number }).max = max;
     }
+
+    if (latencySuccessesByServer) {
+      const visibleLatencies: number[] = [];
+      for (const samples of latencySuccessesByServer.values()) {
+        for (const r of samples) {
+          if (r.ts >= min && r.ts <= max) {
+            visibleLatencies.push(r.latency_ms);
+          }
+        }
+      }
+      const p95 = percentile(visibleLatencies, 95);
+      const yMax = p95 > 0 ? ceilingToHundred(p95 * 2) : undefined;
+      const y = latencyChart.options.scales?.y;
+      if (y && typeof y === "object") {
+        if (yMax != null) {
+          (y as { max?: number }).max = yMax;
+        } else {
+          delete (y as { max?: number }).max;
+        }
+      }
+    }
+
     refreshScatterForView(min, max);
     try {
       latencyChart.update("none");
