@@ -18,11 +18,11 @@
     "chart.js": "^4.4.7"
   },
   "devDependencies": {
-    "@types/node": "^26.1.1",
+    "@types/node": "^26.1.2",
     "happy-dom": "^20.11.1",
     "tsx": "^4.23.1",
     "typescript": "^7.0.2",
-    "vite": "^8.1.5",
+    "vite": "^8.2.0",
     "vitest": "^4.1.10",
     "vitest-canvas-mock": "^1.1.4"
   }
