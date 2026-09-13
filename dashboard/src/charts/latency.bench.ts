@@ -5,7 +5,7 @@
  * Compare before/after optimisations; numbers are machine-dependent.
  */
 import { Chart, registerables } from "chart.js";
-import { afterAll, beforeAll, bench, describe, vi } from "vitest";
+import { afterAll, beforeAll, describe, test, vi } from "vitest";
 import { aggregateByServer, computeStats } from "../data.ts";
 import { setDisplayRangeSec } from "../state.ts";
 import { generateBenchRecords } from "../test/bench-fixtures.ts";
@@ -75,68 +75,56 @@ describe("latency chart render bench (7d × 2 resolvers × 8 domains)", () => {
     destroyChart();
   });
 
-  bench(
-    "collectTimelineTimestamps @ 24h viewport",
-    () => {
+  test("collectTimelineTimestamps @ 24h viewport", async ({ bench }) => {
+    await bench("collectTimelineTimestamps @ 24h viewport", () => {
       setDisplayRangeSec(DAY_SEC);
       collectTimelineTimestamps(RECORDS, CUTOFF, NOW, DAY_SEC);
-    },
-    { time: 500 },
-  );
+    }).run({ time: 500 });
+  });
 
-  bench(
-    "buildRollingEnvelope × 2 servers @ 24h",
-    () => {
+  test("buildRollingEnvelope × 2 servers @ 24h", async ({ bench }) => {
+    await bench("buildRollingEnvelope × 2 servers @ 24h", () => {
       setDisplayRangeSec(DAY_SEC);
       const { timestamps } = collectTimelineTimestamps(RECORDS, CUTOFF, NOW, DAY_SEC);
       const servers = [...new Set(RECORDS.map((r) => r.dns_server))];
       for (const server of servers) {
         buildRollingEnvelope(RECORDS, server, timestamps, DAY_SEC);
       }
-    },
-    { time: 800 },
-  );
+    }).run({ time: 800 });
+  });
 
-  bench(
-    "buildRollingEnvelope × 2 servers @ 30m",
-    () => {
+  test("buildRollingEnvelope × 2 servers @ 30m", async ({ bench }) => {
+    await bench("buildRollingEnvelope × 2 servers @ 30m", () => {
       setDisplayRangeSec(30 * 60);
       const { timestamps } = collectTimelineTimestamps(RECORDS, CUTOFF, NOW, 30 * 60);
       const servers = [...new Set(RECORDS.map((r) => r.dns_server))];
       for (const server of servers) {
         buildRollingEnvelope(RECORDS, server, timestamps, 30 * 60);
       }
-    },
-    { time: 800 },
-  );
+    }).run({ time: 800 });
+  });
 
-  bench(
-    "computeStats (full history)",
-    () => {
+  test("computeStats (full history)", async ({ bench }) => {
+    await bench("computeStats (full history)", () => {
       computeStats(RECORDS);
-    },
-    { time: 400 },
-  );
+    }).run({ time: 400 });
+  });
 
-  bench(
-    "buildLatencyChart full pipeline @ 24h",
-    () => {
+  test("buildLatencyChart full pipeline @ 24h", async ({ bench }) => {
+    await bench("buildLatencyChart full pipeline @ 24h", () => {
       setDisplayRangeSec(DAY_SEC);
       const { successes, failures } = aggregateByServer(RECORDS);
       buildLatencyChart(RECORDS, successes, failures, CUTOFF);
       destroyChart();
-    },
-    { time: 800 },
-  );
+    }).run({ time: 800 });
+  });
 
-  bench(
-    "buildLatencyChart full pipeline @ 30m",
-    () => {
+  test("buildLatencyChart full pipeline @ 30m", async ({ bench }) => {
+    await bench("buildLatencyChart full pipeline @ 30m", () => {
       setDisplayRangeSec(30 * 60);
       const { successes, failures } = aggregateByServer(RECORDS);
       buildLatencyChart(RECORDS, successes, failures, CUTOFF);
       destroyChart();
-    },
-    { time: 800 },
-  );
+    }).run({ time: 800 });
+  });
 });
