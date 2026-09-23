@@ -38,13 +38,9 @@ git push -u origin master
 
 GitHub の **Settings → Pages → Build and deployment → GitHub Actions** を有効化してください。
 
-### 2. GitHub CLI
+### 2. GitHub CLI と conahcnuj
 
-[GitHub CLI](https://cli.github.com/) をインストールし、認証:
-
-```powershell
-gh auth login
-```
+[GitHub CLI](https://cli.github.com/) と Git for Windows（bash）をインストールします。送信時の認証は `gh auth login` ではなく、GitHub App **conahcnuj** の installation token です。`publish-data.ps1` が毎回 `~/.config/opencode/gh-app/get-token.sh`（設定は同じディレクトリの `app.env`）でトークンを発行し、`GH_TOKEN` として `gh` に渡します。
 
 ### 3. タスクスケジューラ登録
 
@@ -66,7 +62,7 @@ cd C:\Users\nahcnuj\ghq\github.com\nahcnuj\home-monitor
 # 計測テスト
 .\scripts\collect-dns.ps1
 
-# 送信テスト（gh auth login 後）
+# 送信テスト（conahcnuj の app.env が置いてあること）
 .\scripts\publish-data.ps1
 ```
 

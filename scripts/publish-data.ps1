@@ -104,6 +104,39 @@ function Split-LinesToB64Chunks {
     return ,($chunks.ToArray())
 }
 
+function Set-ConahcnujGhToken {
+    # User gh auth is not used. Mint a short-lived installation token for the
+    # conahcnuj GitHub App (private key stays in ~/.config/opencode/gh-app).
+    $bash = "C:\Program Files\Git\bin\bash.exe"
+    if (-not (Test-Path -LiteralPath $bash)) {
+        throw "Git bash not found at $bash (needed to mint the conahcnuj token)"
+    }
+    $tokenScript = Join-Path $env:USERPROFILE ".config\opencode\gh-app\get-token.sh"
+    if (-not (Test-Path -LiteralPath $tokenScript)) {
+        throw "conahcnuj token script not found: $tokenScript"
+    }
+
+    $errFile = New-TemporaryFile
+    try {
+        $token = (& $bash --noprofile --norc $tokenScript 2>$errFile | Out-String).Trim()
+        if ($LASTEXITCODE -ne 0) {
+            $rawErr = Get-Content -Raw -LiteralPath $errFile -ErrorAction SilentlyContinue
+            $err = if ($rawErr) { $rawErr.Trim() } else { "exit $LASTEXITCODE" }
+            throw "conahcnuj token mint failed: $err"
+        }
+    }
+    finally {
+        Remove-Item -LiteralPath $errFile -Force -ErrorAction SilentlyContinue
+    }
+
+    if ($token -notmatch '^ghs_[A-Za-z0-9._-]+$') {
+        throw "conahcnuj token mint returned an unexpected value"
+    }
+
+    # gh prefers GH_TOKEN over the logged-in user in hosts.yml.
+    $env:GH_TOKEN = $token
+}
+
 function Get-RepoSlug {
     $repoSlug = $null
     if ($RepoRoot -match 'github\.com[/\\]([^/\\]+)[/\\]([^/\\]+)$') {
@@ -173,10 +206,7 @@ Push-Location $RepoRoot
 try {
     Write-TaskLog -TaskName "publish" -Message "started"
 
-    & $GhExe auth status 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        throw "gh is not authenticated. Run: gh auth login"
-    }
+    Set-ConahcnujGhToken
 
     $unsentLines = Get-UnsentLines @PSBoundParameters
     if ($unsentLines.Count -eq 0) {
