@@ -29,6 +29,9 @@ function Get-PublishSettings {
     return @{
         MaxAttempts = $maxAttempts
         RetryDelaysSec = $delays
+        DowndetectorEnabled = [bool]$config.downdetector_enabled
+        DowndetectorService = if ($config.downdetector_service) { $config.downdetector_service } else { "J:COM" }
+        LatencyThresholdMs = if ($null -ne $config.downdetector_latency_threshold_ms -and $config.downdetector_latency_threshold_ms -gt 0) { [int]$config.downdetector_latency_threshold_ms } else { 1000 }
     }
 }
 
@@ -45,6 +48,36 @@ function Test-SendableLine {
     $cols = $Line -split "`t"
     if ($cols.Length -lt 2) { return $false }
     return ([int]$cols[0] -ge $CutoffTs) -and (Test-DnsServerKey -Key $cols[1])
+}
+
+function Test-BadForDowndetector {
+    param([string]$Line, [int]$LatencyThreshold = 1000)
+    $cols = $Line -split "`t"
+    if ($cols.Length -lt 5) { return $false }
+    $latencyStr = $cols[3]
+    $errorCode = $cols[4]
+    $latency = if ($latencyStr -and $latencyStr -ne "") { [int]$latencyStr } else { 0 }
+    if ($errorCode -and ($errorCode -eq "dns_timeout" -or $errorCode -eq "job_timeout")) {
+        return $true
+    }
+    return $latency -ge $LatencyThreshold
+}
+
+function Get-BadLinesLastHour {
+    param([string[]]$Lines, [int]$LatencyThreshold = 1000)
+    $now = [long][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+    $oneHourAgo = $now - 3600
+    $bad = @()
+    foreach ($line in $Lines) {
+        $cols = $line -split "`t"
+        if ($cols.Length -ge 1) {
+            $ts = [long]$cols[0]
+            if ($ts -ge $oneHourAgo -and (Test-BadForDowndetector -Line $line -LatencyThreshold $LatencyThreshold)) {
+                $bad += $line
+            }
+        }
+    }
+    return $bad
 }
 
 function Compress-GzipBytes {
@@ -216,6 +249,17 @@ try {
 
     $settings = Get-PublishSettings
     $repoSlug = Get-RepoSlug
+
+    # Downdetector reporting per #30: check unsent/newly inserted records from last 1h
+    if ($settings.DowndetectorEnabled -and $unsentLines.Count -gt 0) {
+        $badLines = Get-BadLinesLastHour -Lines $unsentLines -LatencyThreshold $settings.LatencyThresholdMs
+        if ($badLines.Count -gt 0) {
+            Write-TaskLog -TaskName "publish" -Message "detected $($badLines.Count) bad record(s) in last hour (high latency/timeout) - reporting to Downdetector for $($settings.DowndetectorService)"
+            # report-downdetector.ps1 implements actual HTTP reporting to Downdetector (stub for now)
+            & (Join-Path $PSScriptRoot "report-downdetector.ps1") -Service $settings.DowndetectorService -BadLines $badLines
+        }
+    }
+
     $chunks = Split-LinesToB64Chunks -Lines $unsentLines
     $totalLines = 0
     $finalMaxTs = 0

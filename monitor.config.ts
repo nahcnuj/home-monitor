@@ -8,6 +8,12 @@ export interface MonitorConfig {
   publish_interval_min: number;
   publish_max_attempts: number;
   publish_retry_delays_sec: readonly number[];
+  /** Enable Downdetector reporting for J:COM outages (latency >=1000ms or dns/job_timeout) */
+  downdetector_enabled: boolean;
+  /** J:COM service name on Downdetector */
+  downdetector_service: string;
+  /** High latency threshold in ms for Downdetector alert */
+  downdetector_latency_threshold_ms: number;
 }
 
 export const monitorConfig = {
@@ -29,4 +35,7 @@ export const monitorConfig = {
   publish_interval_min: 10,
   publish_max_attempts: 3,
   publish_retry_delays_sec: [30, 60, 120],
+  downdetector_enabled: true,
+  downdetector_service: "J:COM",
+  downdetector_latency_threshold_ms: 1000,
 } as const satisfies MonitorConfig;

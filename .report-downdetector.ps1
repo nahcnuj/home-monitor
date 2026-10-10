@@ -1,0 +1,1 @@
+# Downdetector reporting for J:COM (per issue #30)
