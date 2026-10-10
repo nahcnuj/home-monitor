@@ -25,13 +25,14 @@ function Get-PublishSettings {
     if ($delays.Count -eq 0) {
         $delays = @(30, 60, 120)
     }
+    $dd = $config.downdetector
     return @{
         MaxAttempts = $maxAttempts
         RetryDelaysSec = $delays
-        DowndetectorEnabled = [bool]$config.downdetector_enabled
-        DowndetectorService = if ($config.downdetector_service) { $config.downdetector_service } else { "J:COM" }
-        LatencyThresholdMs = if ($null -ne $config.downdetector_latency_threshold_ms -and $config.downdetector_latency_threshold_ms -gt 0) { [int]$config.downdetector_latency_threshold_ms } else { 1000 }
-        DowndetectorReportUrl = if ($config.downdetector_report_url) { [string]$config.downdetector_report_url } else { "" }
+        DowndetectorEnabled = [bool]$dd.enabled
+        DowndetectorService = if ($dd.service) { $dd.service } else { "J:COM" }
+        LatencyThresholdMs = if ($null -ne $dd.latency_threshold_ms -and $dd.latency_threshold_ms -gt 0) { [int]$dd.latency_threshold_ms } else { 1000 }
+        DowndetectorReportUrl = if ($dd.report_url) { [string]$dd.report_url } else { "" }
     }
 }
 

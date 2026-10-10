@@ -5,11 +5,11 @@
 
 .DESCRIPTION
     Invoked by publish-data.ps1 when newly recorded TSV lines from the last hour
-    contain a high-latency record (>= downdetector_latency_threshold_ms) or a
+    contain a high-latency record (>= downdetector.latency_threshold_ms) or a
     timeout (dns_timeout / job_timeout).
 
     Reports are rate limited to once per 30 minutes via a state file. When
-    downdetector_report_url is configured the payload is POSTed as JSON, otherwise
+    downdetector.report_url is configured the payload is POSTed as JSON, otherwise
     the report is recorded in the task log only (Downdetector exposes no public
     write API, so the URL is left for the operator to set).
 

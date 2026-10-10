@@ -87,7 +87,7 @@ $emptyPayload = Get-DowndetectorPayload -Service "J:COM" -BadLines @()
 Assert-True ($emptyPayload.count -eq 0) "empty input yields count=0"
 
 Write-Host "=== rate limit ==="
-$stateDir = Join-Path $env:TEMP ("ddtest-" + [guid]::NewGuid().ToString("N"))
+$stateDir = Join-Path ([System.IO.Path]::GetTempPath()) ("ddtest-" + [guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $stateDir -Force | Out-Null
 $stateFile = Join-Path $stateDir ".last-downdetector-report"
 try {
