@@ -7,7 +7,6 @@ Set-Location $RepoRoot
 . (Join-Path $PSScriptRoot "Get-MonitorConfig.ps1")
 . (Join-Path $PSScriptRoot "TaskLog.ps1")
 $DataDir = Join-Path $RepoRoot "data\local"
-$GhExe = Get-GhExe
 $DataFile = Join-Path $DataDir "dns-latency.tsv"
 $LastSyncFile = Join-Path $DataDir ".last-sync"
 
@@ -32,6 +31,7 @@ function Get-PublishSettings {
         DowndetectorEnabled = [bool]$config.downdetector_enabled
         DowndetectorService = if ($config.downdetector_service) { $config.downdetector_service } else { "J:COM" }
         LatencyThresholdMs = if ($null -ne $config.downdetector_latency_threshold_ms -and $config.downdetector_latency_threshold_ms -gt 0) { [int]$config.downdetector_latency_threshold_ms } else { 1000 }
+        DowndetectorReportUrl = if ($config.downdetector_report_url) { [string]$config.downdetector_report_url } else { "" }
     }
 }
 
@@ -53,9 +53,9 @@ function Test-SendableLine {
 function Test-BadForDowndetector {
     param([string]$Line, [int]$LatencyThreshold = 1000)
     $cols = $Line -split "`t"
-    if ($cols.Length -lt 5) { return $false }
+    if ($cols.Length -lt 4) { return $false }
     $latencyStr = $cols[3]
-    $errorCode = $cols[4]
+    $errorCode = if ($cols.Length -ge 5) { $cols[4] } else { "" }
     $latency = if ($latencyStr -and $latencyStr -ne "") { [int]$latencyStr } else { 0 }
     if ($errorCode -and ($errorCode -eq "dns_timeout" -or $errorCode -eq "job_timeout")) {
         return $true
@@ -235,9 +235,16 @@ function Invoke-PublishWithRetry {
     }
 }
 
+# Dot-sourcing loads functions for tests without running a publish cycle.
+if ($MyInvocation.InvocationName -eq '.') {
+    return
+}
+
 Push-Location $RepoRoot
 try {
     Write-TaskLog -TaskName "publish" -Message "started"
+
+    $GhExe = Get-GhExe
 
     Set-ConahcnujGhToken
 
@@ -250,13 +257,21 @@ try {
     $settings = Get-PublishSettings
     $repoSlug = Get-RepoSlug
 
-    # Downdetector reporting per #30: check unsent/newly inserted records from last 1h
+    # Downdetector reporting per #30: report newly inserted records from the last 1h
+    # that hit the latency threshold or timed out. A failure here must not block the sync.
     if ($settings.DowndetectorEnabled -and $unsentLines.Count -gt 0) {
         $badLines = Get-BadLinesLastHour -Lines $unsentLines -LatencyThreshold $settings.LatencyThresholdMs
         if ($badLines.Count -gt 0) {
             Write-TaskLog -TaskName "publish" -Message "detected $($badLines.Count) bad record(s) in last hour (high latency/timeout) - reporting to Downdetector for $($settings.DowndetectorService)"
-            # report-downdetector.ps1 implements actual HTTP reporting to Downdetector (stub for now)
-            & (Join-Path $PSScriptRoot "report-downdetector.ps1") -Service $settings.DowndetectorService -BadLines $badLines
+            try {
+                & (Join-Path $PSScriptRoot "report-downdetector.ps1") `
+                    -Service $settings.DowndetectorService `
+                    -BadLines $badLines `
+                    -ReportUrl $settings.DowndetectorReportUrl
+            }
+            catch {
+                Write-TaskLog -TaskName "publish" -Message "downdetector report failed (data sync continues): $_"
+            }
         }
     }
 

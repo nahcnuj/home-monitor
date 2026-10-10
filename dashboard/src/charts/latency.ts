@@ -213,10 +213,10 @@ function createBatchTooltipPlugin(batchTimestamps: readonly number[]): Plugin<"l
 }
 
 const BAND_TENSION = 0.42;
-const SIGMA_BAND_ALPHA = 0.1;
-const SIGMA_BAND_ALPHA_LONG = 0.2;
-const MINMAX_BAND_ALPHA = 0.03;
-const MINMAX_BAND_ALPHA_LONG = 0.05;
+const SIGMA_BAND_ALPHA = 0.18;
+const SIGMA_BAND_ALPHA_LONG = 0.32;
+const MINMAX_BAND_ALPHA = 0.07;
+const MINMAX_BAND_ALPHA_LONG = 0.12;
 const TIMEOUT_EDGE_WIDTH = 2;
 
 export function shouldShowLatencyPoints(rangeSec: number = displayRangeSec): boolean {
@@ -716,8 +716,8 @@ export function buildLatencyChart(
           data: scatterData,
           borderColor: color,
           backgroundColor: withAlpha(color, 0.85),
-          pointRadius: showPoints ? 2 : 0,
-          pointHoverRadius: showPoints ? 4 : 0,
+          pointRadius: showPoints ? 1.25 : 0,
+          pointHoverRadius: showPoints ? 2.5 : 0,
           showLine: false,
         });
       }

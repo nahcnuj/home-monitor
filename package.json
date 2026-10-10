@@ -12,6 +12,7 @@
     "bench": "vitest bench --run",
     "test:collect-safe": "powershell -NoProfile -File scripts/tests/Assert-CollectDnsSafe.ps1",
     "test:collect-lookup": "powershell -NoProfile -File scripts/tests/Test-CollectDnsLookup.ps1",
+    "test:downdetector-reporting": "powershell -NoProfile -File scripts/tests/Test-DowndetectorReporting.ps1",
     "preview": "vite preview --config dashboard/vite.config.ts"
   },
   "dependencies": {

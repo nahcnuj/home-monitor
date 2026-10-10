@@ -24,6 +24,10 @@ jobs:
         shell: pwsh
         run: ./scripts/tests/Assert-CollectDnsSafe.ps1
 
+      - name: Downdetector reporting checks
+        shell: pwsh
+        run: ./scripts/tests/Test-DowndetectorReporting.ps1
+
   windows-collect:
     runs-on: windows-latest
     steps:

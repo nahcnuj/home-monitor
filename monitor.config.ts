@@ -14,6 +14,8 @@ export interface MonitorConfig {
   downdetector_service: string;
   /** High latency threshold in ms for Downdetector alert */
   downdetector_latency_threshold_ms: number;
+  /** Downdetector report endpoint URL. Empty = record reports to the task log only (no HTTP). */
+  downdetector_report_url: string;
 }
 
 export const monitorConfig = {
@@ -38,4 +40,5 @@ export const monitorConfig = {
   downdetector_enabled: true,
   downdetector_service: "J:COM",
   downdetector_latency_threshold_ms: 1000,
+  downdetector_report_url: "",
 } as const satisfies MonitorConfig;
