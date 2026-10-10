@@ -20,15 +20,26 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      - name: PowerShell script tests
+      - name: Install Pester
         shell: pwsh
-        run: ./scripts/tests/Invoke-AllTests.ps1
+        run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module -Name Pester -MinimumVersion 5.0.0 -Scope CurrentUser -Force -SkipPublisherCheck
+      - name: PowerShell script tests (Pester)
+        shell: pwsh
+        run: Invoke-Pester -Path ./scripts/tests -Output Detailed
 
   windows-collect:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
 
-      - name: PowerShell script tests (including real nslookup)
+      - name: Install Pester
         shell: pwsh
-        run: ./scripts/tests/Invoke-AllTests.ps1
+        run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module -Name Pester -MinimumVersion 5.0.0 -Scope CurrentUser -Force -SkipPublisherCheck
+
+      - name: PowerShell script tests (Pester, including real nslookup)
+        shell: pwsh
+        run: Invoke-Pester -Path ./scripts/tests -Output Detailed

@@ -26,14 +26,28 @@ function Get-PublishSettings {
         $delays = @(30, 60, 120)
     }
     $dd = $config.downdetector
+    $serviceByResolver = @{}
+    if ($null -ne $dd.service_by_resolver) {
+        foreach ($prop in $dd.service_by_resolver.PSObject.Properties) {
+            if ($prop.Name) { $serviceByResolver[$prop.Name] = [string]$prop.Value }
+        }
+    }
     return @{
         MaxAttempts = $maxAttempts
         RetryDelaysSec = $delays
-        DowndetectorEnabled = [bool]$dd.enabled
-        DowndetectorService = if ($dd.service) { $dd.service } else { "J:COM" }
+        ServiceByResolver = $serviceByResolver
         LatencyThresholdMs = if ($null -ne $dd.latency_threshold_ms -and $dd.latency_threshold_ms -gt 0) { [int]$dd.latency_threshold_ms } else { 1000 }
         DowndetectorReportUrl = if ($dd.report_url) { [string]$dd.report_url } else { "" }
     }
+}
+
+function Get-LineDowndetectorService {
+    param([string]$Line, [hashtable]$ServiceByResolver)
+    $cols = $Line -split "`t"
+    if ($cols.Length -ge 2 -and $ServiceByResolver.ContainsKey($cols[1])) {
+        return [string]$ServiceByResolver[$cols[1]]
+    }
+    return $null
 }
 
 function Test-DnsServerKey {
@@ -65,13 +79,17 @@ function Test-BadForDowndetector {
 }
 
 function Get-BadLinesLastHour {
-    param([string[]]$Lines, [int]$LatencyThreshold = 1000)
+    param(
+        [string[]]$Lines,
+        [hashtable]$ServiceByResolver,
+        [int]$LatencyThreshold = 1000
+    )
     $now = [long][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
     $oneHourAgo = $now - 3600
     $bad = @()
     foreach ($line in $Lines) {
         $cols = $line -split "`t"
-        if ($cols.Length -ge 1) {
+        if ($cols.Length -ge 2 -and (Get-LineDowndetectorService -Line $line -ServiceByResolver $ServiceByResolver)) {
             $ts = [long]$cols[0]
             if ($ts -ge $oneHourAgo -and (Test-BadForDowndetector -Line $line -LatencyThreshold $LatencyThreshold)) {
                 $bad += $line
@@ -259,19 +277,33 @@ try {
     $repoSlug = Get-RepoSlug
 
     # Downdetector reporting per #30: report newly inserted records from the last 1h
-    # that hit the latency threshold or timed out. A failure here must not block the sync.
-    if ($settings.DowndetectorEnabled -and $unsentLines.Count -gt 0) {
-        $badLines = Get-BadLinesLastHour -Lines $unsentLines -LatencyThreshold $settings.LatencyThresholdMs
+    # that hit the latency threshold or timed out, only for resolvers mapped to a
+    # known service. A failure here must not block the sync.
+    if ($settings.ServiceByResolver.Count -gt 0) {
+        $badLines = Get-BadLinesLastHour -Lines $unsentLines `
+            -ServiceByResolver $settings.ServiceByResolver `
+            -LatencyThreshold $settings.LatencyThresholdMs
         if ($badLines.Count -gt 0) {
-            Write-TaskLog -TaskName "publish" -Message "detected $($badLines.Count) bad record(s) in last hour (high latency/timeout) - reporting to Downdetector for $($settings.DowndetectorService)"
-            try {
-                & (Join-Path $PSScriptRoot "report-downdetector.ps1") `
-                    -Service $settings.DowndetectorService `
-                    -BadLines $badLines `
-                    -ReportUrl $settings.DowndetectorReportUrl
+            Write-TaskLog -TaskName "publish" -Message "detected $($badLines.Count) bad record(s) in last hour (high latency/timeout) - checking Downdetector reports"
+            $byService = @{}
+            foreach ($line in $badLines) {
+                $service = Get-LineDowndetectorService -Line $line -ServiceByResolver $settings.ServiceByResolver
+                if ($null -eq $service) { continue }
+                if (-not $byService.ContainsKey($service)) {
+                    $byService[$service] = New-Object 'System.Collections.Generic.List[string]'
+                }
+                $byService[$service].Add($line)
             }
-            catch {
-                Write-TaskLog -TaskName "publish" -Message "downdetector report failed (data sync continues): $_"
+            foreach ($service in $byService.Keys) {
+                try {
+                    & (Join-Path $PSScriptRoot "report-downdetector.ps1") `
+                        -Service $service `
+                        -BadLines ($byService[$service].ToArray()) `
+                        -ReportUrl $settings.DowndetectorReportUrl
+                }
+                catch {
+                    Write-TaskLog -TaskName "publish" -Message "downdetector report failed (data sync continues): $_"
+                }
             }
         }
     }

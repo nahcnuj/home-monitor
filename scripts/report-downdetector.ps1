@@ -1,12 +1,13 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Report J:COM problems to Downdetector (issue #30).
+    Report an ISP problem to Downdetector (issue #30).
 
 .DESCRIPTION
     Invoked by publish-data.ps1 when newly recorded TSV lines from the last hour
     contain a high-latency record (>= downdetector.latency_threshold_ms) or a
-    timeout (dns_timeout / job_timeout).
+    timeout (dns_timeout / job_timeout), for a resolver that is mapped to a known
+    service in downdetector.service_by_resolver.
 
     Reports are rate limited to once per 30 minutes via a state file. When
     downdetector.report_url is configured the payload is POSTed as JSON, otherwise
@@ -14,7 +15,8 @@
     write API, so the URL is left for the operator to set).
 
 .PARAMETER Service
-    Downdetector service name. Fixed to "J:COM" by the caller.
+    Downdetector service name. The caller derives it from the record's resolver IP
+    via downdetector.service_by_resolver (e.g. "J:COM").
 
 .PARAMETER BadLines
     Newly recorded TSV lines: ts<TAB>resolver<TAB>domain<TAB>latency[<TAB>error].
