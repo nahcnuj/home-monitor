@@ -110,6 +110,9 @@ GitHub Actions（**Sync DNS Data** / **Deploy Pages** の `prepare-pages`）が 
 - `publish_interval_min` — データ送信間隔（分、タスク再登録が必要）
 - `publish_max_attempts` — 送信失敗時の最大試行回数
 - `publish_retry_delays_sec` — リトライ待ち時間（秒）の配列
+- `downdetector.service_by_resolver` — DNS サーバー IP（TSV 2列目）→ 報告先サービス名のマッピング。このマップに無い resolver のレコードは報告対象外（ISP や DNS 設定が変わった場合に勝手に決めつけない）
+- `downdetector.latency_threshold_ms` — 高レイテンシ判定しきい値（デフォルト 1000 ms）
+- `downdetector.report_url` — 報告エンドポイント URL（空ならタスクログに記録のみ。Downdetector に公的な書き込み API はないため、実 POST 先は運用で設定）
 
 複数ドメインは並列で `nslookup` するため、1分間隔の計測でも全体の所要時間はおおむねタイムアウト値程度です。
 

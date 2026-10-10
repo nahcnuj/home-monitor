@@ -20,19 +20,18 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      - name: Static collect-dns.ps1 checks
-        shell: pwsh
-        run: ./scripts/tests/Assert-CollectDnsSafe.ps1
 
   windows-collect:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
 
-      - name: Static collect-dns.ps1 checks
+      - name: Install Pester
         shell: pwsh
-        run: ./scripts/tests/Assert-CollectDnsSafe.ps1
+        run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module -Name Pester -Scope CurrentUser -Force -SkipPublisherCheck
 
-      - name: Run production Start-DnsLookupJob (real nslookup)
+      - name: PowerShell script tests (Pester, including real nslookup)
         shell: pwsh
-        run: ./scripts/tests/Test-CollectDnsLookup.ps1
+        run: Invoke-Pester -Path ./scripts/tests -Output Detailed

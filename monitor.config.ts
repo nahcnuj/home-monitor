@@ -8,6 +8,17 @@ export interface MonitorConfig {
   publish_interval_min: number;
   publish_max_attempts: number;
   publish_retry_delays_sec: readonly number[];
+  /** Downdetector reporting (latency >= threshold or dns/job_timeout) */
+  downdetector: {
+    /** Resolver DNS server IP (TSV col 2) => Downdetector service name.
+     *  A record is reported only when its resolver is a key here, so a changed
+     *  ISP/DNS server is never guessed. */
+    service_by_resolver: Readonly<Record<string, string>>;
+    /** High latency threshold in ms for a Downdetector alert */
+    latency_threshold_ms: number;
+    /** Report endpoint URL. Empty = record reports to the task log only (no HTTP). */
+    report_url: string;
+  };
 }
 
 export const monitorConfig = {
@@ -29,4 +40,11 @@ export const monitorConfig = {
   publish_interval_min: 10,
   publish_max_attempts: 3,
   publish_retry_delays_sec: [30, 60, 120],
+  downdetector: {
+    service_by_resolver: {
+      "203.165.31.152": "J:COM",
+    },
+    latency_threshold_ms: 1000,
+    report_url: "",
+  },
 } as const satisfies MonitorConfig;
