@@ -10,7 +10,6 @@
     "tsv-to-json": "tsx scripts/tsv-to-json.ts",
     "test": "vitest run",
     "bench": "vitest bench --run",
-    "test:scripts": "pwsh -NoProfile -Command \"Invoke-Pester -Path ./scripts/tests -Output Detailed\"",
     "preview": "vite preview --config dashboard/vite.config.ts"
   },
   "dependencies": {
