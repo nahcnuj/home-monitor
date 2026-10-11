@@ -38,9 +38,8 @@ function Get-PublishSettings {
             if (-not $svc.Name) { continue }
             $target = $svc.Value
             $services[$svc.Name] = @{
-                CompanyId   = if ($target.company_id) { [string]$target.company_id } else { "" }
-                IndicatorId = if ($null -ne $target.indicator_id) { [int]$target.indicator_id } else { 0 }
-                PageUrl     = if ($target.page_url) { [string]$target.page_url } else { "" }
+                PageUrl        = if ($target.page_url) { [string]$target.page_url } else { "" }
+                IndicatorLabel = if ($target.indicator_label) { [string]$target.indicator_label } else { "Broadband Internet" }
             }
         }
     }
@@ -49,7 +48,6 @@ function Get-PublishSettings {
         RetryDelaysSec = $delays
         ServiceByResolver = $serviceByResolver
         LatencyThresholdMs = if ($null -ne $dd.latency_threshold_ms -and $dd.latency_threshold_ms -gt 0) { [int]$dd.latency_threshold_ms } else { 1000 }
-        DataApiUrl = if ($dd.data_api_url) { [string]$dd.data_api_url } else { "https://data-api.downdetector.com" }
         Services = $services
     }
 }
@@ -311,14 +309,12 @@ try {
                 try {
                     $target = $settings.Services[$service]
                     $reportArgs = @{
-                        Service   = $service
-                        BadLines  = $byService[$service].ToArray()
-                        DataApiUrl = $settings.DataApiUrl
+                        Service = $service
+                        BadLines = $byService[$service].ToArray()
                     }
                     if ($null -ne $target) {
-                        $reportArgs.CompanyId = $target.CompanyId
-                        $reportArgs.IndicatorId = $target.IndicatorId
                         $reportArgs.PageUrl = $target.PageUrl
+                        $reportArgs.IndicatorLabel = $target.IndicatorLabel
                     }
                     & (Join-Path $PSScriptRoot "report-downdetector.ps1") @reportArgs
                 }

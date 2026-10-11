@@ -16,18 +16,14 @@ export interface MonitorConfig {
     service_by_resolver: Readonly<Record<string, string>>;
     /** High latency threshold in ms for a Downdetector alert */
     latency_threshold_ms: number;
-    /** Downdetector data-api base URL. This is the endpoint the status page's
-     *  "report a problem" button uses (Downdetector has no public write API). */
-    data_api_url: string;
     /** Report target per service name (a value in service_by_resolver).
-     *  company_id: Downdetector company id; indicator_id: problem indicator id
-     *  shown on the status page (11 = 固定電話のインターネット / fixed-line internet);
-     *  page_url: status page used to get a view token. Ids are per company, so
-     *  both must be configured per service. */
+     *  page_url: Downdetector status page URL (the public web UI is driven via
+     *  Playwright RPA — no private API is used);
+     *  indicator_label: label of the issue indicator to select in the report
+     *  dialog (e.g. "Broadband Internet" for J:COM fixed-line internet). */
     services: Readonly<Record<string, {
-      company_id: string;
-      indicator_id: number;
       page_url: string;
+      indicator_label: string;
     }>>;
   };
 }
@@ -56,12 +52,10 @@ export const monitorConfig = {
       "203.165.31.152": "J:COM",
     },
     latency_threshold_ms: 1000,
-    data_api_url: "https://data-api.downdetector.com",
     services: {
       "J:COM": {
-        company_id: "33478",
-        indicator_id: 11, // 固定電話のインターネット (fixed-line internet)
         page_url: "https://downdetector.jp/shougai/jcom/",
+        indicator_label: "Broadband Internet",
       },
     },
   },
