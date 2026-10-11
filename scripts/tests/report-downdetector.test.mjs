@@ -79,11 +79,13 @@ describe("buildOptions", () => {
     const options = buildOptions([], {});
     expect(options.indicatorLabel).toBe("Broadband Internet");
     expect(options.headless).toBe(true);
-    expect(options.timeoutMs).toBe(30000);
+    expect(options.timeoutMs).toBe(90000);
     expect(options.problemType).toBe("timeout");
     expect(options.count).toBe(1);
     expect(options.rateLimitSec).toBe(1800);
     expect(options.stateFile).toContain(".downdetector-state/last-report");
+    expect(options.waitUntil).toBe("domcontentloaded");
+    expect(options.maxRetries).toBe(2);
   });
 
   it("disables headless when requested", () => {
