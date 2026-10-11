@@ -5,7 +5,7 @@ export default defineConfig({
   test: {
     environment: "happy-dom",
     setupFiles: ["dashboard/src/test/setup.ts"],
-    include: ["dashboard/src/**/*.test.ts"],
+    include: ["dashboard/src/**/*.test.ts", "scripts/**/*.test.mjs"],
     benchmark: {
       include: ["dashboard/src/**/*.bench.ts"],
     },

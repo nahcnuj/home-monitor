@@ -7,7 +7,6 @@ Set-Location $RepoRoot
 . (Join-Path $PSScriptRoot "Get-MonitorConfig.ps1")
 . (Join-Path $PSScriptRoot "TaskLog.ps1")
 $DataDir = Join-Path $RepoRoot "data\local"
-$GhExe = Get-GhExe
 $DataFile = Join-Path $DataDir "dns-latency.tsv"
 $LastSyncFile = Join-Path $DataDir ".last-sync"
 
@@ -202,9 +201,16 @@ function Invoke-PublishWithRetry {
     }
 }
 
+# Dot-sourcing loads functions for tests without running a publish cycle.
+if ($MyInvocation.InvocationName -eq '.') {
+    return
+}
+
 Push-Location $RepoRoot
 try {
     Write-TaskLog -TaskName "publish" -Message "started"
+
+    $GhExe = Get-GhExe
 
     Set-ConahcnujGhToken
 
@@ -216,6 +222,7 @@ try {
 
     $settings = Get-PublishSettings
     $repoSlug = Get-RepoSlug
+
     $chunks = Split-LinesToB64Chunks -Lines $unsentLines
     $totalLines = 0
     $finalMaxTs = 0

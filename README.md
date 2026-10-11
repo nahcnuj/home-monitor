@@ -59,6 +59,9 @@ cd C:\Users\nahcnuj\ghq\github.com\nahcnuj\home-monitor
 ### 4. 動作確認
 
 ```powershell
+npm install
+npx playwright install chromium   # Downdetector 報告 (RPA) に必要なブラウザ
+
 # 計測テスト
 .\scripts\collect-dns.ps1
 
@@ -110,6 +113,11 @@ GitHub Actions（**Sync DNS Data** / **Deploy Pages** の `prepare-pages`）が 
 - `publish_interval_min` — データ送信間隔（分、タスク再登録が必要）
 - `publish_max_attempts` — 送信失敗時の最大試行回数
 - `publish_retry_delays_sec` — リトライ待ち時間（秒）の配列
+- `downdetector.service_by_resolver` — DNS サーバー IP（TSV 2列目）→ 報告先サービス名のマッピング。このマップに無い resolver のレコードは報告対象外（ISP や DNS 設定が変わった場合に勝手に決めつけない）
+- `downdetector.latency_threshold_ms` — 高レイテンシ判定しきい値（デフォルト 1000 ms）
+- `downdetector.services.<name>` — サービス名（`service_by_resolver` の値）ごとの報告先。`page_url`（Downdetector ステータスページの URL）、`indicator_label`（報告ダイアログで選択する問題インジケータのラベル、例: "Broadband Internet" = 固定電話のインターネット）
+
+報告は **GitHub Actions（Sync DNS Data）** で行われます。ローカル PC の DNS が死んでいるとき、PC からは Downdetector に届かない可能性が高いため、クラウド側で報告します。ワークフローが新規挿入（未記録）かつ直近1時間のレコードから高レイテンシまたはタイムアウトを検出し、`report-downdetector-targets.mjs` が Playwright で Downdetector のステータスページを操作します（公的な書き込み API は無いため公開 Web ページを RPA）。Downdetector の操作は失敗してもデータ同期を止めません。
 
 複数ドメインは並列で `nslookup` するため、1分間隔の計測でも全体の所要時間はおおむねタイムアウト値程度です。
 
@@ -147,6 +155,8 @@ UI や設定を `master` に push すると **Merge to gh-pages** → **Deploy P
 monitor.config.ts         共通設定（唯一のソース）
 scripts/collect-dns.ps1   計測スクリプト
 scripts/publish-data.ps1  データ送信
+scripts/report-downdetector-targets.mjs  GitHub Actions からの Downdetector 報告（オーケストレータ）
+scripts/report-downdetector.mjs  Playwright によるステータスページ操作（RPA 本体）
 scripts/Get-MonitorConfig.ps1  PS から設定を読むヘルパー
 scripts/merge-gh-pages.sh master → gh-pages マージ
 scripts/install-scheduled-task.ps1  タスク登録
