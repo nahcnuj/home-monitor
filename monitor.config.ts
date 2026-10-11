@@ -43,8 +43,9 @@ export const monitorConfig = {
   downdetector: {
     service_by_resolver: {
       "203.165.31.152": "J:COM",
+      "122.197.254.136": "J:COM",
     },
     latency_threshold_ms: 1000,
-    report_url: "",
+    report_url: "https://downdetector.jp/shougai/",
   },
 } as const satisfies MonitorConfig;
