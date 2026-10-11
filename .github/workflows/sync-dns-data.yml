@@ -35,6 +35,7 @@ jobs:
           cache-dependency-path: source/package-lock.json
 
       - name: Merge incoming TSV data
+        id: merge
         env:
           DATA_B64: ${{ github.event.inputs.data_b64 }}
         run: |
@@ -83,8 +84,17 @@ jobs:
               with open(path, encoding="utf-8") as f:
                   existing_lines = [l for l in f.read().strip().split("\n") if l.strip()]
 
+          # Records already in the store are not "newly inserted". Downdetector
+          # reporting (issue #30) only considers new records from the last hour.
+          existing_keys = set()
+          for line in existing_lines:
+              cols = line.split("\t")
+              if len(cols) >= 2 and is_dns_server_key(cols[1]):
+                  existing_keys.add(row_key(cols))
+
           seen = set()
           merged = []
+          new_lines = []
           for line in existing_lines + incoming_lines:
               cols = line.split("\t")
               if len(cols) < 2:
@@ -96,11 +106,79 @@ jobs:
                   continue
               seen.add(key)
               merged.append(line)
+              if key not in existing_keys:
+                  new_lines.append(line)
 
           merged = sorted(
               [l for l in merged if int(l.split("\t")[0]) >= cutoff],
               key=lambda l: int(l.split("\t")[0]),
           )
+
+          # Downdetector detection (#30): among newly inserted records from the
+          # last hour, report a service when any record has latency >= threshold
+          # or is a timeout (dns_timeout / job_timeout). Only resolvers mapped
+          # in downdetector.service_by_resolver are reportable.
+          dd = master_cfg.get("downdetector", {}) or {}
+          service_by_resolver = dd.get("service_by_resolver", {}) or {}
+          services_cfg = dd.get("services", {}) or {}
+          threshold = int(dd.get("latency_threshold_ms", 1000) or 1000)
+          now = int(time.time())
+          one_hour_ago = now - 3600
+
+          def is_timeout(cols: list[str]) -> bool:
+              if len(cols) < 5:
+                  return False
+              return cols[4] in ("dns_timeout", "job_timeout")
+
+          def is_bad(cols: list[str]) -> bool:
+              if is_timeout(cols):
+                  return True
+              if len(cols) >= 4:
+                  try:
+                      latency = int(cols[3])
+                  except ValueError:
+                      latency = 0
+                  return latency >= threshold
+              return False
+
+          bad_by_service = {}
+          for line in new_lines:
+              cols = line.split("\t")
+              if len(cols) < 2:
+                  continue
+              resolver = cols[1]
+              service = service_by_resolver.get(resolver)
+              if not service:
+                  continue
+              try:
+                  ts = int(cols[0])
+              except ValueError:
+                  continue
+              if ts < one_hour_ago:
+                  continue
+              if not is_bad(cols):
+                  continue
+              bad_by_service.setdefault(service, []).append(line)
+
+          if bad_by_service:
+              targets = []
+              for service, lines in bad_by_service.items():
+                  svc = services_cfg.get(service, {}) or {}
+                  page_url = svc.get("page_url", "")
+                  if not page_url:
+                      continue
+                  has_timeout = any(is_timeout(l.split("\t")) for l in lines)
+                  targets.append({
+                      "service": service,
+                      "page_url": page_url,
+                      "indicator_label": svc.get("indicator_label", "Broadband Internet"),
+                      "problem_type": "timeout" if has_timeout else "high_latency",
+                      "count": len(lines),
+                  })
+              if targets:
+                  with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+                      out.write("downdetector_targets=" + json.dumps(targets) + "\n")
+                  print("downdetector targets:", json.dumps(targets))
 
           os.makedirs(os.path.dirname(path), exist_ok=True)
           with open(path, "w", encoding="utf-8") as f:
@@ -158,3 +236,18 @@ jobs:
               workflow_id: 'deploy-pages.yml',
               ref: 'gh-pages'
             });
+
+      - name: Install Playwright browsers (Downdetector RPA)
+        if: steps.merge.outputs.downdetector_targets != ''
+        working-directory: source
+        run: npx playwright install chromium --with-deps
+
+      - name: Report to Downdetector
+        # Runs in GitHub Actions (not on the home PC): when the home DNS is
+        # broken the PC often cannot reach Downdetector, so the report must be
+        # submitted from the cloud. A failure here never blocks the data sync.
+        if: steps.merge.outputs.downdetector_targets != ''
+        working-directory: source
+        env:
+          DD_TARGETS: ${{ steps.merge.outputs.downdetector_targets }}
+        run: node scripts/report-downdetector-targets.mjs

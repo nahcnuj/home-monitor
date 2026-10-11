@@ -117,9 +117,7 @@ GitHub Actions（**Sync DNS Data** / **Deploy Pages** の `prepare-pages`）が 
 - `downdetector.latency_threshold_ms` — 高レイテンシ判定しきい値（デフォルト 1000 ms）
 - `downdetector.services.<name>` — サービス名（`service_by_resolver` の値）ごとの報告先。`page_url`（Downdetector ステータスページの URL）、`indicator_label`（報告ダイアログで選択する問題インジケータのラベル、例: "Broadband Internet" = 固定電話のインターネット）
 
-報告は Playwright による RPA で行います。`report-downdetector.ps1` が `report-downdetector.mjs` を呼び出し、Chromium でステータスページを開いて「問題を報告」ボタンをクリックし、指定されたインジケータを選択して送信します。Downdetector に公的な書き込み API は無いため、公開されている Web ページをブラウザで操作します。30 分に 1 回までに制限（`data/local/.last-downdetector-report`）。
-
-報告が失敗した場合はログに記録するだけで、制限状態は更新されず次回で再試行します。報告失敗はデータ同期を止めません。
+報告は **GitHub Actions（Sync DNS Data）** で行われます。ローカル PC の DNS が死んでいるとき、PC からは Downdetector に届かない可能性が高いため、クラウド側で報告します。ワークフローが新規挿入（未記録）かつ直近1時間のレコードから高レイテンシまたはタイムアウトを検出し、`report-downdetector-targets.mjs` が Playwright で Downdetector のステータスページを操作します（公的な書き込み API は無いため公開 Web ページを RPA）。Downdetector の操作は失敗してもデータ同期を止めません。
 
 複数ドメインは並列で `nslookup` するため、1分間隔の計測でも全体の所要時間はおおむねタイムアウト値程度です。
 
@@ -157,7 +155,7 @@ UI や設定を `master` に push すると **Merge to gh-pages** → **Deploy P
 monitor.config.ts         共通設定（唯一のソース）
 scripts/collect-dns.ps1   計測スクリプト
 scripts/publish-data.ps1  データ送信
-scripts/report-downdetector.ps1  Downdetector への報告（呼び出し元）
+scripts/report-downdetector-targets.mjs  GitHub Actions からの Downdetector 報告（オーケストレータ）
 scripts/report-downdetector.mjs  Playwright によるステータスページ操作（RPA 本体）
 scripts/Get-MonitorConfig.ps1  PS から設定を読むヘルパー
 scripts/merge-gh-pages.sh master → gh-pages マージ

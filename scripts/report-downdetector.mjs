@@ -1,4 +1,22 @@
 import { chromium } from "playwright";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+/**
+ * Downdetector reporting (issue #30).
+ *
+ * Runs in GitHub Actions (Sync DNS Data), not on the home PC: when the home
+ * DNS is broken the PC often cannot reach Downdetector at all, so the report
+ * must be submitted from the cloud. The workflow detects bad records and
+ * passes them to report-downdetector-targets.mjs, which invokes this script
+ * per service. Rate-limit state is kept under scripts/.downdetector-state/.
+ *
+ * Downdetector has no public write API, so this drives the public status
+ * page via Playwright (RPA): it opens the page in a real browser, clicks
+ * the "Report a problem" button, selects the appropriate issue indicator,
+ * and confirms the submission. This uses only the publicly available web UI.
+ */
 
 const args = process.argv.slice(2);
 const parsed = {};
@@ -10,19 +28,48 @@ for (let i = 0; i < args.length; i++) {
   }
 }
 
-const pageUrl = parsed["page-url"] || "";
-const indicatorLabel = parsed["indicator"] || "Broadband Internet";
+const pageUrl = parsed["page-url"] || process.env.DD_PAGE_URL || "";
+const indicatorLabel = parsed["indicator"] || process.env.DD_INDICATOR || "Broadband Internet";
 const headless = parsed["headless"] !== "false";
 const timeoutMs = parseInt(parsed["timeout"] || "30000", 10);
 const problemType = parsed["problem-type"] || "timeout";
 const count = parseInt(parsed["count"] || "1", 10);
+const stateFile =
+  parsed["state-file"] ||
+  process.env.DD_STATE_FILE ||
+  dirname(fileURLToPath(import.meta.url)) + "/.downdetector-state/last-report";
+const rateLimitSec = parseInt(parsed["rate-limit-sec"] || process.env.DD_RATE_LIMIT_SEC || "1800", 10);
 
 if (!pageUrl) {
-  console.error("Error: --page-url is required");
+  console.error("Error: --page-url (or DD_PAGE_URL) is required");
   process.exit(1);
 }
 
+function now() {
+  return Math.floor(Date.now() / 1000);
+}
+
+function isRateLimited() {
+  try {
+    const raw = readFileSync(stateFile, "utf8").trim();
+    if (!/^\d+$/.test(raw)) return false;
+    return now() - parseInt(raw, 10) < rateLimitSec;
+  } catch {
+    return false;
+  }
+}
+
+function markReported() {
+  mkdirSync(dirname(stateFile), { recursive: true });
+  writeFileSync(stateFile, String(now()), "utf8");
+}
+
 async function run() {
+  if (isRateLimited()) {
+    console.log(`Rate limited: already reported within the last ${rateLimitSec}s`);
+    process.exit(0);
+  }
+
   const browser = await chromium.launch({
     headless,
     args: ["--no-sandbox", "--disable-blink-features=AutomationControlled"],
@@ -115,6 +162,7 @@ async function run() {
   await browser.close();
 
   if (success) {
+    markReported();
     console.log(`Report submitted successfully (${indicatorLabel}, problem=${problemType}, count=${count})`);
     process.exit(0);
   } else {
