@@ -32,12 +32,25 @@ function Get-PublishSettings {
             if ($prop.Name) { $serviceByResolver[$prop.Name] = [string]$prop.Value }
         }
     }
+    $services = @{}
+    if ($null -ne $dd.services) {
+        foreach ($svc in $dd.services.PSObject.Properties) {
+            if (-not $svc.Name) { continue }
+            $target = $svc.Value
+            $services[$svc.Name] = @{
+                CompanyId   = if ($target.company_id) { [string]$target.company_id } else { "" }
+                IndicatorId = if ($null -ne $target.indicator_id) { [int]$target.indicator_id } else { 0 }
+                PageUrl     = if ($target.page_url) { [string]$target.page_url } else { "" }
+            }
+        }
+    }
     return @{
         MaxAttempts = $maxAttempts
         RetryDelaysSec = $delays
         ServiceByResolver = $serviceByResolver
         LatencyThresholdMs = if ($null -ne $dd.latency_threshold_ms -and $dd.latency_threshold_ms -gt 0) { [int]$dd.latency_threshold_ms } else { 1000 }
-        DowndetectorReportUrl = if ($dd.report_url) { [string]$dd.report_url } else { "" }
+        DataApiUrl = if ($dd.data_api_url) { [string]$dd.data_api_url } else { "https://data-api.downdetector.com" }
+        Services = $services
     }
 }
 
@@ -296,10 +309,18 @@ try {
             }
             foreach ($service in $byService.Keys) {
                 try {
-                    & (Join-Path $PSScriptRoot "report-downdetector.ps1") `
-                        -Service $service `
-                        -BadLines ($byService[$service].ToArray()) `
-                        -ReportUrl $settings.DowndetectorReportUrl
+                    $target = $settings.Services[$service]
+                    $reportArgs = @{
+                        Service   = $service
+                        BadLines  = $byService[$service].ToArray()
+                        DataApiUrl = $settings.DataApiUrl
+                    }
+                    if ($null -ne $target) {
+                        $reportArgs.CompanyId = $target.CompanyId
+                        $reportArgs.IndicatorId = $target.IndicatorId
+                        $reportArgs.PageUrl = $target.PageUrl
+                    }
+                    & (Join-Path $PSScriptRoot "report-downdetector.ps1") @reportArgs
                 }
                 catch {
                     Write-TaskLog -TaskName "publish" -Message "downdetector report failed (data sync continues): $_"

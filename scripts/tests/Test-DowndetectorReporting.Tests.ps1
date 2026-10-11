@@ -4,9 +4,13 @@
   Pester tests for Downdetector reporting (issue #30).
 
 .DESCRIPTION
-  Covers the detection helpers in publish-data.ps1 and the payload/rate-limit
-  helpers in report-downdetector.ps1. No network access is required: the sender
-  is exercised in -DryRun mode and the rate-limit state lives in a temp dir.
+  Covers the detection helpers in publish-data.ps1 and the payload/URL/rate-limit
+  helpers in report-downdetector.ps1. No network access is required: the senders are
+  exercised with a mocked Invoke-WebRequest (and a dry-run path), and the
+  rate-limit state lives in a temp dir.
+
+  The indicator POST and the report-beacon GET fallback are both covered, since
+  Cloudflare rejects the POST from non-browser clients but accepts the beacon.
 
   Regression intent: a high-latency *success* line (4 columns) must be detected.
   The previous code required 5 columns and silently ignored success lines.
@@ -151,13 +155,74 @@ Describe "Test-DowndetectorRateLimit" {
     }
 }
 
+Describe "Get-DowndetectorHeaders" {
+    It "derives Origin and Referer from the status page URL" {
+        $h = Get-DowndetectorHeaders -PageUrl "https://downdetector.jp/shougai/jcom/"
+        $h["Origin"] | Should -Be "https://downdetector.jp"
+        $h["Referer"] | Should -Be "https://downdetector.jp/shougai/jcom/"
+    }
+    It "omits Origin/Referer when there is no page URL" {
+        $h = Get-DowndetectorHeaders -PageUrl ""
+        $h.ContainsKey("Origin") | Should -BeFalse
+        $h.ContainsKey("Accept") | Should -BeTrue
+    }
+}
+
+Describe "New-DowndetectorIndicatorUri" {
+    It "builds the data-api indicator URL used by the report button" {
+        $uri = New-DowndetectorIndicatorUri -DataApiUrl "https://data-api.downdetector.com" `
+            -CompanyId "33478" -IndicatorId 11 -ViewToken "abc.def"
+        $uri | Should -Be "https://data-api.downdetector.com/v1/companies/33478/indicators?indicator=v2&i=11&vt=abc.def"
+    }
+    It "escapes the view token" {
+        $uri = New-DowndetectorIndicatorUri -DataApiUrl "https://x" -CompanyId "1" `
+            -IndicatorId 11 -ViewToken "a b"
+        $uri | Should -Be "https://x/v1/companies/1/indicators?indicator=v2&i=11&vt=a%20b"
+    }
+}
+
 Describe "Send-DowndetectorReport" {
     It "does not POST in dry-run but reports success" {
-        Send-DowndetectorReport -Payload (Get-DowndetectorPayload -Service "J:COM" -BadLines @($successHigh)) `
-            -ReportUrl "https://example.invalid/report" -DryRun | Should -BeTrue
+        Send-DowndetectorReport -IndicatorUri "https://example.invalid/x" -DryRun | Should -BeTrue
     }
-    It "is record-only success when no report URL is configured" {
-        Send-DowndetectorReport -Payload (Get-DowndetectorPayload -Service "J:COM" -BadLines @($successHigh)) `
-            -ReportUrl "" | Should -BeTrue
+    It "POSTs to the indicator URI without a body" {
+        Mock Invoke-WebRequest { [pscustomobject]@{ StatusCode = 200 } }
+        Send-DowndetectorReport -IndicatorUri "https://example.invalid/x" -Headers @{ Accept = "application/json" } | Should -BeTrue
+        Should -Invoke Invoke-WebRequest -Times 1 -Exactly -ParameterFilter {
+            $Method -eq 'Post' -and $Uri -eq "https://example.invalid/x"
+        }
+    }
+    It "returns false when the endpoint is rate limited (Cloudflare)" {
+        Mock Invoke-WebRequest { throw "error code: 1015" }
+        Send-DowndetectorReport -IndicatorUri "https://example.invalid/x" | Should -BeFalse
+    }
+}
+
+Describe "Get-DowndetectorReportBeaconUri" {
+    It "builds the status-page report beacon URL" {
+        $uri = Get-DowndetectorReportBeaconUri -DataApiUrl "https://data-api.downdetector.com" `
+            -CompanyId "33478" -PageUrl "https://downdetector.jp/shougai/jcom/"
+        $uri | Should -Be "https://data-api.downdetector.com/v1/companies/33478/report?ref=https%3A%2F%2Fdowndetector.jp%2Fshougai%2Fjcom%2F"
+    }
+    It "leaves an empty ref when there is no page URL" {
+        $uri = Get-DowndetectorReportBeaconUri -DataApiUrl "https://x" -CompanyId "1" -PageUrl ""
+        $uri | Should -Be "https://x/v1/companies/1/report?ref="
+    }
+}
+
+Describe "Send-DowndetectorVisitBeacon" {
+    It "does not send in dry-run but reports success" {
+        Send-DowndetectorVisitBeacon -BeaconUri "https://example.invalid/report" -DryRun | Should -BeTrue
+    }
+    It "GETs the beacon URI" {
+        Mock Invoke-WebRequest { [pscustomobject]@{ StatusCode = 200 } }
+        Send-DowndetectorVisitBeacon -BeaconUri "https://example.invalid/report" | Should -BeTrue
+        Should -Invoke Invoke-WebRequest -Times 1 -Exactly -ParameterFilter {
+            $Method -eq 'Get' -and $Uri -eq "https://example.invalid/report"
+        }
+    }
+    It "returns false when the beacon is rejected" {
+        Mock Invoke-WebRequest { throw "error code: 1015" }
+        Send-DowndetectorVisitBeacon -BeaconUri "https://example.invalid/report" | Should -BeFalse
     }
 }

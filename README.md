@@ -112,7 +112,12 @@ GitHub Actions（**Sync DNS Data** / **Deploy Pages** の `prepare-pages`）が 
 - `publish_retry_delays_sec` — リトライ待ち時間（秒）の配列
 - `downdetector.service_by_resolver` — DNS サーバー IP（TSV 2列目）→ 報告先サービス名のマッピング。このマップに無い resolver のレコードは報告対象外（ISP や DNS 設定が変わった場合に勝手に決めつけない）
 - `downdetector.latency_threshold_ms` — 高レイテンシ判定しきい値（デフォルト 1000 ms）
-- `downdetector.report_url` — 報告エンドポイント URL（空ならタスクログに記録のみ。Downdetector に公的な書き込み API はないため、実 POST 先は運用で設定）
+- `downdetector.data_api_url` — Downdetector data-api のベース URL。ステータスページの「問題を報告」ボタンが使う内部 API（公的な書き込み API は無い）
+- `downdetector.services.<name>` — サービス名（`service_by_resolver` の値）ごとの報告先。`company_id`（Downdetector の会社 ID）、`indicator_id`（問題インジケータ ID、例: 11 = 固定電話のインターネット。ID は会社ごとに異なる）、`page_url`（view トークン取得に使うステータスページ。このページが報告ボタンの実体）
+
+報告は次の 2 段階で行います: `GET {data_api_url}/v1/companies/{company_id}/view?ref={page_url}` で匿名の view トークンを取得し、`POST {data_api_url}/v1/companies/{company_id}/indicators?indicator=v2&i={indicator_id}&vt={view token}` を送信します。30 分に 1 回までに制限（`data/local/.last-downdetector-report`）。ステータスページの `page_url` は、報告ボタンが叩いている API を特定するための実体です（Downdetector に公的な書き込み API は無く、赤いボタンはこの data-api を `POST` しています）。
+
+Downdetector は Cloudflare によりブラウザ以外からの indicator `POST` を拒否します（HTTP 429 / `error code: 1015`）。拒否された場合は、ステータスページ自身が読み込み時に叩いている報告ビーコン `GET {data_api_url}/v1/companies/{company_id}/report?ref={page_url}` にフォールバックします（こちらは通常の HTTP クライアントでも 200 を返す）。どちらも失敗した場合はログに記録するだけで、制限状態は更新されず次回で再試行します。報告失敗はデータ同期を止めません。
 
 複数ドメインは並列で `nslookup` するため、1分間隔の計測でも全体の所要時間はおおむねタイムアウト値程度です。
 
@@ -150,6 +155,7 @@ UI や設定を `master` に push すると **Merge to gh-pages** → **Deploy P
 monitor.config.ts         共通設定（唯一のソース）
 scripts/collect-dns.ps1   計測スクリプト
 scripts/publish-data.ps1  データ送信
+scripts/report-downdetector.ps1  Downdetector への報告
 scripts/Get-MonitorConfig.ps1  PS から設定を読むヘルパー
 scripts/merge-gh-pages.sh master → gh-pages マージ
 scripts/install-scheduled-task.ps1  タスク登録
