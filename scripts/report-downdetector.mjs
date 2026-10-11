@@ -44,7 +44,7 @@ export function buildOptions(argv, env) {
     pageUrl: parsed["page-url"] || env.DD_PAGE_URL || "",
     indicatorLabel: parsed["indicator"] || env.DD_INDICATOR || "Broadband Internet",
     headless: parsed["headless"] !== "false",
-    timeoutMs: parseInt(parsed["timeout"] || "30000", 10),
+    timeoutMs: parseInt(parsed["timeout"] || "90000", 10),
     problemType: parsed["problem-type"] || "timeout",
     count: parseInt(parsed["count"] || "1", 10),
     stateFile:
@@ -52,6 +52,8 @@ export function buildOptions(argv, env) {
       env.DD_STATE_FILE ||
       dirname(fileURLToPath(import.meta.url)) + "/.downdetector-state/last-report",
     rateLimitSec: parseInt(parsed["rate-limit-sec"] || env.DD_RATE_LIMIT_SEC || "1800", 10),
+    waitUntil: parsed["wait-until"] || env.DD_WAIT_UNTIL || "domcontentloaded",
+    maxRetries: parseInt(parsed["max-retries"] || env.DD_MAX_RETRIES || "2", 10),
   };
 }
 
@@ -128,6 +130,8 @@ async function run() {
     count,
     stateFile,
     rateLimitSec,
+    waitUntil,
+    maxRetries,
   } = buildOptions(process.argv.slice(2), process.env);
 
   if (!pageUrl) {
@@ -161,7 +165,22 @@ async function run() {
   page.setDefaultTimeout(timeoutMs);
 
   console.log(`Navigating to ${pageUrl}...`);
-  await page.goto(pageUrl, { waitUntil: "networkidle", timeout: timeoutMs });
+  let lastError;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      await page.goto(pageUrl, { waitUntil, timeout: timeoutMs });
+      break;
+    } catch (err) {
+      lastError = err;
+      if (attempt < maxRetries) {
+        console.log(`Navigation attempt ${attempt + 1} failed: ${err.message}. Retrying...`);
+        await page.waitForTimeout(5000);
+      } else {
+        console.error(`All ${maxRetries + 1} navigation attempts failed.`);
+        throw err;
+      }
+    }
+  }
 
   // Wait for the page to fully render (Downdetector is a JS-heavy SPA)
   await page.waitForTimeout(3000);
