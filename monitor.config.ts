@@ -8,6 +8,24 @@ export interface MonitorConfig {
   publish_interval_min: number;
   publish_max_attempts: number;
   publish_retry_delays_sec: readonly number[];
+  /** Downdetector reporting (latency >= threshold or dns/job_timeout) */
+  downdetector: {
+    /** Resolver DNS server IP (TSV col 2) => Downdetector service name.
+     *  A record is reported only when its resolver is a key here, so a changed
+     *  ISP/DNS server is never guessed. */
+    service_by_resolver: Readonly<Record<string, string>>;
+    /** High latency threshold in ms for a Downdetector alert */
+    latency_threshold_ms: number;
+    /** Report target per service name (a value in service_by_resolver).
+     *  page_url: Downdetector status page URL (the public web UI is driven via
+     *  Playwright RPA — no private API is used);
+     *  indicator_label: label of the issue indicator to select in the report
+     *  dialog (e.g. "Broadband Internet" for J:COM fixed-line internet). */
+    services: Readonly<Record<string, {
+      page_url: string;
+      indicator_label: string;
+    }>>;
+  };
 }
 
 export const monitorConfig = {
@@ -29,4 +47,17 @@ export const monitorConfig = {
   publish_interval_min: 10,
   publish_max_attempts: 3,
   publish_retry_delays_sec: [30, 60, 120],
+  downdetector: {
+    service_by_resolver: {
+      "203.165.31.152": "J:COM",
+      "122.197.254.136": "J:COM",
+    },
+    latency_threshold_ms: 1000,
+    services: {
+      "J:COM": {
+        page_url: "https://downdetector.jp/shougai/jcom/",
+        indicator_label: "Broadband Internet",
+      },
+    },
+  },
 } as const satisfies MonitorConfig;
