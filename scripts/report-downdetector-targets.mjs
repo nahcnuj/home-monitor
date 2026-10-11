@@ -12,37 +12,36 @@
  * GitHub Actions. Reporting is best-effort — a failure is logged and does
  * not fail the data sync.
  *
+ * The pure helpers (parseTargets, buildArgs, reportAll) are exported for
+ * the vitest suite in scripts/tests/.
+ *
  * Usage:
  *   DD_TARGETS='[{...}]' node scripts/report-downdetector-targets.mjs
  */
 import { execFileSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const stateDir = join(here, ".downdetector-state");
 
-let targets = [];
-try {
-  targets = JSON.parse(process.env.DD_TARGETS || "[]");
-} catch (err) {
-  console.error(`Invalid DD_TARGETS JSON: ${err.message}`);
-  process.exit(0);
+export function parseTargets(rawJson) {
+  let targets;
+  try {
+    targets = JSON.parse(rawJson || "[]");
+  } catch (err) {
+    return { error: `Invalid DD_TARGETS JSON: ${err.message}` };
+  }
+  if (!Array.isArray(targets) || targets.length === 0) {
+    return { targets: [] };
+  }
+  return { targets };
 }
 
-if (!Array.isArray(targets) || targets.length === 0) {
-  console.log("No Downdetector targets");
-  process.exit(0);
-}
-
-mkdirSync(stateDir, { recursive: true });
-const stateFile = join(stateDir, "last-report");
-
-let failed = 0;
-for (const target of targets) {
-  const args = [
-    join(here, "report-downdetector.mjs"),
+export function buildArgs(scriptPath, target, stateFile) {
+  return [
+    scriptPath,
     "--page-url",
     String(target.page_url),
     "--indicator",
@@ -54,16 +53,55 @@ for (const target of targets) {
     "--state-file",
     stateFile,
   ];
-  try {
-    execFileSync(process.execPath, args, { stdio: "inherit" });
-    console.log(
-      `Downdetector report ok: ${target.service} (${target.problem_type}, count=${target.count})`,
-    );
-  } catch (err) {
-    failed += 1;
-    console.error(`Downdetector report failed for ${target.service}: ${err.message}`);
-  }
 }
 
-// Never fail the workflow: reporting must not block the data sync.
-process.exit(0);
+export function reportAll(targets, { execFileSync: execFile, scriptPath, stateFile, log = console.log, error = console.error }) {
+  let failed = 0;
+  for (const target of targets) {
+    const args = buildArgs(scriptPath, target, stateFile);
+    try {
+      execFile(process.execPath, args, { stdio: "inherit" });
+      log(
+        `Downdetector report ok: ${target.service} (${target.problem_type}, count=${target.count})`,
+      );
+    } catch (err) {
+      failed += 1;
+      error(`Downdetector report failed for ${target.service}: ${err.message}`);
+    }
+  }
+  return failed;
+}
+
+function main() {
+  const { targets, error } = parseTargets(process.env.DD_TARGETS);
+  if (error) {
+    console.error(error);
+    process.exit(0);
+  }
+
+  if (targets.length === 0) {
+    console.log("No Downdetector targets");
+    process.exit(0);
+  }
+
+  mkdirSync(stateDir, { recursive: true });
+  const stateFile = join(stateDir, "last-report");
+
+  reportAll(targets, {
+    execFileSync,
+    scriptPath: join(here, "report-downdetector.mjs"),
+    stateFile,
+  });
+
+  // Never fail the workflow: reporting must not block the data sync.
+  process.exit(0);
+}
+
+// Only run when executed directly, not when imported by tests.
+const invokedDirectly =
+  process.argv[1] !== undefined &&
+  import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (invokedDirectly) {
+  main();
+}
