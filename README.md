@@ -115,7 +115,7 @@ GitHub Actions（**Sync DNS Data** / **Deploy Pages** の `prepare-pages`）が 
 - `publish_retry_delays_sec` — リトライ待ち時間（秒）の配列
 - `downdetector.service_by_resolver` — DNS サーバー IP（TSV 2列目）→ 報告先サービス名のマッピング。このマップに無い resolver のレコードは報告対象外（ISP や DNS 設定が変わった場合に勝手に決めつけない）
 - `downdetector.latency_threshold_ms` — 高レイテンシ判定しきい値（デフォルト 1000 ms）
-- `downdetector.services.<name>` — サービス名（`service_by_resolver` の値）ごとの報告先。`page_url`（Downdetector ステータスページの URL）、`indicator_label`（報告ダイアログで選択する問題インジケータのラベル、例: "Broadband Internet" = 固定電話のインターネット）
+- `downdetector.services.<name>` — サービス名（`service_by_resolver` の値）ごとの報告先。`page_url`（Downdetector ステータスページの URL）、`indicator_label`（報告で選択する問題カテゴリのページ上のラベル。RPA は ja-JP ロケールでページを開くため日本語 UI のラベルを指定する。例: "ブロードバンド" = 固定電話のインターネット）
 
 報告は **GitHub Actions（Sync DNS Data）** で行われます。ローカル PC の DNS が死んでいるとき、PC からは Downdetector に届かない可能性が高いため、クラウド側で報告します。ワークフローが新規挿入（未記録）かつ直近1時間のレコードから高レイテンシまたはタイムアウトを検出し、`report-downdetector-targets.mjs` が Playwright で Downdetector のステータスページを操作します（公的な書き込み API は無いため公開 Web ページを RPA）。Downdetector の操作は失敗してもデータ同期を止めません。
 
