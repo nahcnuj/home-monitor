@@ -19,8 +19,9 @@ export interface MonitorConfig {
     /** Report target per service name (a value in service_by_resolver).
      *  page_url: Downdetector status page URL (the public web UI is driven via
      *  Playwright RPA — no private API is used);
-     *  indicator_label: label of the issue indicator to select in the report
-     *  dialog (e.g. "Broadband Internet" for J:COM fixed-line internet). */
+     *  indicator_label: on-page label of the issue category to select. The RPA
+     *  renders the page with the ja-JP locale, so this must match the Japanese
+     *  UI (e.g. "ブロードバンド" for J:COM fixed-line internet). */
     services: Readonly<Record<string, {
       page_url: string;
       indicator_label: string;
@@ -56,7 +57,7 @@ export const monitorConfig = {
     services: {
       "J:COM": {
         page_url: "https://downdetector.jp/shougai/jcom/",
-        indicator_label: "Broadband Internet",
+        indicator_label: "ブロードバンド",
       },
     },
   },
