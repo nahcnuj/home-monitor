@@ -183,27 +183,27 @@ async function run() {
     }
   }
 
-   // Wait for the page to fully render (Downdetector is a JS-heavy SPA and
-   // may sit behind a Cloudflare challenge first).
-   await page.waitForTimeout(10000);
+  // Wait for the page to fully render (Downdetector is a JS-heavy SPA and
+  // may sit behind a Cloudflare challenge first).
+  await page.waitForTimeout(10000);
 
-   // Step 1: Select the issue category (e.g., "Broadband Internet"). The
-   // categories are role="radio" buttons rendered directly on the page under
-   // the "Report a problem" heading — there is no separate "Report a problem"
-   // button to click first.
-   console.log(`Selecting "${indicatorLabel}"...`);
-   const indicatorBtn = page.getByRole("radio", {
-     name: new RegExp(escapeRegExp(indicatorLabel), "i"),
-   });
-   await indicatorBtn.waitFor({ state: "visible", timeout: timeoutMs });
-   await indicatorBtn.click();
-   await page.waitForTimeout(2000);
+  // Step 1: Select the issue category (e.g., "Broadband Internet"). The
+  // categories are role="radio" buttons rendered directly on the page under
+  // the "Report a problem" heading — there is no separate "Report a problem"
+  // button to click first.
+  console.log(`Selecting "${indicatorLabel}"...`);
+  const indicatorBtn = page.getByRole("radio", {
+    name: new RegExp(escapeRegExp(indicatorLabel), "i"),
+  });
+  await indicatorBtn.waitFor({ state: "visible", timeout: timeoutMs });
+  await indicatorBtn.click();
+  await page.waitForTimeout(2000);
 
-   // Step 2: Check for confirmation dialog and confirm if present
-   await confirmSubmission(page);
+  // Step 2: Check for confirmation dialog and confirm if present
+  await confirmSubmission(page);
 
-   // Step 3: Verify success — look for success indicator or confirmation text
-   const success = await determineSuccess(page);
+  // Step 3: Verify success — look for success indicator or confirmation text
+  const success = await determineSuccess(page);
 
   await browser.close();
 

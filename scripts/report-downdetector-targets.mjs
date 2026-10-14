@@ -7,10 +7,10 @@
  * (DD_TARGETS env var). Each target drives the public Downdetector status
  * page via Playwright RPA (see report-downdetector.mjs).
  *
-  * Runs in the cloud, not on the home PC: when the home DNS is broken the
-  * PC often cannot reach Downdetector, so the report must be submitted from
-  * GitHub Actions. The report runs after the data push and deployment, so a
-  * reporting failure can no longer hide behind a green workflow run.
+ * Runs in the cloud, not on the home PC: when the home DNS is broken the
+ * PC often cannot reach Downdetector, so the report must be submitted from
+ * GitHub Actions. The report runs after the data push and deployment, so a
+ * reporting failure can no longer hide behind a green workflow run.
  *
  * The pure helpers (parseTargets, buildArgs, reportAll) are exported for
  * the vitest suite in scripts/tests/.
