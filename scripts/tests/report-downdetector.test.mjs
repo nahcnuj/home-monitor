@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   buildOptions,
-  confirmSubmission,
   determineSuccess,
   escapeRegExp,
   isRateLimited,
@@ -77,7 +76,7 @@ describe("buildOptions", () => {
 
   it("applies defaults", () => {
     const options = buildOptions([], {});
-    expect(options.indicatorLabel).toBe("Broadband Internet");
+    expect(options.indicatorLabel).toBe("ブロードバンド");
     expect(options.headless).toBe(true);
     expect(options.timeoutMs).toBe(90000);
     expect(options.problemType).toBe("timeout");
@@ -156,49 +155,6 @@ function fakePage({ indicators = [], dialog = false } = {}) {
     getByText: () => locatorFor(indicators[indicatorIndex++]),
   };
 }
-
-describe("confirmSubmission", () => {
-  it("clicks the confirm button when it is visible", async () => {
-    let clicked = false;
-    const page = {
-      getByRole: () => ({
-        isVisible: async () => true,
-        click: async () => {
-          clicked = true;
-        },
-      }),
-      waitForTimeout: async () => {},
-    };
-    await confirmSubmission(page);
-    expect(clicked).toBe(true);
-  });
-
-  it("does nothing when no confirm button is visible", async () => {
-    const page = {
-      getByRole: () => ({
-        isVisible: async () => false,
-        click: async () => {
-          throw new Error("must not click");
-        },
-      }),
-      waitForTimeout: async () => {},
-    };
-    await confirmSubmission(page);
-  });
-
-  it("swallows lookup errors", async () => {
-    const page = {
-      getByRole: () => ({
-        isVisible: async () => {
-          throw new Error("lookup failed");
-        },
-        click: async () => {},
-      }),
-      waitForTimeout: async () => {},
-    };
-    await expect(confirmSubmission(page)).resolves.toBeUndefined();
-  });
-});
 
 describe("determineSuccess", () => {
   const none = [false, false, false, false, false];

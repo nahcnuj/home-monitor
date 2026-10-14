@@ -13,14 +13,19 @@ import { fileURLToPath, pathToFileURL } from "node:url";
  * per service. Rate-limit state is kept under scripts/.downdetector-state/.
  *
  * Downdetector has no public write API, so this drives the public status
- * page via Playwright (RPA): it opens the page in a real browser, selects
- * the appropriate issue indicator (a role="radio" category button rendered
- * under the "Report a problem" heading), and confirms the submission. This
+ * page via Playwright (RPA): it opens the page in a real browser and selects
+ * the issue category (a role="radio" button rendered under the "問題を報告"
+ * heading). Selecting the category submits the report immediately — the page
+ * then shows a thank-you message; there is no separate submit button. This
  * uses only the publicly available web UI.
  *
+ * The page is requested with the ja-JP locale, so the category labels come
+ * from the Japanese UI (configured via downdetector.services.<name>.
+ * indicator_label in monitor.config.ts).
+ *
  * The pure helpers (parseArgs, escapeRegExp, buildOptions, isRateLimited,
- * markReported, confirmSubmission, determineSuccess) are exported for the
- * vitest suite in scripts/tests/.
+ * markReported, determineSuccess) are exported for the vitest suite in
+ * scripts/tests/.
  */
 
 export function parseArgs(argv) {
@@ -43,7 +48,7 @@ export function buildOptions(argv, env) {
   const parsed = parseArgs(argv);
   return {
     pageUrl: parsed["page-url"] || env.DD_PAGE_URL || "",
-    indicatorLabel: parsed["indicator"] || env.DD_INDICATOR || "Broadband Internet",
+    indicatorLabel: parsed["indicator"] || env.DD_INDICATOR || "ブロードバンド",
     headless: parsed["headless"] !== "false",
     timeoutMs: parseInt(parsed["timeout"] || "90000", 10),
     problemType: parsed["problem-type"] || "timeout",
@@ -73,27 +78,13 @@ export function markReported(stateFile, { nowSec }) {
   writeFileSync(stateFile, String(nowSec), "utf8");
 }
 
-export async function confirmSubmission(page) {
-  try {
-    const confirmBtn = page.getByRole("button", {
-      name: /^(submit|report|confirm|send|はい|確認|送信)/i,
-    });
-    if (await confirmBtn.isVisible({ timeout: 2000 })) {
-      console.log("Confirming report submission...");
-      await confirmBtn.click();
-      await page.waitForTimeout(1500);
-    }
-  } catch {
-    // No confirmation dialog — submission may already be complete
-  }
-}
-
 export async function determineSuccess(page) {
   const successIndicators = [
-    page.getByRole("heading", { name: /thank you|reported|success/i }),
+    page.getByRole("heading", { name: /thank you|reported|success|ありがとう/i }),
     page.getByText(/thank you for your report/i),
     page.getByText(/report submitted/i),
     page.getByText(/ありがとうございました/i),
+    page.getByText(/ありがとうございます/i),
     page.getByText(/報告しました/i),
   ];
 
@@ -187,10 +178,10 @@ async function run() {
   // may sit behind a Cloudflare challenge first).
   await page.waitForTimeout(10000);
 
-  // Step 1: Select the issue category (e.g., "Broadband Internet"). The
-  // categories are role="radio" buttons rendered directly on the page under
-  // the "Report a problem" heading — there is no separate "Report a problem"
-  // button to click first.
+  // Select the issue category (e.g., "ブロードバンド"). The categories are
+  // role="radio" buttons rendered directly on the page under the "問題を報告"
+  // heading — there is no separate "Report a problem" button to click first,
+  // and selecting a category submits the report on its own.
   console.log(`Selecting "${indicatorLabel}"...`);
   const indicatorBtn = page.getByRole("radio", {
     name: new RegExp(escapeRegExp(indicatorLabel), "i"),
@@ -199,10 +190,7 @@ async function run() {
   await indicatorBtn.click();
   await page.waitForTimeout(2000);
 
-  // Step 2: Check for confirmation dialog and confirm if present
-  await confirmSubmission(page);
-
-  // Step 3: Verify success — look for success indicator or confirmation text
+  // Verify success — look for the thank-you message shown after reporting.
   const success = await determineSuccess(page);
 
   await browser.close();
