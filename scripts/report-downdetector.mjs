@@ -13,9 +13,10 @@ import { fileURLToPath, pathToFileURL } from "node:url";
  * per service. Rate-limit state is kept under scripts/.downdetector-state/.
  *
  * Downdetector has no public write API, so this drives the public status
- * page via Playwright (RPA): it opens the page in a real browser, clicks
- * the "Report a problem" button, selects the appropriate issue indicator,
- * and confirms the submission. This uses only the publicly available web UI.
+ * page via Playwright (RPA): it opens the page in a real browser, selects
+ * the appropriate issue indicator (a role="radio" category button rendered
+ * under the "Report a problem" heading), and confirms the submission. This
+ * uses only the publicly available web UI.
  *
  * The pure helpers (parseArgs, escapeRegExp, buildOptions, isRateLimited,
  * markReported, confirmSubmission, determineSuccess) are exported for the
@@ -186,29 +187,23 @@ async function run() {
    // may sit behind a Cloudflare challenge first).
    await page.waitForTimeout(10000);
 
-   // Step 1: Click "Report a problem" button (label varies by locale).
-   console.log('Clicking "Report a problem"...');
-   const reportBtn = page.getByRole("button", {
-     name: /report a problem|report problem|problem report|報告|障害を報告/i,
-   }).first();
-   await reportBtn.waitFor({ state: "visible", timeout: timeoutMs });
-   await reportBtn.click();
-   await page.waitForTimeout(1500);
+   // Step 1: Select the issue category (e.g., "Broadband Internet"). The
+   // categories are role="radio" buttons rendered directly on the page under
+   // the "Report a problem" heading — there is no separate "Report a problem"
+   // button to click first.
+   console.log(`Selecting "${indicatorLabel}"...`);
+   const indicatorBtn = page.getByRole("radio", {
+     name: new RegExp(escapeRegExp(indicatorLabel), "i"),
+   });
+   await indicatorBtn.waitFor({ state: "visible", timeout: timeoutMs });
+   await indicatorBtn.click();
+   await page.waitForTimeout(2000);
 
-  // Step 2: Select the indicator (e.g., "Broadband Internet")
-  console.log(`Selecting "${indicatorLabel}"...`);
-  const indicatorBtn = page.getByRole("button", {
-    name: new RegExp(escapeRegExp(indicatorLabel), "i"),
-  });
-  await indicatorBtn.waitFor({ state: "visible", timeout: timeoutMs });
-  await indicatorBtn.click();
-  await page.waitForTimeout(2000);
+   // Step 2: Check for confirmation dialog and confirm if present
+   await confirmSubmission(page);
 
-  // Step 3: Check for confirmation dialog and confirm if present
-  await confirmSubmission(page);
-
-  // Step 4: Verify success — look for success indicator or confirmation text
-  const success = await determineSuccess(page);
+   // Step 3: Verify success — look for success indicator or confirmation text
+   const success = await determineSuccess(page);
 
   await browser.close();
 
