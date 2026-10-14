@@ -242,11 +242,13 @@ jobs:
         working-directory: source
         run: npx playwright install chromium --with-deps
 
-      - name: Report to Downdetector
-        # Runs in GitHub Actions (not on the home PC): when the home DNS is
-        # broken the PC often cannot reach Downdetector, so the report must be
-        # submitted from the cloud. A failure here never blocks the data sync.
-        if: steps.merge.outputs.downdetector_targets != ''
+       - name: Report to Downdetector
+         # Runs in GitHub Actions (not on the home PC): when the home DNS is
+         # broken the PC often cannot reach Downdetector, so the report must be
+         # submitted from the cloud. The data push and Pages deployment already
+         # completed above; a reporting failure therefore marks the run as
+         # failed for visibility without undoing the published data.
+         if: steps.merge.outputs.downdetector_targets != ''
         working-directory: source
         env:
           DD_TARGETS: ${{ steps.merge.outputs.downdetector_targets }}

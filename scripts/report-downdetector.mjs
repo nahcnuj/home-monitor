@@ -182,15 +182,18 @@ async function run() {
     }
   }
 
-  // Wait for the page to fully render (Downdetector is a JS-heavy SPA)
-  await page.waitForTimeout(3000);
+   // Wait for the page to fully render (Downdetector is a JS-heavy SPA and
+   // may sit behind a Cloudflare challenge first).
+   await page.waitForTimeout(10000);
 
-  // Step 1: Click "Report a problem" button
-  console.log('Clicking "Report a problem"...');
-  const reportBtn = page.getByRole("button", { name: /report a problem/i });
-  await reportBtn.waitFor({ state: "visible", timeout: timeoutMs });
-  await reportBtn.click();
-  await page.waitForTimeout(1500);
+   // Step 1: Click "Report a problem" button (label varies by locale).
+   console.log('Clicking "Report a problem"...');
+   const reportBtn = page.getByRole("button", {
+     name: /report a problem|report problem|problem report|報告|障害を報告/i,
+   }).first();
+   await reportBtn.waitFor({ state: "visible", timeout: timeoutMs });
+   await reportBtn.click();
+   await page.waitForTimeout(1500);
 
   // Step 2: Select the indicator (e.g., "Broadband Internet")
   console.log(`Selecting "${indicatorLabel}"...`);

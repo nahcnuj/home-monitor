@@ -7,10 +7,10 @@
  * (DD_TARGETS env var). Each target drives the public Downdetector status
  * page via Playwright RPA (see report-downdetector.mjs).
  *
- * Runs in the cloud, not on the home PC: when the home DNS is broken the
- * PC often cannot reach Downdetector, so the report must be submitted from
- * GitHub Actions. Reporting is best-effort — a failure is logged and does
- * not fail the data sync.
+  * Runs in the cloud, not on the home PC: when the home DNS is broken the
+  * PC often cannot reach Downdetector, so the report must be submitted from
+  * GitHub Actions. The report runs after the data push and deployment, so a
+  * reporting failure can no longer hide behind a green workflow run.
  *
  * The pure helpers (parseTargets, buildArgs, reportAll) are exported for
  * the vitest suite in scripts/tests/.
@@ -72,11 +72,11 @@ export function reportAll(targets, { execFileSync: execFile, scriptPath, stateFi
   return failed;
 }
 
-function main() {
+export function main() {
   const { targets, error } = parseTargets(process.env.DD_TARGETS);
   if (error) {
     console.error(error);
-    process.exit(0);
+    process.exit(1);
   }
 
   if (targets.length === 0) {
@@ -87,13 +87,15 @@ function main() {
   mkdirSync(stateDir, { recursive: true });
   const stateFile = join(stateDir, "last-report");
 
-  reportAll(targets, {
+  const failed = reportAll(targets, {
     execFileSync,
     scriptPath: join(here, "report-downdetector.mjs"),
     stateFile,
   });
 
-  // Never fail the workflow: reporting must not block the data sync.
+  if (failed > 0) {
+    process.exit(1);
+  }
   process.exit(0);
 }
 
