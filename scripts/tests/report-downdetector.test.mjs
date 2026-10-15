@@ -7,9 +7,27 @@ import {
   determineSuccess,
   escapeRegExp,
   isRateLimited,
+  labelCandidates,
   markReported,
   parseArgs,
 } from "../report-downdetector.mjs";
+
+describe("labelCandidates", () => {
+  it("returns a single label as one candidate", () => {
+    expect(labelCandidates("ブロードバンド")).toEqual(["ブロードバンド"]);
+  });
+
+  it("splits a comma-separated list and trims each entry", () => {
+    expect(labelCandidates("ブロードバンド, Broadband Internet")).toEqual([
+      "ブロードバンド",
+      "Broadband Internet",
+    ]);
+  });
+
+  it("drops empty entries", () => {
+    expect(labelCandidates("a, ,b")).toEqual(["a", "b"]);
+  });
+});
 
 describe("parseArgs", () => {
   it("parses --key value pairs", () => {
