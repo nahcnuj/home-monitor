@@ -19,13 +19,17 @@ import { fileURLToPath, pathToFileURL } from "node:url";
  * then shows a thank-you message; there is no separate submit button. This
  * uses only the publicly available web UI.
  *
- * The page is requested with the ja-JP locale, so the category labels come
- * from the Japanese UI (configured via downdetector.services.<name>.
- * indicator_label in monitor.config.ts).
+ * The page is requested with the ja-JP locale, but Downdetector renders the
+ * issue-category labels in the region's UI language (Japanese in the JP
+ * region, English elsewhere). A GitHub Actions runner sits in a foreign
+ * datacenter, so the page often comes back in English and the ja-JP label
+ * alone never matches. downdetector.services.<name>.indicator_label therefore
+ * holds a comma-separated list of labels to try in order (monitor.config.ts),
+ * and the flow below picks the first one that is present on the page.
  *
- * The pure helpers (parseArgs, escapeRegExp, buildOptions, isRateLimited,
- * markReported, determineSuccess) are exported for the vitest suite in
- * scripts/tests/.
+ * The pure helpers (parseArgs, escapeRegExp, labelCandidates, buildOptions,
+ * isRateLimited, markReported, determineSuccess) are exported for the vitest
+ * suite in scripts/tests/.
  */
 
 export function parseArgs(argv) {
@@ -42,6 +46,18 @@ export function parseArgs(argv) {
 
 export function escapeRegExp(text) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Split a comma-separated indicator_label into the individual on-page labels
+ * to try, in order. Accepts a single label (no comma) too, so the config can
+ * stay a plain string. Empty entries are dropped.
+ */
+export function labelCandidates(indicatorLabel) {
+  return String(indicatorLabel)
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 export function buildOptions(argv, env) {
@@ -178,15 +194,44 @@ async function run() {
   // may sit behind a Cloudflare challenge first).
   await page.waitForTimeout(10000);
 
-  // Select the issue category (e.g., "ブロードバンド"). The categories are
-  // role="radio" buttons rendered directly on the page under the "問題を報告"
+  // Wait for the report widget to render, then select the issue category. The
+  // categories are role="radio" buttons under the "問題を報告" (Report an issue)
   // heading — there is no separate "Report a problem" button to click first,
   // and selecting a category submits the report on its own.
-  console.log(`Selecting "${indicatorLabel}"...`);
-  const indicatorBtn = page.getByRole("radio", {
-    name: new RegExp(escapeRegExp(indicatorLabel), "i"),
-  });
-  await indicatorBtn.waitFor({ state: "visible", timeout: timeoutMs });
+  //
+  // The labels are localized (Japanese in the JP region, English elsewhere), so
+  // try every candidate until one is actually present on the page.
+  console.log(`Waiting for the report widget...`);
+  await page.getByRole("radio").first().waitFor({ state: "visible", timeout: timeoutMs });
+
+  const candidates = labelCandidates(indicatorLabel);
+  const perLabelTimeout = Math.max(8000, Math.floor(timeoutMs / candidates.length));
+  let indicatorBtn = null;
+  for (const label of candidates) {
+    const btn = page.getByRole("radio", { name: new RegExp(escapeRegExp(label), "i") }).first();
+    try {
+      await btn.waitFor({ state: "visible", timeout: perLabelTimeout });
+      indicatorBtn = btn;
+      console.log(`Selecting "${label}"...`);
+      break;
+    } catch {
+      console.log(`No category matching "${label}" after ${perLabelTimeout}ms`);
+    }
+  }
+
+  if (!indicatorBtn) {
+    const available = await page
+      .getByRole("radio")
+      .allInnerTexts()
+      .catch(() => []);
+    console.error(`No report category matched any of: ${candidates.join(", ")}`);
+    console.error(
+      `Available categories on page: ${available.map((t) => t.trim()).filter(Boolean).join(", ")}`,
+    );
+    await browser.close();
+    process.exit(1);
+  }
+
   await indicatorBtn.click();
   await page.waitForTimeout(2000);
 
