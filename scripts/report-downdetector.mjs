@@ -189,6 +189,14 @@ async function run() {
     },
   });
 
+  // Reduce automation signals that trigger Cloudflare's managed challenge.
+  await context.addInitScript(() => {
+    Object.defineProperty(navigator, "webdriver", { get: () => undefined });
+    Object.defineProperty(navigator, "plugins", { get: () => [1, 2, 3, 4, 5] });
+    Object.defineProperty(navigator, "languages", { get: () => ["ja-JP", "ja", "en-US", "en"] });
+    if (!window.chrome) window.chrome = { runtime: {} };
+  });
+
   const page = await context.newPage();
   page.setDefaultTimeout(timeoutMs);
 
@@ -214,37 +222,42 @@ async function run() {
   // may sit behind a Cloudflare challenge first).
   await page.waitForTimeout(10000);
 
-  // If a Cloudflare challenge is present, wait for it to resolve
+  // Cloudflare managed challenge: in a headed browser it usually resolves on its
+  // own within a few seconds. Rather than guessing when it is done, just wait
+  // for the report widget's radio buttons to appear (they only render once the
+  // challenge has been passed and the real page has loaded). Give it a generous
+  // budget so a slow challenge does not abort prematurely.
+  const radioWaitMs = Math.max(timeoutMs, 180000);
+  console.log(`Waiting for the report widget...`);
   try {
     const title = await page.title();
     const html = await page.content();
     if (isCloudflareChallenge(title, html)) {
-      console.log("Detected Cloudflare challenge, waiting...");
-      for (let c = 0; c < 60; c++) {
-        await page.waitForTimeout(2000);
-        try {
-          const t2 = await page.title();
-          const h2 = await page.content();
-          if (!isCloudflareChallenge(t2, h2)) break;
-        } catch {}
-      }
+      console.log("Detected Cloudflare challenge, waiting for it to resolve...");
     }
   } catch {}
 
-  // Wait for the report widget to render, then select the issue category. The
-  // categories are role="radio" buttons under the "問題を報告" (Report an issue)
-  // heading — there is no separate "Report a problem" button to click first,
-  // and selecting a category submits the report on its own.
-  //
-  // The labels are localized (Japanese in the JP region, English elsewhere), so
-  // try every candidate until one is actually present on the page.
-  console.log(`Waiting for the report widget...`);
-  try {
-    await page.getByRole("radio").first().waitFor({ state: "visible", timeout: timeoutMs });
-  } catch (err) {
-    // Try again after a short wait in case the widget renders late
-    await page.waitForTimeout(10000);
-    await page.getByRole("radio").first().waitFor({ state: "visible", timeout: timeoutMs });
+  let radioVisible = false;
+  for (let attempt = 0; attempt < 2 && !radioVisible; attempt++) {
+    try {
+      await page.getByRole("radio").first().waitFor({ state: "visible", timeout: radioWaitMs });
+      radioVisible = true;
+    } catch (err) {
+      console.log(`Report widget not visible yet: ${err.message}`);
+      if (attempt === 0) {
+        console.log("Reloading page and retrying...");
+        try {
+          await page.reload({ waitUntil, timeout: timeoutMs });
+        } catch (reloadErr) {
+          console.log(`Reload failed: ${reloadErr.message}`);
+        }
+        await page.waitForTimeout(10000);
+      }
+    }
+  }
+
+  if (!radioVisible) {
+    throw new Error("Timed out waiting for the report widget (no radio buttons)");
   }
 
   const candidates = labelCandidates(indicatorLabel);
