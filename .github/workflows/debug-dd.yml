@@ -1,0 +1,52 @@
+name: Debug DD
+on:
+  push:
+    branches: [diag-dd]
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: diag-dd
+          path: source
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - working-directory: source
+        run: npm ci --silent
+      - working-directory: source
+        run: npx playwright install chromium --with-deps
+      - name: Capture page
+        working-directory: source
+        run: |
+          cat > debug.mjs << 'EOF'
+          const { chromium } = require('playwright');
+          const fs = require('fs');
+          (async () => {
+            const browser = await chromium.launch({ headless: true, args: ['--no-sandbox','--disable-blink-features=AutomationControlled'] });
+            const context = await browser.newContext({ locale: 'ja-JP', userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36', viewport: {width:1280,height:800}, extraHTTPHeaders: { 'Accept-Language': 'ja-JP,ja;q=0.9,en;q=0.8' } });
+            const page = await context.newPage();
+            let navErr = null;
+            try { await page.goto('https://downdetector.jp/shougai/jcom/', { waitUntil: 'domcontentloaded', timeout: 30000 }); }
+            catch (e) { navErr = e.message; }
+            await page.waitForTimeout(15000);
+            console.log('NAV_ERR:', navErr);
+            console.log('TITLE:', await page.title());
+            console.log('RADIOS:', await page.getByRole('radio').count());
+            const html = await page.content();
+            fs.writeFileSync('page.html', html);
+            await page.screenshot({ path: 'page.png' });
+            await browser.close();
+            console.log('DONE');
+          })();
+          EOF
+          node debug.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dd-debug
+          path: |
+            source/page.html
+            source/page.png
+EOF
