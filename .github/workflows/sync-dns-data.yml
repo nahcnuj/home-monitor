@@ -242,6 +242,10 @@ jobs:
         working-directory: source
         run: npx playwright install chromium --with-deps
 
+      - name: Install Xvfb (Downdetector RPA needs a headed browser to pass Cloudflare)
+        if: steps.merge.outputs.downdetector_targets != ''
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
       - name: Report to Downdetector
         # Runs in GitHub Actions (not on the home PC): when the home DNS is
         # broken the PC often cannot reach Downdetector, so the report must be
@@ -252,4 +256,4 @@ jobs:
         working-directory: source
         env:
           DD_TARGETS: ${{ steps.merge.outputs.downdetector_targets }}
-        run: node scripts/report-downdetector-targets.mjs
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x800x24" node scripts/report-downdetector-targets.mjs

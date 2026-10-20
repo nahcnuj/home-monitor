@@ -60,12 +60,32 @@ export function labelCandidates(indicatorLabel) {
     .filter(Boolean);
 }
 
+export function isCloudflareChallenge(title, content) {
+  const t = String(title || "").toLowerCase();
+  const c = String(content || "").toLowerCase();
+  if (t.includes("just a moment") || t.includes("checking your browser")) return true;
+  if (t.includes("少々お待ち") || t.includes("確認中") || t.includes("ブラウザを確認")) return true;
+  if (c.includes("cf-chl-widget") || c.includes("challenge-platform") || c.includes("cf-turnstile-response")) return true;
+  if (c.includes("cf-challenge") || (c.includes("cloudflare") && c.includes("challenge"))) return true;
+  if (c.includes("ray id") && c.includes("please wait")) return true;
+  return false;
+}
+
+export function extractAvailableCategories(radios) {
+  return (radios || []).map((t) => String(t).trim()).filter(Boolean);
+}
+
 export function buildOptions(argv, env) {
   const parsed = parseArgs(argv);
   return {
     pageUrl: parsed["page-url"] || env.DD_PAGE_URL || "",
     indicatorLabel: parsed["indicator"] || env.DD_INDICATOR || "ブロードバンド",
-    headless: parsed["headless"] !== "false",
+    headless:
+      parsed["headless"] !== undefined
+        ? parsed["headless"] !== "false"
+        : env.DD_HEADLESS !== undefined
+          ? env.DD_HEADLESS !== "false" && env.DD_HEADLESS !== "0"
+          : !env.DISPLAY,
     timeoutMs: parseInt(parsed["timeout"] || "90000", 10),
     problemType: parsed["problem-type"] || "timeout",
     count: parseInt(parsed["count"] || "1", 10),
@@ -194,6 +214,23 @@ async function run() {
   // may sit behind a Cloudflare challenge first).
   await page.waitForTimeout(10000);
 
+  // If a Cloudflare challenge is present, wait for it to resolve
+  try {
+    const title = await page.title();
+    const html = await page.content();
+    if (isCloudflareChallenge(title, html)) {
+      console.log("Detected Cloudflare challenge, waiting...");
+      for (let c = 0; c < 60; c++) {
+        await page.waitForTimeout(2000);
+        try {
+          const t2 = await page.title();
+          const h2 = await page.content();
+          if (!isCloudflareChallenge(t2, h2)) break;
+        } catch {}
+      }
+    }
+  } catch {}
+
   // Wait for the report widget to render, then select the issue category. The
   // categories are role="radio" buttons under the "問題を報告" (Report an issue)
   // heading — there is no separate "Report a problem" button to click first,
@@ -202,7 +239,13 @@ async function run() {
   // The labels are localized (Japanese in the JP region, English elsewhere), so
   // try every candidate until one is actually present on the page.
   console.log(`Waiting for the report widget...`);
-  await page.getByRole("radio").first().waitFor({ state: "visible", timeout: timeoutMs });
+  try {
+    await page.getByRole("radio").first().waitFor({ state: "visible", timeout: timeoutMs });
+  } catch (err) {
+    // Try again after a short wait in case the widget renders late
+    await page.waitForTimeout(10000);
+    await page.getByRole("radio").first().waitFor({ state: "visible", timeout: timeoutMs });
+  }
 
   const candidates = labelCandidates(indicatorLabel);
   const perLabelTimeout = Math.max(8000, Math.floor(timeoutMs / candidates.length));
@@ -226,7 +269,7 @@ async function run() {
       .catch(() => []);
     console.error(`No report category matched any of: ${candidates.join(", ")}`);
     console.error(
-      `Available categories on page: ${available.map((t) => t.trim()).filter(Boolean).join(", ")}`,
+      `Available categories on page: ${extractAvailableCategories(available).join(", ")}`,
     );
     await browser.close();
     process.exit(1);

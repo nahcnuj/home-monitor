@@ -6,6 +6,8 @@ import {
   buildOptions,
   determineSuccess,
   escapeRegExp,
+  extractAvailableCategories,
+  isCloudflareChallenge,
   isRateLimited,
   labelCandidates,
   markReported,
@@ -173,6 +175,34 @@ function fakePage({ indicators = [], dialog = false } = {}) {
     getByText: () => locatorFor(indicators[indicatorIndex++]),
   };
 }
+
+describe("isCloudflareChallenge", () => {
+  it("detects Cloudflare challenge by title", () => {
+    expect(isCloudflareChallenge("Just a moment...", "")).toBe(true);
+    expect(isCloudflareChallenge("Checking your browser...", "")).toBe(true);
+  });
+
+  it("detects Cloudflare challenge by content", () => {
+    expect(isCloudflareChallenge("OK", "cf-challenge")).toBe(true);
+    expect(isCloudflareChallenge("OK", "cloudflare challenge")).toBe(true);
+    expect(isCloudflareChallenge("OK", "Ray ID please wait")).toBe(true);
+  });
+
+  it("returns false for normal pages", () => {
+    expect(isCloudflareChallenge("Jcom", "<html>hello</html>")).toBe(false);
+  });
+});
+
+describe("extractAvailableCategories", () => {
+  it("trims and filters empty strings", () => {
+    expect(extractAvailableCategories([" A ", "", "B"])).toEqual(["A", "B"]);
+  });
+
+  it("handles nullish input", () => {
+    expect(extractAvailableCategories(null)).toEqual([]);
+    expect(extractAvailableCategories(undefined)).toEqual([]);
+  });
+});
 
 describe("determineSuccess", () => {
   const none = [false, false, false, false, false];
