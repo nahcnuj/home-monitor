@@ -54,6 +54,16 @@ describe("parseArgs", () => {
       count: "3",
     });
   });
+
+  it("supports --key=value pairs", () => {
+    expect(parseArgs(["--headless=false", "--count=5"])).toEqual({
+      headless: "false",
+      count: "5",
+    });
+    expect(parseArgs(["--indicator=ブロードバンド"])).toEqual({
+      indicator: "ブロードバンド",
+    });
+  });
 });
 
 describe("escapeRegExp", () => {
@@ -97,7 +107,7 @@ describe("buildOptions", () => {
   it("applies defaults", () => {
     const options = buildOptions([], {});
     expect(options.indicatorLabel).toBe("ブロードバンド");
-    expect(options.headless).toBe(true);
+    expect(options.headless).toBe(false);
     expect(options.timeoutMs).toBe(90000);
     expect(options.problemType).toBe("timeout");
     expect(options.count).toBe(1);
@@ -105,11 +115,22 @@ describe("buildOptions", () => {
     expect(options.stateFile).toContain(".downdetector-state/last-report");
     expect(options.waitUntil).toBe("domcontentloaded");
     expect(options.maxRetries).toBe(2);
+    expect(options.channel).toBe("chrome");
   });
 
   it("disables headless when requested", () => {
     expect(buildOptions(["--headless", "false"], {}).headless).toBe(false);
     expect(buildOptions(["--headless"], {}).headless).toBe(true);
+    expect(buildOptions([], { DD_HEADLESS: "0" }).headless).toBe(false);
+    expect(buildOptions([], { DD_HEADLESS: "1" }).headless).toBe(true);
+  });
+
+  it("respects --channel and DD_CHANNEL", () => {
+    expect(buildOptions(["--channel", "msedge"], {}).channel).toBe("msedge");
+    expect(buildOptions([], { DD_CHANNEL: "chromium" }).channel).toBe("chromium");
+    expect(buildOptions(["--channel", "chrome"], { DD_CHANNEL: "chromium" }).channel).toBe("chrome");
+    // Empty string explicitly requests the bundled Chromium.
+    expect(buildOptions(["--channel", ""], {}).channel).toBe("");
   });
 });
 
@@ -180,6 +201,7 @@ describe("isCloudflareChallenge", () => {
   it("detects Cloudflare challenge by title", () => {
     expect(isCloudflareChallenge("Just a moment...", "")).toBe(true);
     expect(isCloudflareChallenge("Checking your browser...", "")).toBe(true);
+    expect(isCloudflareChallenge("しばらくお待ちください...", "")).toBe(true);
   });
 
   it("detects Cloudflare challenge by content", () => {

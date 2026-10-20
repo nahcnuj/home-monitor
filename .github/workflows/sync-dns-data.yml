@@ -16,9 +16,11 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
+      # Follow the ref the workflow was dispatched on, so the RPA scripts can
+      # also be exercised from a branch (master dispatches are unaffected).
       - uses: actions/checkout@v7
         with:
-          ref: master
+          ref: ${{ github.ref }}
           path: source
 
       - uses: actions/checkout@v7
@@ -238,9 +240,14 @@ jobs:
             });
 
       - name: Install Playwright browsers (Downdetector RPA)
+        # report-downdetector.mjs launches real Google Chrome (channel:chrome)
+        # first — stock Chrome passes Cloudflare where bundled Chromium gets
+        # stuck — and falls back to bundled Chromium when Chrome is missing.
         if: steps.merge.outputs.downdetector_targets != ''
         working-directory: source
-        run: npx playwright install chromium --with-deps
+        run: |
+          npx playwright install chromium --with-deps
+          npx playwright install chrome
 
       - name: Install Xvfb (Downdetector RPA needs a headed browser to pass Cloudflare)
         if: steps.merge.outputs.downdetector_targets != ''
