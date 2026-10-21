@@ -19,13 +19,23 @@ import { fileURLToPath, pathToFileURL } from "node:url";
  * then shows a thank-you message; there is no separate submit button. This
  * uses only the publicly available web UI.
  *
- * The page is requested with the ja-JP locale, but Downdetector renders the
- * issue-category labels in the region's UI language (Japanese in the JP
- * region, English elsewhere). A GitHub Actions runner sits in a foreign
- * datacenter, so the page often comes back in English and the ja-JP label
- * alone never matches. downdetector.services.<name>.indicator_label therefore
- * holds a comma-separated list of labels to try in order (monitor.config.ts),
- * and the flow below picks the first one that is present on the page.
+ * The status page sits behind a Cloudflare managed challenge that Playwright's
+ * bundled Chromium does not pass reliably: the page hangs on the interstitial
+ * forever and the report widget never renders, even in a headed browser under
+ * Xvfb. Real users run stock Google Chrome, and a stock browser passes the
+ * challenge, so the browser is launched with channel:"chrome" first and only
+ * falls back to the bundled Chromium when Chrome is not installed
+ * (overridable via --channel / DD_CHANNEL). A stock browser is already the
+ * best camouflage, so the UA/locale overrides and the init-script spoofing
+ * below are applied only to the bundled-Chromium fallback; overriding a real
+ * Chrome's UA or plugins is itself a fingerprint Cloudflare can flag.
+ *
+ * Downdetector renders the issue-category labels in the region's UI language
+ * (Japanese in the JP region, English elsewhere). A GitHub Actions runner sits
+ * in a foreign datacenter, so the page often comes back in English and the
+ * ja-JP label alone never matches. downdetector.services.<name>.indicator_label
+ * therefore holds a comma-separated list of labels to try in order
+ * (monitor.config.ts), and the flow below picks the first one present.
  *
  * The pure helpers (parseArgs, escapeRegExp, labelCandidates, buildOptions,
  * isRateLimited, markReported, determineSuccess) are exported for the vitest
@@ -35,11 +45,16 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 export function parseArgs(argv) {
   const parsed = {};
   for (let i = 0; i < argv.length; i++) {
-    if (argv[i].startsWith("--")) {
-      const key = argv[i].slice(2);
-      const val = i + 1 < argv.length && !argv[i + 1].startsWith("--") ? argv[++i] : "true";
-      parsed[key] = val;
+    const raw = argv[i];
+    if (!raw.startsWith("--")) continue;
+    const eq = raw.indexOf("=");
+    if (eq > 2) {
+      parsed[raw.slice(2, eq)] = raw.slice(eq + 1);
+      continue;
     }
+    const key = raw.slice(2);
+    const val = i + 1 < argv.length && !argv[i + 1].startsWith("--") ? argv[++i] : "true";
+    parsed[key] = val;
   }
   return parsed;
 }
@@ -60,15 +75,36 @@ export function labelCandidates(indicatorLabel) {
     .filter(Boolean);
 }
 
+export function isCloudflareChallenge(title, content) {
+  const t = String(title || "").toLowerCase();
+  const c = String(content || "").toLowerCase();
+  if (t.includes("just a moment") || t.includes("checking your browser")) return true;
+  if (t.includes("少々お待ち") || t.includes("しばらくお待ち") || t.includes("確認中") || t.includes("ブラウザを確認")) return true;
+  if (c.includes("cf-chl-widget") || c.includes("challenge-platform") || c.includes("cf-turnstile-response")) return true;
+  if (c.includes("cf-challenge") || (c.includes("cloudflare") && c.includes("challenge"))) return true;
+  if (c.includes("ray id") && c.includes("please wait")) return true;
+  return false;
+}
+
+export function extractAvailableCategories(radios) {
+  return (radios || []).map((t) => String(t).trim()).filter(Boolean);
+}
+
 export function buildOptions(argv, env) {
   const parsed = parseArgs(argv);
   return {
     pageUrl: parsed["page-url"] || env.DD_PAGE_URL || "",
     indicatorLabel: parsed["indicator"] || env.DD_INDICATOR || "ブロードバンド",
-    headless: parsed["headless"] !== "false",
+    headless:
+      parsed["headless"] !== undefined
+        ? parsed["headless"] !== "false"
+        : env.DD_HEADLESS !== undefined
+          ? env.DD_HEADLESS !== "false" && env.DD_HEADLESS !== "0"
+          : false, // headed by default: Cloudflare never clears a headless browser
     timeoutMs: parseInt(parsed["timeout"] || "90000", 10),
     problemType: parsed["problem-type"] || "timeout",
     count: parseInt(parsed["count"] || "1", 10),
+    channel: parsed["channel"] ?? env.DD_CHANNEL ?? "chrome",
     stateFile:
       parsed["state-file"] ||
       env.DD_STATE_FILE ||
@@ -92,6 +128,26 @@ export function isRateLimited(stateFile, { nowSec, rateLimitSec }) {
 export function markReported(stateFile, { nowSec }) {
   mkdirSync(dirname(stateFile), { recursive: true });
   writeFileSync(stateFile, String(nowSec), "utf8");
+}
+
+/**
+ * Launch with the requested channel (normally real Google Chrome; an empty
+ * value requests the bundled Chromium). A stock Chrome passes Cloudflare's
+ * challenge without any spoofing, so only the bundled fallback gets the
+ * automation-signal overrides.
+ */
+export async function launchBrowser({ headless, channel }) {
+  const args = ["--no-sandbox", "--disable-blink-features=AutomationControlled"];
+  if (channel) {
+    try {
+      const browser = await chromium.launch({ headless, channel, args });
+      return { browser, spoofAutomation: false };
+    } catch (err) {
+      console.log(`Channel "${channel}" unavailable (${String(err.message).split("\n")[0]}); falling back to bundled Chromium`);
+    }
+  }
+  const browser = await chromium.launch({ headless, args });
+  return { browser, spoofAutomation: true };
 }
 
 export async function determineSuccess(page) {
@@ -140,6 +196,7 @@ async function run() {
     rateLimitSec,
     waitUntil,
     maxRetries,
+    channel,
   } = buildOptions(process.argv.slice(2), process.env);
 
   if (!pageUrl) {
@@ -154,20 +211,33 @@ async function run() {
     process.exit(0);
   }
 
-  const browser = await chromium.launch({
-    headless,
-    args: ["--no-sandbox", "--disable-blink-features=AutomationControlled"],
-  });
+  console.log(`Launching browser (channel: ${channel || "bundled Chromium"})...`);
+  const { browser, spoofAutomation } = await launchBrowser({ headless, channel });
 
-  const context = await browser.newContext({
-    locale: "ja-JP",
-    userAgent:
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+  const contextOptions = {
     viewport: { width: 1280, height: 800 },
-    extraHTTPHeaders: {
+  };
+  if (spoofAutomation) {
+    // Bundled Chromium needs the overrides; a real Chrome must keep its own
+    // stock identity or the mismatches become a detection signal.
+    contextOptions.locale = "ja-JP";
+    contextOptions.userAgent =
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+    contextOptions.extraHTTPHeaders = {
       "Accept-Language": "ja-JP,ja;q=0.9,en;q=0.8",
-    },
-  });
+    };
+  }
+  const context = await browser.newContext(contextOptions);
+
+  if (spoofAutomation) {
+    // Reduce automation signals that trigger Cloudflare's managed challenge.
+    await context.addInitScript(() => {
+      Object.defineProperty(navigator, "webdriver", { get: () => undefined });
+      Object.defineProperty(navigator, "plugins", { get: () => [1, 2, 3, 4, 5] });
+      Object.defineProperty(navigator, "languages", { get: () => ["ja-JP", "ja", "en-US", "en"] });
+      if (!window.chrome) window.chrome = { runtime: {} };
+    });
+  }
 
   const page = await context.newPage();
   page.setDefaultTimeout(timeoutMs);
@@ -194,15 +264,64 @@ async function run() {
   // may sit behind a Cloudflare challenge first).
   await page.waitForTimeout(10000);
 
-  // Wait for the report widget to render, then select the issue category. The
-  // categories are role="radio" buttons under the "問題を報告" (Report an issue)
-  // heading — there is no separate "Report a problem" button to click first,
-  // and selecting a category submits the report on its own.
-  //
-  // The labels are localized (Japanese in the JP region, English elsewhere), so
-  // try every candidate until one is actually present on the page.
+  // Cloudflare managed challenge: in a headed browser it usually resolves on its
+  // own within a few seconds. Rather than guessing when it is done, just wait
+  // for the report widget's radio buttons to appear (they only render once the
+  // challenge has been passed and the real page has loaded). Give it a generous
+  // budget so a slow challenge does not abort prematurely.
+  const radioWaitMs = Math.max(timeoutMs, 180000);
   console.log(`Waiting for the report widget...`);
-  await page.getByRole("radio").first().waitFor({ state: "visible", timeout: timeoutMs });
+  try {
+    const title = await page.title();
+    const html = await page.content();
+    if (isCloudflareChallenge(title, html)) {
+      console.log("Detected Cloudflare challenge, waiting for it to resolve...");
+    }
+  } catch {}
+
+  let radioVisible = false;
+  for (let attempt = 0; attempt < 2 && !radioVisible; attempt++) {
+    try {
+      await page.getByRole("radio").first().waitFor({ state: "visible", timeout: radioWaitMs });
+      radioVisible = true;
+    } catch (err) {
+      let diagTitle = "";
+      let diagChallenge = "";
+      try {
+        diagTitle = await page.title();
+        diagChallenge = isCloudflareChallenge(diagTitle, await page.content())
+          ? " (Cloudflare challenge still active)"
+          : "";
+      } catch {}
+      console.log(
+        `Report widget not visible yet: ${err.message} [title=${JSON.stringify(diagTitle)}${diagChallenge}]`,
+      );
+      if (attempt === 0) {
+        console.log("Reloading page and retrying...");
+        try {
+          await page.reload({ waitUntil, timeout: timeoutMs });
+        } catch (reloadErr) {
+          console.log(`Reload failed: ${reloadErr.message}`);
+        }
+        await page.waitForTimeout(10000);
+      }
+    }
+  }
+
+  if (!radioVisible) {
+    throw new Error("Timed out waiting for the report widget (no radio buttons)");
+  }
+
+  // A cookie-consent overlay can cover the report widget and swallow the
+  // click, so accept it up-front when it is present.
+  try {
+    const consent = page.locator("#onetrust-accept-btn-handler");
+    if (await consent.isVisible({ timeout: 2000 })) {
+      console.log("Accepting cookie consent...");
+      await consent.click();
+      await page.waitForTimeout(1000);
+    }
+  } catch {}
 
   const candidates = labelCandidates(indicatorLabel);
   const perLabelTimeout = Math.max(8000, Math.floor(timeoutMs / candidates.length));
@@ -226,7 +345,7 @@ async function run() {
       .catch(() => []);
     console.error(`No report category matched any of: ${candidates.join(", ")}`);
     console.error(
-      `Available categories on page: ${available.map((t) => t.trim()).filter(Boolean).join(", ")}`,
+      `Available categories on page: ${extractAvailableCategories(available).join(", ")}`,
     );
     await browser.close();
     process.exit(1);
