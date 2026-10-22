@@ -10,6 +10,11 @@ $DataDir = Join-Path $RepoRoot "data\local"
 $DataFile = Join-Path $DataDir "dns-latency.tsv"
 $LastSyncFile = Join-Path $DataDir ".last-sync"
 
+# Job names as reported by `gh run view`; the second entry keeps older runs
+# (before the sync/report split in issue #44) working.
+$script:SyncJobNames = @("Sync DNS data", "sync")
+$script:ReportJobNames = @("Report to Downdetector", "report")
+
 function Get-DataCutoffTs {
     return [long](Get-MonitorConfig).data_cutoff_ts
 }
@@ -150,6 +155,116 @@ function Get-RepoSlug {
     return $repoSlug
 }
 
+function Invoke-Gh {
+    param(
+        [Parameter(Mandatory)][string[]]$Arguments,
+        [object]$Stdin
+    )
+
+    # gh reports progress and warnings on stderr. Windows PowerShell 5.1 turns a
+    # redirected native stderr line into a terminating NativeCommandError while
+    # $ErrorActionPreference is Stop, so relax it for the duration of the call.
+    $savedPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        if ($null -ne $Stdin) {
+            $stdout = $Stdin | & $GhExe @Arguments 2>$null
+        } else {
+            $stdout = & $GhExe @Arguments 2>$null
+        }
+    }
+    finally {
+        $exitCode = $LASTEXITCODE
+        $ErrorActionPreference = $savedPreference
+    }
+
+    return @{
+        ExitCode = $exitCode
+        Output = @($stdout)
+    }
+}
+
+function ConvertFrom-JobListTsv {
+    param([string[]]$Lines)
+
+    # `gh run view --json jobs --jq` prints one "name<TAB>status<TAB>conclusion"
+    # line per job. Keeping the state as text means no JSON parsing here, hence
+    # no exceptions: a job that has not finished yet simply has no conclusion.
+    $jobs = @{}
+    foreach ($line in @($Lines)) {
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+        $cols = $line -split "`t"
+        if ($cols.Length -lt 2 -or $cols[0] -eq "") { continue }
+        $conclusion = if ($cols.Length -ge 3) { $cols[2] } else { "" }
+        $jobs[$cols[0]] = @{ Status = $cols[1]; Conclusion = $conclusion }
+    }
+    return $jobs
+}
+
+function Get-WorkflowJobStates {
+    param(
+        [string]$RepoSlug,
+        [string]$RunId
+    )
+
+    $jq = '.jobs[] | [.name, .status, (.conclusion // "")] | @tsv'
+    $result = Invoke-Gh -Arguments @(
+        "run", "view", $RunId, "--repo", $RepoSlug, "--json", "jobs", "--jq", $jq
+    )
+    if ($result.ExitCode -ne 0) { return @{} }
+    return ConvertFrom-JobListTsv -Lines $result.Output
+}
+
+function Find-WorkflowJobState {
+    param(
+        [hashtable]$Jobs,
+        [string[]]$Names
+    )
+
+    foreach ($name in $Names) {
+        if ($Jobs.ContainsKey($name)) { return $Jobs[$name] }
+    }
+    return $null
+}
+
+function Wait-WorkflowJobState {
+    param(
+        [string]$RepoSlug,
+        [string]$RunId,
+        [string[]]$Names,
+        [int]$TimeoutMinutes,
+        [int]$PollSeconds = 5
+    )
+
+    $deadline = (Get-Date).AddMinutes($TimeoutMinutes)
+    while ($true) {
+        $state = Find-WorkflowJobState -Jobs (Get-WorkflowJobStates -RepoSlug $RepoSlug -RunId $RunId) -Names $Names
+        if ($state -and $state.Conclusion) { return $state }
+        if ((Get-Date) -ge $deadline) { return $null }
+        Start-Sleep -Seconds $PollSeconds
+    }
+}
+
+function Wait-WorkflowRunCompleted {
+    param(
+        [string]$RepoSlug,
+        [string]$RunId,
+        [int]$TimeoutMinutes,
+        [int]$PollSeconds = 5
+    )
+
+    $deadline = (Get-Date).AddMinutes($TimeoutMinutes)
+    while ($true) {
+        $result = Invoke-Gh -Arguments @(
+            "run", "view", $RunId, "--repo", $RepoSlug, "--json", "status", "--jq", ".status"
+        )
+        $status = (@($result.Output) -join "").Trim()
+        if ($result.ExitCode -eq 0 -and $status -eq "completed") { return $true }
+        if ((Get-Date) -ge $deadline) { return $false }
+        Start-Sleep -Seconds $PollSeconds
+    }
+}
+
 function Invoke-SyncDnsWorkflow {
     param(
         [string]$RepoSlug,
@@ -157,61 +272,51 @@ function Invoke-SyncDnsWorkflow {
     )
 
     $payload = @{ data_b64 = $DataB64 } | ConvertTo-Json -Compress
-    $payload | & $GhExe workflow run sync-dns-data.yml --repo $RepoSlug --json 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) {
+    $dispatch = Invoke-Gh -Arguments @(
+        "workflow", "run", "sync-dns-data.yml", "--repo", $RepoSlug, "--json"
+    ) -Stdin $payload
+    if ($dispatch.ExitCode -ne 0) {
         throw "gh workflow run failed"
     }
 
     Start-Sleep -Seconds 3
-    $runId = & $GhExe run list --repo $RepoSlug --workflow sync-dns-data.yml -L 1 --json databaseId -q ".[0].databaseId"
+    $listed = Invoke-Gh -Arguments @(
+        "run", "list", "--repo", $RepoSlug, "--workflow", "sync-dns-data.yml",
+        "-L", "1", "--json", "databaseId", "--jq", ".[0].databaseId"
+    )
+    $runId = (@($listed.Output) -join "").Trim()
     if (-not $runId) {
         throw "Could not find workflow run id"
     }
 
-    # Sync and report are separate jobs (issue #44). The data sync succeeds or
-    # fails on the sync job's own conclusion; a Downdetector report failure must
-    # not make the publish retry or be treated as a sync failure.
-    $syncConclusion = $null
-    $deadline = (Get-Date).AddMinutes(30)
-    while ((Get-Date) -lt $deadline -and -not $syncConclusion) {
-        $viewJson = & $GhExe run view $runId --repo $RepoSlug --json status,conclusion,jobs 2>&1
-        if ($LASTEXITCODE -eq 0 -and $viewJson) {
-            try {
-                $runInfo = $viewJson | ConvertFrom-Json
-                $syncJob = @($runInfo.jobs) | Where-Object {
-                    $_.name -eq "sync" -or $_.name -eq "Sync DNS data" -or
-                    $_.name -like "*Sync DNS*"
-                } | Select-Object -First 1
-                if ($syncJob -and $syncJob.conclusion) {
-                    $syncConclusion = $syncJob.conclusion
-                }
-            } catch {
-                # Transient parse failure; retry on next poll.
-            }
-        }
-        if (-not $syncConclusion) {
-            Start-Sleep -Seconds 5
-        }
+    # Data sync and Downdetector reporting are separate jobs (issue #44). Only
+    # the sync job's conclusion decides whether the publish is retried; a report
+    # failure happens after the data is pushed and must not look like a sync
+    # failure.
+    $syncJob = Wait-WorkflowJobState -RepoSlug $RepoSlug -RunId $runId `
+        -Names $SyncJobNames -TimeoutMinutes 30
+    if (-not $syncJob) {
+        throw "Timed out waiting for the sync job (run_id=$runId)"
     }
-    if (-not $syncConclusion) {
-        throw "Timed out waiting for sync job (run_id=$runId)"
-    }
-    if ($syncConclusion -ne "success") {
-        throw "sync job failed (conclusion=$syncConclusion, run_id=$runId)"
+    if ($syncJob.Conclusion -ne "success") {
+        throw "sync job failed (conclusion=$($syncJob.Conclusion), run_id=$runId)"
     }
 
-    try {
-        $reportInfo = (& $GhExe run view $runId --repo $RepoSlug --json jobs 2>&1) | ConvertFrom-Json
-        $reportJob = @($reportInfo.jobs) | Where-Object {
-            $_.name -eq "report" -or $_.name -eq "Report to Downdetector" -or
-            $_.name -like "*Downdetector*"
-        } | Select-Object -First 1
-        if ($reportJob -and $reportJob.conclusion -and
-            $reportJob.conclusion -ne "success" -and $reportJob.conclusion -ne "skipped") {
-            Write-TaskLog -TaskName "publish" -Message ("report job conclusion=" + $reportJob.conclusion + " (run_id=" + $runId + ") - data sync already succeeded")
+    # Wait for the report job so its outcome is recorded locally too, but it can
+    # never fail the publish: the data was already committed by the sync job.
+    if (-not (Wait-WorkflowRunCompleted -RepoSlug $RepoSlug -RunId $runId -TimeoutMinutes 15)) {
+        Write-TaskLog -TaskName "publish" -Message "report still running after 15m - data sync already succeeded (run_id=$runId)"
+        return
+    }
+    $reportJob = Find-WorkflowJobState `
+        -Jobs (Get-WorkflowJobStates -RepoSlug $RepoSlug -RunId $runId) -Names $ReportJobNames
+    if ($reportJob -and $reportJob.Conclusion -and $reportJob.Conclusion -ne "skipped") {
+        $message = if ($reportJob.Conclusion -eq "success") {
+            "report job succeeded"
+        } else {
+            "report job failed (conclusion=$($reportJob.Conclusion)) - data sync already succeeded"
         }
-    } catch {
-        # Report status is informational only.
+        Write-TaskLog -TaskName "publish" -Message "$message (run_id=$runId)"
     }
 }
 
