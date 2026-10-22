@@ -65,6 +65,51 @@ Describe "Convert-LinesToB64" {
     }
 }
 
+Describe "ConvertFrom-JobListTsv" {
+    It "parses the job name, status and conclusion" {
+        $jobs = ConvertFrom-JobListTsv -Lines @(
+            "Sync DNS data`tcompleted`tsuccess",
+            "Report to Downdetector`tcompleted`tskipped"
+        )
+        $jobs["Sync DNS data"].Status | Should -Be "completed"
+        $jobs["Sync DNS data"].Conclusion | Should -Be "success"
+        $jobs["Report to Downdetector"].Conclusion | Should -Be "skipped"
+    }
+    It "keeps a running job without a conclusion" {
+        $jobs = ConvertFrom-JobListTsv -Lines @("Report to Downdetector`tin_progress`t")
+        $jobs["Report to Downdetector"].Status | Should -Be "in_progress"
+        $jobs["Report to Downdetector"].Conclusion | Should -BeNullOrEmpty
+    }
+    It "ignores blank and malformed lines" {
+        $jobs = ConvertFrom-JobListTsv -Lines @("", "   ", "garbage")
+        $jobs.Count | Should -Be 0
+    }
+    It "returns an empty table for no output" {
+        (ConvertFrom-JobListTsv -Lines @()).Count | Should -Be 0
+    }
+}
+
+Describe "Find-WorkflowJobState" {
+    It "prefers the current display name" {
+        $jobs = @{
+            "Sync DNS data" = @{ Status = "completed"; Conclusion = "success" }
+            "sync"          = @{ Status = "completed"; Conclusion = "failure" }
+        }
+        $state = Find-WorkflowJobState -Jobs $jobs -Names @("Sync DNS data", "sync")
+        $state.Conclusion | Should -Be "success"
+    }
+    It "falls back to the legacy job id" {
+        $jobs = @{ "sync" = @{ Status = "completed"; Conclusion = "success" } }
+        $state = Find-WorkflowJobState -Jobs $jobs -Names @("Sync DNS data", "sync")
+        $state.Status | Should -Be "completed"
+    }
+    It "returns null when the job is absent" {
+        $jobs = @{ "Sync DNS data" = @{ Status = "completed"; Conclusion = "success" } }
+        Find-WorkflowJobState -Jobs $jobs -Names @("Report to Downdetector", "report") |
+            Should -BeNullOrEmpty
+    }
+}
+
 Describe "Split-LinesToB64Chunks" {
     It "returns no chunks for no lines" {
         $chunks = Split-LinesToB64Chunks -Lines @()

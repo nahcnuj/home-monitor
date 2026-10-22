@@ -117,7 +117,7 @@ GitHub Actions（**Sync DNS Data** / **Deploy Pages** の `prepare-pages`）が 
 - `downdetector.latency_threshold_ms` — 高レイテンシ判定しきい値（デフォルト 1000 ms）
 - `downdetector.services.<name>` — サービス名（`service_by_resolver` の値）ごとの報告先。`page_url`（Downdetector ステータスページの URL）、`indicator_label`（報告で選択する問題カテゴリのページ上のラベル。Downdetector は地域の UI 言語でラベルを描画する（JP 地域は日本語、それ以外は英語）ため、カンマ区切りで複数のラベルを順に試す。例: "ブロードバンド, Broadband Internet" = 固定電話のインターネット）
 
-報告は **GitHub Actions（Sync DNS Data）** で行われます。ローカル PC の DNS が死んでいるとき、PC からは Downdetector に届かない可能性が高いため、クラウド側で報告します。ワークフローが新規挿入（未記録）かつ直近1時間のレコードから高レイテンシまたはタイムアウトを検出し、`report-downdetector-targets.mjs` が Playwright で Downdetector のステータスページを操作します（公的な書き込み API は無いため公開 Web ページを RPA）。Downdetector の操作は失敗してもデータ同期を止めません。
+報告は **GitHub Actions（Sync DNS Data）** で行われます。ローカル PC の DNS が死んでいるとき、PC からは Downdetector に届かない可能性が高いため、クラウド側で報告します。ワークフローが新規挿入（未記録）かつ直近1時間のレコードから高レイテンシまたはタイムアウトを検出し、`report-downdetector-targets.mjs` が Playwright で Downdetector のステータスページを操作します（公的な書き込み API は無いため公開 Web ページを RPA）。報告は同期とは別ジョブ（**Report to Downdetector**）で、同期ジョブが完了してから実行されます（報告対象が無いときはスキップ）。レポートが失敗してもデータ同期は完了済みで、ローカルの `publish-data.ps1` は再送信しません。失敗はそのジョブの失敗（赤い実行結果）として確認できます。
 
 複数ドメインは並列で `nslookup` するため、1分間隔の計測でも全体の所要時間はおおむねタイムアウト値程度です。
 
