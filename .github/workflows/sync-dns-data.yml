@@ -14,7 +14,10 @@ permissions:
 
 jobs:
   sync:
+    name: Sync DNS data
     runs-on: ubuntu-latest
+    outputs:
+      downdetector_targets: ${{ steps.merge.outputs.downdetector_targets }}
     steps:
       # Follow the ref the workflow was dispatched on, so the RPA scripts can
       # also be exercised from a branch (master dispatches are unaffected).
@@ -239,28 +242,46 @@ jobs:
               ref: 'gh-pages'
             });
 
+  report:
+    name: Report to Downdetector
+    needs: sync
+    if: needs.sync.outputs.downdetector_targets != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.ref }}
+          path: source
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+
+      - name: Install dependencies
+        working-directory: source
+        run: npm ci --silent
+
       - name: Install Playwright browsers (Downdetector RPA)
         # report-downdetector.mjs launches real Google Chrome (channel:chrome)
         # first — stock Chrome passes Cloudflare where bundled Chromium gets
         # stuck — and falls back to bundled Chromium when Chrome is missing.
-        if: steps.merge.outputs.downdetector_targets != ''
         working-directory: source
         run: |
           npx playwright install chromium --with-deps
           npx playwright install chrome
 
       - name: Install Xvfb (Downdetector RPA needs a headed browser to pass Cloudflare)
-        if: steps.merge.outputs.downdetector_targets != ''
         run: sudo apt-get update && sudo apt-get install -y xvfb
 
       - name: Report to Downdetector
         # Runs in GitHub Actions (not on the home PC): when the home DNS is
         # broken the PC often cannot reach Downdetector, so the report must be
         # submitted from the cloud. The data push and Pages deployment already
-        # completed above; a reporting failure therefore marks the run as
-        # failed for visibility without undoing the published data.
-        if: steps.merge.outputs.downdetector_targets != ''
+        # completed in the sync job; a reporting failure therefore marks this
+        # job as failed for visibility without undoing the published data.
         working-directory: source
         env:
-          DD_TARGETS: ${{ steps.merge.outputs.downdetector_targets }}
+          DD_TARGETS: ${{ needs.sync.outputs.downdetector_targets }}
         run: xvfb-run --auto-servernum --server-args="-screen 0 1280x800x24" node scripts/report-downdetector-targets.mjs
