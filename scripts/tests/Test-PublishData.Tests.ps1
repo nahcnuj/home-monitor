@@ -16,6 +16,26 @@ BeforeAll {
     . (Join-Path $RepoRoot "scripts/publish-data.ps1")
 
     $script:cutoffTs = 1782000000
+    $script:retentionSeconds = $script:GithubRetentionSeconds
+}
+
+Describe "Get-EffectiveCutoffTs" {
+    It "keeps the configured cutoff when it is newer than the retention window" {
+        $now = 1793000000
+        $cutoff = $now - 3600
+        Get-EffectiveCutoffTs -DataCutoffTs $cutoff -NowTs $now | Should -Be $cutoff
+    }
+    It "raises the cutoff to the GitHub retention window" {
+        $now = 1793000000
+        $cutoff = $now - 90 * 86400
+        Get-EffectiveCutoffTs -DataCutoffTs $cutoff -NowTs $now |
+            Should -Be ($now - $script:retentionSeconds)
+    }
+    It "uses the retention window at the boundary" {
+        $now = 1793000000
+        $cutoff = $now - $script:retentionSeconds
+        Get-EffectiveCutoffTs -DataCutoffTs $cutoff -NowTs $now | Should -Be $cutoff
+    }
 }
 
 Describe "Test-DnsServerKey" {
@@ -65,27 +85,27 @@ Describe "Convert-LinesToB64" {
     }
 }
 
-Describe "ConvertFrom-JobListTsv" {
+Describe "ConvertFrom-JobListJson" {
     It "parses the job name, status and conclusion" {
-        $jobs = ConvertFrom-JobListTsv -Lines @(
-            "Sync DNS data`tcompleted`tsuccess",
-            "Report to Downdetector`tcompleted`tskipped"
-        )
+        $json = @'
+{"jobs":[{"name":"Sync DNS data","status":"completed","conclusion":"success"},{"name":"Report to Downdetector","status":"completed","conclusion":"skipped"}]}
+'@
+        $jobs = ConvertFrom-JobListJson -Json $json
         $jobs["Sync DNS data"].Status | Should -Be "completed"
         $jobs["Sync DNS data"].Conclusion | Should -Be "success"
         $jobs["Report to Downdetector"].Conclusion | Should -Be "skipped"
     }
     It "keeps a running job without a conclusion" {
-        $jobs = ConvertFrom-JobListTsv -Lines @("Report to Downdetector`tin_progress`t")
+        $json = '{"jobs":[{"name":"Report to Downdetector","status":"in_progress","conclusion":null}]}'
+        $jobs = ConvertFrom-JobListJson -Json $json
         $jobs["Report to Downdetector"].Status | Should -Be "in_progress"
         $jobs["Report to Downdetector"].Conclusion | Should -BeNullOrEmpty
     }
-    It "ignores blank and malformed lines" {
-        $jobs = ConvertFrom-JobListTsv -Lines @("", "   ", "garbage")
-        $jobs.Count | Should -Be 0
+    It "returns an empty table for malformed JSON" {
+        (ConvertFrom-JobListJson -Json "garbage").Count | Should -Be 0
     }
     It "returns an empty table for no output" {
-        (ConvertFrom-JobListTsv -Lines @()).Count | Should -Be 0
+        (ConvertFrom-JobListJson -Json "").Count | Should -Be 0
     }
 }
 
