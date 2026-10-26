@@ -15,8 +15,24 @@ $LastSyncFile = Join-Path $DataDir ".last-sync"
 $script:SyncJobNames = @("Sync DNS data", "sync")
 $script:ReportJobNames = @("Report to Downdetector", "report")
 
+# sync-dns-data.yml drops rows older than 7 days (rolling retention). Sending
+# older rows is pointless, and a stale/missing .last-sync must not make the
+# task push months of history that the workflow discards anyway.
+$script:GithubRetentionSeconds = 7 * 86400
+
 function Get-DataCutoffTs {
     return [long](Get-MonitorConfig).data_cutoff_ts
+}
+
+function Get-EffectiveCutoffTs {
+    param(
+        [Parameter(Mandatory)][long]$DataCutoffTs,
+        [Parameter(Mandatory)][long]$NowTs
+    )
+
+    $retentionCutoff = $NowTs - $script:GithubRetentionSeconds
+    if ($retentionCutoff -gt $DataCutoffTs) { return $retentionCutoff }
+    return $DataCutoffTs
 }
 
 function Get-PublishSettings {
@@ -64,7 +80,8 @@ function Get-UnsentLines {
     param([switch]$All)
 
     if (-not (Test-Path $DataFile)) { return @() }
-    $cutoffTs = Get-DataCutoffTs
+    $cutoffTs = Get-EffectiveCutoffTs -DataCutoffTs (Get-DataCutoffTs) `
+        -NowTs ([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())
     $allLines = @(Get-Content $DataFile -Encoding UTF8 | Where-Object {
         $_.Trim() -ne "" -and (Test-SendableLine -Line $_ -CutoffTs $cutoffTs)
     })
@@ -141,6 +158,27 @@ function Set-ConahcnujGhToken {
     $env:GH_TOKEN = $token
 }
 
+function Enter-PublishLock {
+    # A backlog can keep one publish running for over an hour, while the task
+    # fires every publish_interval_min. Without a lock the runs overlap, all
+    # read the same .last-sync and dispatch duplicate workflows.
+    if (-not (Test-Path -LiteralPath $DataDir)) {
+        New-Item -ItemType Directory -Path $DataDir -Force | Out-Null
+    }
+    $lockFile = Join-Path $DataDir ".publish.lock"
+    try {
+        return [System.IO.File]::Open(
+            $lockFile,
+            [System.IO.FileMode]::OpenOrCreate,
+            [System.IO.FileAccess]::ReadWrite,
+            [System.IO.FileShare]::None
+        )
+    }
+    catch [System.IO.IOException] {
+        return $null
+    }
+}
+
 function Get-RepoSlug {
     $repoSlug = $null
     if ($RepoRoot -match 'github\.com[/\\]([^/\\]+)[/\\]([^/\\]+)$') {
@@ -184,19 +222,26 @@ function Invoke-Gh {
     }
 }
 
-function ConvertFrom-JobListTsv {
-    param([string[]]$Lines)
+function ConvertFrom-JobListJson {
+    param([string]$Json)
 
-    # `gh run view --json jobs --jq` prints one "name<TAB>status<TAB>conclusion"
-    # line per job. Keeping the state as text means no JSON parsing here, hence
-    # no exceptions: a job that has not finished yet simply has no conclusion.
+    # A job that has not finished yet has a null conclusion; map it to "" so
+    # Wait-WorkflowJobState treats it as still running.
     $jobs = @{}
-    foreach ($line in @($Lines)) {
-        if ([string]::IsNullOrWhiteSpace($line)) { continue }
-        $cols = $line -split "`t"
-        if ($cols.Length -lt 2 -or $cols[0] -eq "") { continue }
-        $conclusion = if ($cols.Length -ge 3) { $cols[2] } else { "" }
-        $jobs[$cols[0]] = @{ Status = $cols[1]; Conclusion = $conclusion }
+    if ([string]::IsNullOrWhiteSpace($Json)) { return $jobs }
+    try {
+        $run = $Json | ConvertFrom-Json
+    }
+    catch {
+        return $jobs
+    }
+    foreach ($job in @($run.jobs)) {
+        if (-not $job -or [string]::IsNullOrWhiteSpace($job.name)) { continue }
+        $conclusion = if ($job.conclusion) { [string]$job.conclusion } else { "" }
+        $jobs[[string]$job.name] = @{
+            Status = [string]$job.status
+            Conclusion = $conclusion
+        }
     }
     return $jobs
 }
@@ -207,12 +252,17 @@ function Get-WorkflowJobStates {
         [string]$RunId
     )
 
-    $jq = '.jobs[] | [.name, .status, (.conclusion // "")] | @tsv'
+    # Parse JSON in PowerShell instead of passing a jq expression. Windows
+    # PowerShell 5.1 collapses the embedded `""` in jq's
+    # `(.conclusion // "")` idiom (it reaches gh as a single `"`), so the old
+    # `--jq` expression made gh fail with "accepts at most 1 arg(s)". That
+    # turned every successful sync into a 30-minute timeout and left
+    # .last-sync stale.
     $result = Invoke-Gh -Arguments @(
-        "run", "view", $RunId, "--repo", $RepoSlug, "--json", "jobs", "--jq", $jq
+        "run", "view", $RunId, "--repo", $RepoSlug, "--json", "jobs"
     )
     if ($result.ExitCode -ne 0) { return @{} }
-    return ConvertFrom-JobListTsv -Lines $result.Output
+    return ConvertFrom-JobListJson -Json ((@($result.Output) -join "`n").Trim())
 }
 
 function Find-WorkflowJobState {
@@ -332,6 +382,10 @@ function Invoke-PublishWithRetry {
     while ($true) {
         $attempt++
         try {
+            # Installation tokens expire after an hour. A large backlog spans
+            # many chunks (one workflow run each), so mint a fresh token per
+            # attempt instead of letting later chunks fail with HTTP 401.
+            Set-ConahcnujGhToken
             Invoke-SyncDnsWorkflow -RepoSlug $RepoSlug -DataB64 $DataB64 | Out-Null
             return $attempt
         }
@@ -356,50 +410,60 @@ Push-Location $RepoRoot
 try {
     Write-TaskLog -TaskName "publish" -Message "started"
 
-    $GhExe = Get-GhExe
-
-    Set-ConahcnujGhToken
-
-    $unsentLines = Get-UnsentLines @PSBoundParameters
-    if ($unsentLines.Count -eq 0) {
-        Write-TaskLog -TaskName "publish" -Message "skipped (no unsent lines)"
-        exit 0
+    $publishLock = Enter-PublishLock
+    if (-not $publishLock) {
+        Write-TaskLog -TaskName "publish" -Message "skipped (another publish is already running)"
+        return
     }
+    try {
+        $GhExe = Get-GhExe
 
-    $settings = Get-PublishSettings
-    $repoSlug = Get-RepoSlug
+        Set-ConahcnujGhToken
 
-    $chunks = Split-LinesToB64Chunks -Lines $unsentLines
-    $totalLines = 0
-    $finalMaxTs = 0
-    $lastAttemptsUsed = 0
-    for ($c = 0; $c -lt $chunks.Count; $c++) {
-        $chunk = $chunks[$c]
-        $dataB64 = Convert-LinesToB64 -Lines $chunk
-        $chunkMax = ($chunk | ForEach-Object { [int]($_ -split "`t")[0] } | Measure-Object -Maximum).Maximum
-        $chunkNum = $c + 1
-        if ($chunks.Count -gt 1) {
-            Write-TaskLog -TaskName "publish" -Message "sending chunk ${chunkNum}/$($chunks.Count) (lines=$($chunk.Count), max_ts=$chunkMax)"
+        $unsentLines = Get-UnsentLines @PSBoundParameters
+        if ($unsentLines.Count -eq 0) {
+            Write-TaskLog -TaskName "publish" -Message "skipped (no unsent lines)"
+            return
         }
-        $attemptsUsed = Invoke-PublishWithRetry -RepoSlug $repoSlug -DataB64 $dataB64 `
-            -MaxAttempts $settings.MaxAttempts -RetryDelaysSec $settings.RetryDelaysSec
-        $lastAttemptsUsed = $attemptsUsed
 
-        if (-not (Test-Path $DataDir)) { New-Item -ItemType Directory -Path $DataDir -Force | Out-Null }
-        $utf8NoBom = New-Object System.Text.UTF8Encoding $false
-        [System.IO.File]::WriteAllText($LastSyncFile, "$chunkMax", $utf8NoBom)
+        $settings = Get-PublishSettings
+        $repoSlug = Get-RepoSlug
 
-        $totalLines += $chunk.Count
-        $finalMaxTs = $chunkMax
-        $retryNote = if ($attemptsUsed -gt 1) { ", attempts=$attemptsUsed" } else { "" }
-        if ($chunks.Count -gt 1) {
-            Write-TaskLog -TaskName "publish" -Message "chunk ${chunkNum} ok (lines=$($chunk.Count)$retryNote)"
+        $chunks = Split-LinesToB64Chunks -Lines $unsentLines
+        $totalLines = 0
+        $finalMaxTs = 0
+        $lastAttemptsUsed = 0
+        for ($c = 0; $c -lt $chunks.Count; $c++) {
+            $chunk = $chunks[$c]
+            $dataB64 = Convert-LinesToB64 -Lines $chunk
+            $chunkMax = ($chunk | ForEach-Object { [int]($_ -split "`t")[0] } | Measure-Object -Maximum).Maximum
+            $chunkNum = $c + 1
+            if ($chunks.Count -gt 1) {
+                Write-TaskLog -TaskName "publish" -Message "sending chunk ${chunkNum}/$($chunks.Count) (lines=$($chunk.Count), max_ts=$chunkMax)"
+            }
+            $attemptsUsed = Invoke-PublishWithRetry -RepoSlug $repoSlug -DataB64 $dataB64 `
+                -MaxAttempts $settings.MaxAttempts -RetryDelaysSec $settings.RetryDelaysSec
+            $lastAttemptsUsed = $attemptsUsed
+
+            if (-not (Test-Path $DataDir)) { New-Item -ItemType Directory -Path $DataDir -Force | Out-Null }
+            $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+            [System.IO.File]::WriteAllText($LastSyncFile, "$chunkMax", $utf8NoBom)
+
+            $totalLines += $chunk.Count
+            $finalMaxTs = $chunkMax
+            $retryNote = if ($attemptsUsed -gt 1) { ", attempts=$attemptsUsed" } else { "" }
+            if ($chunks.Count -gt 1) {
+                Write-TaskLog -TaskName "publish" -Message "chunk ${chunkNum} ok (lines=$($chunk.Count)$retryNote)"
+            }
         }
+
+        $chunkNote = if ($chunks.Count -gt 1) { ", chunks=$($chunks.Count)" } else { "" }
+        $retryNote = if ($chunks.Count -eq 1 -and $lastAttemptsUsed -gt 1) { ", attempts=$lastAttemptsUsed" } else { "" }
+        Write-TaskLog -TaskName "publish" -Message "ok (lines=$totalLines, max_ts=$finalMaxTs$chunkNote$retryNote)"
     }
-
-    $chunkNote = if ($chunks.Count -gt 1) { ", chunks=$($chunks.Count)" } else { "" }
-    $retryNote = if ($chunks.Count -eq 1 -and $lastAttemptsUsed -gt 1) { ", attempts=$lastAttemptsUsed" } else { "" }
-    Write-TaskLog -TaskName "publish" -Message "ok (lines=$totalLines, max_ts=$finalMaxTs$chunkNote$retryNote)"
+    finally {
+        $publishLock.Dispose()
+    }
 }
 catch {
     Write-TaskLog -TaskName "publish" -Message "failed: $_"
