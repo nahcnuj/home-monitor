@@ -137,7 +137,7 @@ function Set-ConahcnujGhToken {
         throw "conahcnuj token script not found: $tokenScript"
     }
 
-    $errFile = New-TemporaryFile
+    $errFile = [System.IO.Path]::GetTempFileName()
     try {
         $token = (& $bash --noprofile --norc $tokenScript 2>$errFile | Out-String).Trim()
         if ($LASTEXITCODE -ne 0) {
