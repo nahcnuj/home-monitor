@@ -7,6 +7,9 @@ import {
   determineSuccess,
   escapeRegExp,
   extractAvailableCategories,
+  extractReportCount,
+  getReportCount,
+  hasReportCountIncreased,
   isCloudflareChallenge,
   isRateLimited,
   labelCandidates,
@@ -260,5 +263,100 @@ describe("determineSuccess", () => {
       dialog: true,
     });
     expect(await determineSuccess(page)).toBe(true);
+  });
+});
+
+describe("extractReportCount", () => {
+  it("returns null for null/undefined", () => {
+    expect(extractReportCount(null)).toBeNull();
+    expect(extractReportCount(undefined)).toBeNull();
+  });
+
+  it("parses a plain number", () => {
+    expect(extractReportCount(42)).toBe(42);
+    expect(extractReportCount("42")).toBe(42);
+    expect(extractReportCount("  152 ")).toBe(152);
+  });
+
+  it("parses comma-separated numbers", () => {
+    expect(extractReportCount("1,234")).toBe(1234);
+  });
+
+  it("parses labeled counts", () => {
+    expect(extractReportCount("152 reports")).toBe(152);
+    expect(extractReportCount("count: 7")).toBe(7);
+    expect(extractReportCount("problems=3")).toBe(3);
+  });
+
+  it("falls back to first number", () => {
+    expect(extractReportCount("abc 99 xyz")).toBe(99);
+  });
+
+  it("returns null when no number", () => {
+    expect(extractReportCount("no digits here")).toBeNull();
+  });
+});
+
+describe("hasReportCountIncreased", () => {
+  it("returns true when after > before", () => {
+    expect(hasReportCountIncreased(10, 11)).toBe(true);
+  });
+
+  it("returns false when equal or decreased", () => {
+    expect(hasReportCountIncreased(10, 10)).toBe(false);
+    expect(hasReportCountIncreased(10, 9)).toBe(false);
+  });
+
+  it("handles strings and nulls", () => {
+    expect(hasReportCountIncreased("10", "11")).toBe(true);
+    expect(hasReportCountIncreased(null, 5)).toBe(false);
+    expect(hasReportCountIncreased(5, null)).toBe(false);
+  });
+
+  it("extracts from text", () => {
+    expect(hasReportCountIncreased("10 reports", "11 reports")).toBe(true);
+  });
+});
+
+describe("getReportCount", () => {
+  it("returns null for null page", async () => {
+    expect(await getReportCount(null)).toBeNull();
+  });
+
+  it("reads direct property", async () => {
+    expect(await getReportCount({ count: 5 })).toBe(5);
+    expect(await getReportCount({ reportCount: "7" })).toBe(7);
+  });
+
+  it("reads via getReportCount method", async () => {
+    const page = { getReportCount: async () => "9 reports" };
+    expect(await getReportCount(page)).toBe(9);
+  });
+
+  it("reads via textContent", async () => {
+    const page = { textContent: async () => "count: 3" };
+    expect(await getReportCount(page)).toBe(3);
+  });
+});
+
+describe("determineSuccess count-based", () => {
+  it("succeeds when count increased", async () => {
+    const page = { count: 5 };
+    expect(await determineSuccess(page, 4)).toBe(true);
+  });
+
+  it("fails when count not increased", async () => {
+    const page = { count: 5 };
+    expect(await determineSuccess(page, 5)).toBe(false);
+  });
+
+  it("supports object args", async () => {
+    const page = { count: 6 };
+    expect(await determineSuccess({ page, beforeCount: 5 })).toBe(true);
+  });
+
+  it("reads after count from page when missing", async () => {
+    const page = { count: 6 };
+    expect(await determineSuccess(page, 5, undefined)).toBe(true);
   });
 });

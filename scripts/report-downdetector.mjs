@@ -187,8 +187,6 @@ export function extractReportCount(text) {
   return null;
 }
 
-export const parseReportCount = extractReportCount;
-
 export function hasReportCountIncreased(before, after) {
   const toNum = (v) => {
     if (typeof v === "number") return v;
@@ -205,13 +203,6 @@ export function hasReportCountIncreased(before, after) {
   const a = toNum(after);
   return typeof b === "number" && !Number.isNaN(b) &&
     typeof a === "number" && !Number.isNaN(a) && a > b;
-}
-
-export const didReportCountIncrease = hasReportCountIncreased;
-export const countIncreased = hasReportCountIncreased;
-export const isCountIncreased = hasReportCountIncreased;
-export function reportCountIncreased(before, after) {
-  return hasReportCountIncreased(before, after);
 }
 
 export async function getReportCount(page) {
@@ -564,22 +555,6 @@ async function run() {
     process.exit(1);
   }
 }
-
-// Additional aliases for alternate naming used by callers/tests.
-export const verifyReportSuccess = determineSuccess;
-export const verifySuccess = determineSuccess;
-export const isSuccess = determineSuccess;
-export const checkSuccess = determineSuccess;
-export const isReportCountIncreased = hasReportCountIncreased;
-export const countWentUp = hasReportCountIncreased;
-export const increased = hasReportCountIncreased;
-export const getCount = getReportCount;
-export const readCount = getReportCount;
-export const fetchReportCount = getReportCount;
-export const extractCount = extractReportCount;
-export const parseCount = extractReportCount;
-export const getCountFromText = extractReportCount;
-export const countFromText = extractReportCount;
 
 // Only run the RPA flow when executed directly, not when imported by tests.
 const invokedDirectly =
