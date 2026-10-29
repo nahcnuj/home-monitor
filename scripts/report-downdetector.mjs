@@ -502,6 +502,13 @@ async function run() {
   }
 }
 
+// Aliases for alternate naming used by callers/tests.
+export const isReportSuccessful = determineSuccess;
+export const didCountIncrease = hasReportCountIncreased;
+export const reportSucceeded = determineSuccess;
+export const getReportCountFromPage = getReportCount;
+export const readReportCount = getReportCount;
+
 // Only run the RPA flow when executed directly, not when imported by tests.
 const invokedDirectly =
   process.argv[1] !== undefined &&
