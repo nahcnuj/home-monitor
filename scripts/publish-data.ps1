@@ -372,22 +372,10 @@ function Invoke-SyncDnsWorkflow {
         throw "sync job failed (conclusion=$($syncJob.Conclusion), run_id=$runId)"
     }
 
-    # Wait for the report job so its outcome is recorded locally too, but it can
-    # never fail the publish: the data was already committed by the sync job.
-    if (-not (Wait-WorkflowRunCompleted -RepoSlug $RepoSlug -RunId $runId -TimeoutMinutes 15)) {
-        Write-TaskLog -TaskName "publish" -Message "report still running after 15m - data sync already succeeded (run_id=$runId)"
-        return
-    }
-    $reportJob = Find-WorkflowJobState `
-        -Jobs (Get-WorkflowJobStates -RepoSlug $RepoSlug -RunId $runId) -Names $ReportJobNames
-    if ($reportJob -and $reportJob.Conclusion -and $reportJob.Conclusion -ne "skipped") {
-        $message = if ($reportJob.Conclusion -eq "success") {
-            "report job succeeded"
-        } else {
-            "report job failed (conclusion=$($reportJob.Conclusion)) - data sync already succeeded"
-        }
-        Write-TaskLog -TaskName "publish" -Message "$message (run_id=$runId)"
-    }
+    # The report job runs after the data is already committed by the sync job.
+    # Do not block the next chunk on it: waiting (up to 15 min) made catch-up
+    # of a backlog take hours and left the dashboard showing stale data.
+    Write-TaskLog -TaskName "publish" -Message "data sync succeeded (run_id=$runId); report job left to finish in cloud"
 }
 
 function Invoke-PublishWithRetry {
