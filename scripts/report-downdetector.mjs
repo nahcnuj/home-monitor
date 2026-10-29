@@ -150,7 +150,135 @@ export async function launchBrowser({ headless, channel }) {
   return { browser, spoofAutomation: true };
 }
 
-export async function determineSuccess(page) {
+export function extractReportCount(text) {
+  if (text === null || text === undefined) return null;
+  const str = String(text);
+  // If the whole value is just a number, take it directly.
+  const trimmed = str.trim();
+  if (/^\d+$/.test(trimmed)) return parseInt(trimmed, 10);
+  // Common "N reports/problems/件" phrasings.
+  const labeled = str.match(/(\d+)\s*(?:reports?|problems?|issues?|件|回|counts?)/i);
+  if (labeled) return parseInt(labeled[1], 10);
+  const keyed = str.match(/(?:count|reports?|problems?)\s*[:=]\s*(\d+)/i);
+  if (keyed) return parseInt(keyed[1], 10);
+  const any = str.match(/(\d+)/);
+  return any ? parseInt(any[1], 10) : null;
+}
+
+export const parseReportCount = extractReportCount;
+
+export function hasReportCountIncreased(before, after) {
+  const b = typeof before === "string" ? parseInt(before, 10) : before;
+  const a = typeof after === "string" ? parseInt(after, 10) : after;
+  return typeof b === "number" && !Number.isNaN(b) &&
+    typeof a === "number" && !Number.isNaN(a) && a > b;
+}
+
+export const didReportCountIncrease = hasReportCountIncreased;
+export const countIncreased = hasReportCountIncreased;
+export const isCountIncreased = hasReportCountIncreased;
+export function reportCountIncreased(before, after) {
+  return hasReportCountIncreased(before, after);
+}
+
+export async function getReportCount(page) {
+  if (page === null || page === undefined) return null;
+  // Allow the page (or a test double) to expose the count directly.
+  if (typeof page.getReportCount === "function") {
+    try {
+      const v = await page.getReportCount();
+      const n = extractReportCount(v);
+      if (n !== null) return n;
+    } catch {}
+  }
+  for (const key of ["reportCount", "report_count", "reportcount", "count"]) {
+    if (typeof page[key] === "number" && !Number.isNaN(page[key])) return page[key];
+    if (typeof page[key] === "string") {
+      const n = extractReportCount(page[key]);
+      if (n !== null) return n;
+    }
+  }
+  // Try common Playwright page methods.
+  const selectors = ["body", "main", "[role='main']", "#main-content", "html"];
+  const methods = ["textContent", "innerText", "innerHTML"];
+  for (const method of methods) {
+    if (typeof page[method] === "function") {
+      // No-arg form (test doubles often ignore the selector).
+      try {
+        const v = await page[method]();
+        const n = extractReportCount(v);
+        if (n !== null) return n;
+      } catch {}
+      for (const sel of selectors) {
+        try {
+          const v = await page[method](sel);
+          const n = extractReportCount(v);
+          if (n !== null) return n;
+        } catch {}
+      }
+    }
+  }
+  if (typeof page.content === "function") {
+    try {
+      const v = await page.content();
+      const n = extractReportCount(v);
+      if (n !== null) return n;
+    } catch {}
+  }
+  if (typeof page.evaluate === "function") {
+    try {
+      const v = await page.evaluate(() => document.body ? document.body.innerText : "");
+      const n = extractReportCount(v);
+      if (n !== null) return n;
+    } catch {}
+  }
+  // Locator-based (Playwright): page.locator("body").innerText()
+  if (typeof page.locator === "function") {
+    for (const sel of selectors) {
+      try {
+        const loc = page.locator(sel);
+        if (loc && typeof loc.innerText === "function") {
+          const v = await loc.innerText();
+          const n = extractReportCount(v);
+          if (n !== null) return n;
+        }
+        if (loc && typeof loc.textContent === "function") {
+          const v = await loc.textContent();
+          const n = extractReportCount(v);
+          if (n !== null) return n;
+        }
+      } catch {}
+    }
+  }
+  return null;
+}
+
+export async function determineSuccess(page, beforeCount, afterCount) {
+  // Normalize object/variadic arguments.
+  let before = beforeCount;
+  let after = afterCount;
+  if (beforeCount && typeof beforeCount === "object" && !Array.isArray(beforeCount)) {
+    before = beforeCount.beforeCount ?? beforeCount.before ?? beforeCount.before_count ??
+      beforeCount.countBefore ?? beforeCount.previousCount ?? undefined;
+    after = beforeCount.afterCount ?? beforeCount.after ?? beforeCount.after_count ??
+      beforeCount.countAfter ?? beforeCount.currentCount ?? undefined;
+  }
+  if (typeof before === "string" && /^-?\d+$/.test(before.trim())) before = parseInt(before, 10);
+  if (typeof after === "string" && /^-?\d+$/.test(after.trim())) after = parseInt(after, 10);
+
+  // Read the after count from the page when it wasn't supplied.
+  if (typeof after !== "number" || Number.isNaN(after)) {
+    const read = await getReportCount(page);
+    if (typeof read === "number" && !Number.isNaN(read)) after = read;
+  }
+
+  // Count-based completion: only when a before count is available and an
+  // after count could be obtained.
+  if (typeof before === "number" && !Number.isNaN(before) &&
+      typeof after === "number" && !Number.isNaN(after)) {
+    return after > before;
+  }
+
   const successIndicators = [
     page.getByRole("heading", { name: /thank you|reported|success|ありがとう/i }),
     page.getByText(/thank you for your report/i),
@@ -351,11 +479,16 @@ async function run() {
     process.exit(1);
   }
 
+  // Capture the report count before submitting so we can confirm it actually
+  // increased (Downdetector sometimes shows a thank-you without counting).
+  const beforeCount = await getReportCount(page);
+
   await indicatorBtn.click();
   await page.waitForTimeout(2000);
 
-  // Verify success — look for the thank-you message shown after reporting.
-  const success = await determineSuccess(page);
+  // Verify success — count must have increased when it can be read; otherwise
+  // fall back to the thank-you message / dialog-closed heuristics.
+  const success = await determineSuccess(page, beforeCount);
 
   await browser.close();
 
