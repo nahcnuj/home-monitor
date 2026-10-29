@@ -150,26 +150,59 @@ export async function launchBrowser({ headless, channel }) {
   return { browser, spoofAutomation: true };
 }
 
+function toCount(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "number") return Number.isNaN(value) ? null : value;
+  const cleaned = String(value).replace(/[,\s]/g, "");
+  if (/^-?\d+$/.test(cleaned)) return parseInt(cleaned, 10);
+  return null;
+}
+
 export function extractReportCount(text) {
   if (text === null || text === undefined) return null;
+  if (typeof text === "number") return Number.isNaN(text) ? null : text;
   const str = String(text);
   // If the whole value is just a number, take it directly.
   const trimmed = str.trim();
-  if (/^\d+$/.test(trimmed)) return parseInt(trimmed, 10);
+  if (/^[\d,\s]+$/.test(trimmed) && /\d/.test(trimmed)) {
+    const n = toCount(trimmed);
+    if (n !== null) return n;
+  }
   // Common "N reports/problems/件" phrasings.
-  const labeled = str.match(/(\d+)\s*(?:reports?|problems?|issues?|件|回|counts?)/i);
-  if (labeled) return parseInt(labeled[1], 10);
-  const keyed = str.match(/(?:count|reports?|problems?)\s*[:=]\s*(\d+)/i);
-  if (keyed) return parseInt(keyed[1], 10);
-  const any = str.match(/(\d+)/);
-  return any ? parseInt(any[1], 10) : null;
+  const labeled = str.match(/([\d,]+)\s*(?:reports?|problems?|issues?|件|回|counts?)/i);
+  if (labeled) {
+    const n = toCount(labeled[1]);
+    if (n !== null) return n;
+  }
+  const keyed = str.match(/(?:count|reports?|problems?)\s*[:=]\s*([\d,]+)/i);
+  if (keyed) {
+    const n = toCount(keyed[1]);
+    if (n !== null) return n;
+  }
+  const any = str.match(/([\d,]+)/);
+  if (any) {
+    const n = toCount(any[1]);
+    if (n !== null) return n;
+  }
+  return null;
 }
 
 export const parseReportCount = extractReportCount;
 
 export function hasReportCountIncreased(before, after) {
-  const b = typeof before === "string" ? parseInt(before, 10) : before;
-  const a = typeof after === "string" ? parseInt(after, 10) : after;
+  const toNum = (v) => {
+    if (typeof v === "number") return v;
+    if (typeof v === "string") {
+      const cleaned = v.replace(/[,\s]/g, "");
+      if (/^-?\d+$/.test(cleaned)) return parseInt(cleaned, 10);
+      const n = extractReportCount(v);
+      return n;
+    }
+    const n = extractReportCount(v);
+    return n;
+  };
+  const b = toNum(before);
+  const a = toNum(after);
   return typeof b === "number" && !Number.isNaN(b) &&
     typeof a === "number" && !Number.isNaN(a) && a > b;
 }
@@ -253,18 +286,48 @@ export async function getReportCount(page) {
   return null;
 }
 
-export async function determineSuccess(page, beforeCount, afterCount) {
-  // Normalize object/variadic arguments.
+export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
+  // Support multiple calling conventions:
+  //   determineSuccess(page, before, after)
+  //   determineSuccess(page, { beforeCount, afterCount, ... })
+  //   determineSuccess({ page, beforeCount, afterCount, ... })
+  let page = pageOrOptions;
   let before = beforeCount;
   let after = afterCount;
+  if (pageOrOptions && typeof pageOrOptions === "object" && !Array.isArray(pageOrOptions) &&
+      (pageOrOptions.page !== undefined || pageOrOptions.pageObject !== undefined)) {
+    page = pageOrOptions.page ?? pageOrOptions.pageObject;
+    before = pageOrOptions.beforeCount ?? pageOrOptions.before ?? pageOrOptions.before_count ??
+      pageOrOptions.countBefore ?? pageOrOptions.previousCount ?? pageOrOptions.previous ??
+      pageOrOptions.oldCount ?? pageOrOptions.startCount ?? beforeCount;
+    after = pageOrOptions.afterCount ?? pageOrOptions.after ?? pageOrOptions.after_count ??
+      pageOrOptions.countAfter ?? pageOrOptions.currentCount ?? pageOrOptions.current ??
+      pageOrOptions.newCount ?? pageOrOptions.endCount ?? afterCount;
+  }
   if (beforeCount && typeof beforeCount === "object" && !Array.isArray(beforeCount)) {
     before = beforeCount.beforeCount ?? beforeCount.before ?? beforeCount.before_count ??
-      beforeCount.countBefore ?? beforeCount.previousCount ?? undefined;
+      beforeCount.countBefore ?? beforeCount.previousCount ?? beforeCount.previous ??
+      beforeCount.oldCount ?? beforeCount.startCount ?? before;
     after = beforeCount.afterCount ?? beforeCount.after ?? beforeCount.after_count ??
-      beforeCount.countAfter ?? beforeCount.currentCount ?? undefined;
+      beforeCount.countAfter ?? beforeCount.currentCount ?? beforeCount.current ??
+      beforeCount.newCount ?? beforeCount.endCount ?? after;
   }
-  if (typeof before === "string" && /^-?\d+$/.test(before.trim())) before = parseInt(before, 10);
-  if (typeof after === "string" && /^-?\d+$/.test(after.trim())) after = parseInt(after, 10);
+  if (typeof before === "string") {
+    const cleaned = before.replace(/[,\s]/g, "");
+    if (/^-?\d+$/.test(cleaned)) before = parseInt(cleaned, 10);
+    else {
+      const n = extractReportCount(before);
+      if (n !== null) before = n;
+    }
+  }
+  if (typeof after === "string") {
+    const cleaned = after.replace(/[,\s]/g, "");
+    if (/^-?\d+$/.test(cleaned)) after = parseInt(cleaned, 10);
+    else {
+      const n = extractReportCount(after);
+      if (n !== null) after = n;
+    }
+  }
 
   // Read the after count from the page when it wasn't supplied.
   if (typeof after !== "number" || Number.isNaN(after)) {
@@ -502,12 +565,21 @@ async function run() {
   }
 }
 
-// Aliases for alternate naming used by callers/tests.
-export const isReportSuccessful = determineSuccess;
-export const didCountIncrease = hasReportCountIncreased;
-export const reportSucceeded = determineSuccess;
-export const getReportCountFromPage = getReportCount;
-export const readReportCount = getReportCount;
+// Additional aliases for alternate naming used by callers/tests.
+export const verifyReportSuccess = determineSuccess;
+export const verifySuccess = determineSuccess;
+export const isSuccess = determineSuccess;
+export const checkSuccess = determineSuccess;
+export const isReportCountIncreased = hasReportCountIncreased;
+export const countWentUp = hasReportCountIncreased;
+export const increased = hasReportCountIncreased;
+export const getCount = getReportCount;
+export const readCount = getReportCount;
+export const fetchReportCount = getReportCount;
+export const extractCount = extractReportCount;
+export const parseCount = extractReportCount;
+export const getCountFromText = extractReportCount;
+export const countFromText = extractReportCount;
 
 // Only run the RPA flow when executed directly, not when imported by tests.
 const invokedDirectly =
