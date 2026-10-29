@@ -322,9 +322,29 @@ function Invoke-SyncDnsWorkflow {
     )
 
     $payload = @{ data_b64 = $DataB64 } | ConvertTo-Json -Compress
-    $dispatch = Invoke-Gh -Arguments @(
-        "workflow", "run", "sync-dns-data.yml", "--repo", $RepoSlug, "--json"
-    ) -Stdin $payload
+    # PowerShell's pipeline to a native exe mangles stdin (BOM / encoding), so
+    # write the JSON to a temp file and let cmd redirect it into gh.
+    $payloadFile = [System.IO.Path]::GetTempFileName()
+    try {
+        [System.IO.File]::WriteAllText(
+            $payloadFile, $payload, (New-Object System.Text.UTF8Encoding $false))
+        $savedPreference = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        try {
+            $dispatchOutput = & "C:\Windows\System32\cmd.exe" /c "`"$GhExe`" workflow run sync-dns-data.yml --repo $RepoSlug --json < `"$payloadFile`"" 2>$null
+            $dispatchExit = $LASTEXITCODE
+        }
+        finally {
+            $ErrorActionPreference = $savedPreference
+        }
+    }
+    finally {
+        Remove-Item -LiteralPath $payloadFile -Force -ErrorAction SilentlyContinue
+    }
+    $dispatch = @{
+        ExitCode = $dispatchExit
+        Output = @($dispatchOutput)
+    }
     if ($dispatch.ExitCode -ne 0) {
         throw "gh workflow run failed"
     }
