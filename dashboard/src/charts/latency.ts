@@ -558,11 +558,12 @@ export function visibleWindowFromBounds(bounds: TimeBounds): { min: number; max:
   return visibleXWindow(bounds.max, bounds.viewportSec, bounds.min, bounds.max);
 }
 
-function isHiddenBand(label: string | undefined): boolean {
+export function isHiddenBand(label: string | undefined): boolean {
   return !!label?.endsWith(" min")
     || !!label?.endsWith(" max")
     || !!label?.endsWith(" mean-σ")
-    || !!label?.endsWith(" mean+σ");
+    || !!label?.endsWith(" mean+σ")
+    || !!label?.endsWith(" median");
 }
 
 export function latencyTooltipTitle(items: TooltipItem<"line">[]): string {
@@ -698,6 +699,18 @@ export function buildLatencyChart(
       fill: "-1",
       spanGaps: false,
     });
+    datasets.push({
+      label: `${server} median`,
+      order: 2,
+      data: withGaps(envelope.median, envelope.emptyTimestamps, maxGapSec),
+      borderColor: color,
+      backgroundColor: "transparent",
+      borderWidth: 2,
+      pointRadius: 0,
+      tension: BAND_TENSION,
+      fill: false,
+      spanGaps: false,
+    });
 
     const samples = successesByServer.get(server) ?? [];
     if (samples.length) {
@@ -804,7 +817,17 @@ export function buildLatencyChart(
         legend: {
           labels: {
             color: "#e4e6ed",
-            filter: (item: { text: string }) => !isHiddenBand(item.text) && !isFailureDataset(item.text),
+            filter: (
+              item: { text: string; datasetIndex?: number },
+              data?: { datasets?: Array<{ type?: string }> },
+            ) => {
+              const dataset = data?.datasets?.[item.datasetIndex ?? -1];
+              if (dataset?.type === "scatter") return false;
+              return (
+                !isFailureDataset(item.text) &&
+                (!isHiddenBand(item.text) || !!item.text?.endsWith(" median"))
+              );
+            },
           },
         },
         tooltip: {
