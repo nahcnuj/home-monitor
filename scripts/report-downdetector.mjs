@@ -87,7 +87,8 @@ export function isCloudflareChallenge(title, content) {
 }
 
 export function extractAvailableCategories(radios) {
-  return (radios || []).map((t) => String(t).trim()).filter(Boolean);
+  if (!Array.isArray(radios)) return [];
+  return radios.map((t) => String(t).trim()).filter(Boolean);
 }
 
 export function buildOptions(argv, env) {
@@ -161,12 +162,25 @@ function toCount(value) {
 export function extractReportCount(text) {
   if (text === null || text === undefined) return null;
   if (typeof text === "number") return Number.isNaN(text) ? null : text;
-  if (typeof text === "object" && !Array.isArray(text)) {
-    for (const key of ["count", "reportCount", "report_count", "reportcount", "value", "total"]) {
+  if (Array.isArray(text)) {
+    for (const item of text) {
+      const n = extractReportCount(item);
+      if (n !== null) return n;
+    }
+    return null;
+  }
+  if (typeof text === "object" && text !== null) {
+    const preferred = ["count", "reportCount", "report_count", "reportcount", "value", "total"];
+    for (const key of preferred) {
       if (Object.prototype.hasOwnProperty.call(text, key)) {
         const n = extractReportCount(text[key]);
         if (n !== null) return n;
       }
+    }
+    for (const key of Object.keys(text)) {
+      if (preferred.includes(key)) continue;
+      const n = extractReportCount(text[key]);
+      if (n !== null) return n;
     }
     return null;
   }
@@ -246,11 +260,18 @@ export async function getReportCount(page) {
       if (n !== null) return n;
     } catch {}
   }
-  for (const key of ["reportCount", "report_count", "reportcount", "count"]) {
+  for (const key of ["reportCount", "report_count", "reportcount", "count", "total", "value", "reports", "problems"]) {
     if (typeof page[key] === "number" && !Number.isNaN(page[key])) return page[key];
     if (typeof page[key] === "string") {
       const n = extractReportCount(page[key]);
       if (n !== null) return n;
+    }
+    if (typeof page[key] === "function") {
+      try {
+        const v = await page[key]();
+        const n = extractReportCount(v);
+        if (n !== null) return n;
+      } catch {}
     }
     if (page[key] !== null && typeof page[key] === "object") {
       const n = extractReportCount(page[key]);
@@ -467,23 +488,7 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
   return false;
 }
 
-// Compatibility aliases for count helpers (hidden tests may use either name).
-export const parseReportCount = extractReportCount;
-export const extractCount = extractReportCount;
-export const parseCount = extractReportCount;
-export const getCount = extractReportCount;
-export const didReportCountIncrease = hasReportCountIncreased;
-export const hasCountIncreased = hasReportCountIncreased;
-export const didCountIncrease = hasReportCountIncreased;
-export const countIncreased = hasReportCountIncreased;
-export const isCountIncreased = hasReportCountIncreased;
-export const reportCountIncreased = hasReportCountIncreased;
-export const isReportCountIncreased = hasReportCountIncreased;
-export const readReportCount = getReportCount;
-export const fetchReportCount = getReportCount;
-export const verifySuccess = determineSuccess;
-export const isReportSuccessful = determineSuccess;
-export const reportSucceeded = determineSuccess;
+
 
 async function run() {
   const {
