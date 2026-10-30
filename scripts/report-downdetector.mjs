@@ -161,6 +161,15 @@ function toCount(value) {
 export function extractReportCount(text) {
   if (text === null || text === undefined) return null;
   if (typeof text === "number") return Number.isNaN(text) ? null : text;
+  if (typeof text === "object" && !Array.isArray(text)) {
+    for (const key of ["count", "reportCount", "report_count", "reportcount", "value", "total"]) {
+      if (Object.prototype.hasOwnProperty.call(text, key)) {
+        const n = extractReportCount(text[key]);
+        if (n !== null) return n;
+      }
+    }
+    return null;
+  }
   const str = String(text);
   // If the whole value is just a number, take it directly.
   const trimmed = str.trim();
@@ -174,7 +183,7 @@ export function extractReportCount(text) {
     const n = toCount(labeled[1]);
     if (n !== null) return n;
   }
-  const keyed = str.match(/(?:count|reports?|problems?)\s*[:=]\s*([\d,]+)/i);
+  const keyed = str.match(/(?:count|reports?|problems?|total|value)\s*[:=]\s*([\d,]+)/i);
   if (keyed) {
     const n = toCount(keyed[1]);
     if (n !== null) return n;
@@ -193,7 +202,7 @@ export function hasReportCountIncreased(before, after) {
     if (typeof v === "number") return Number.isNaN(v) ? null : v;
     if (typeof v === "string") {
       const cleaned = v.replace(/[,\s]/g, "");
-      if (/^-?\\d+$/.test(cleaned)) return parseInt(cleaned, 10);
+      if (/^-?\d+$/.test(cleaned)) return parseInt(cleaned, 10);
       const n = extractReportCount(v);
       return n;
     }
@@ -230,11 +239,19 @@ export async function getReportCount(page) {
       const n = extractReportCount(page[key]);
       if (n !== null) return n;
     }
+    if (page[key] !== null && typeof page[key] === "object") {
+      const n = extractReportCount(page[key]);
+      if (n !== null) return n;
+    }
   }
   // Try common Playwright page methods.
   const selectors = ["body", "main", "[role='main']", "#main-content", "html"];
   const methods = ["textContent", "innerText", "innerHTML"];
   for (const method of methods) {
+    if (typeof page[method] === "string") {
+      const n = extractReportCount(page[method]);
+      if (n !== null) return n;
+    }
     if (typeof page[method] === "function") {
       // No-arg form (test doubles often ignore the selector).
       try {
@@ -324,7 +341,7 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
   }
   if (typeof before === "string") {
     const cleaned = before.replace(/[,\s]/g, "");
-    if (/^-?\\d+$/.test(cleaned)) before = parseInt(cleaned, 10);
+    if (/^-?\d+$/.test(cleaned)) before = parseInt(cleaned, 10);
     else {
       const n = extractReportCount(before);
       if (n !== null) before = n;
@@ -337,7 +354,7 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
         if (typeof v === "number" && !Number.isNaN(v)) { n = v; break; }
         if (typeof v === "string") {
           const cleaned = v.replace(/[,\s]/g, "");
-          if (/^-?\\d+$/.test(cleaned)) { n = parseInt(cleaned, 10); break; }
+          if (/^-?\d+$/.test(cleaned)) { n = parseInt(cleaned, 10); break; }
           const r = extractReportCount(v);
           if (r !== null) { n = r; break; }
         }
