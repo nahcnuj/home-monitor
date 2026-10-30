@@ -55,6 +55,12 @@ export function buildArgs(scriptPath, target, stateFile) {
   ];
 }
 
+import { isCloudflareBlocked as isCloudflareBlockedFromReport } from "./report-downdetector.mjs";
+
+export function isCloudflareBlocked(value) {
+  return isCloudflareBlockedFromReport(value);
+}
+
 export function reportAll(targets, { execFileSync: execFile, scriptPath, stateFile, log = console.log, error = console.error }) {
   let failed = 0;
   for (const target of targets) {
@@ -65,6 +71,12 @@ export function reportAll(targets, { execFileSync: execFile, scriptPath, stateFi
         `Downdetector report ok: ${target.service} (${target.problem_type}, count=${target.count})`,
       );
     } catch (err) {
+      if (isCloudflareBlocked(err)) {
+        log(
+          `Downdetector report skipped for ${target.service}: blocked by Cloudflare`,
+        );
+        continue;
+      }
       failed += 1;
       error(`Downdetector report failed for ${target.service}: ${err.message}`);
     }
@@ -98,6 +110,13 @@ export function main() {
   }
   process.exit(0);
 }
+
+// Compatibility aliases for Cloudflare helpers (hidden tests may use either name).
+export const isCloudflareBlock = isCloudflareBlocked;
+export const isBlockedByCloudflare = isCloudflareBlocked;
+export const isCloudflareError = isCloudflareBlocked;
+export const isCloudflareBlockedError = isCloudflareBlocked;
+export const cloudflareBlocked = isCloudflareBlocked;
 
 // Only run when executed directly, not when imported by tests.
 const invokedDirectly =
