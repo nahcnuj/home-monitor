@@ -189,12 +189,21 @@ export function extractReportCount(text) {
 
 export function hasReportCountIncreased(before, after) {
   const toNum = (v) => {
-    if (typeof v === "number") return v;
+    if (v === null || v === undefined) return null;
+    if (typeof v === "number") return Number.isNaN(v) ? null : v;
     if (typeof v === "string") {
       const cleaned = v.replace(/[,\s]/g, "");
-      if (/^-?\d+$/.test(cleaned)) return parseInt(cleaned, 10);
+      if (/^-?\\d+$/.test(cleaned)) return parseInt(cleaned, 10);
       const n = extractReportCount(v);
       return n;
+    }
+    if (typeof v === "object") {
+      for (const key of ["count", "reportCount", "report_count", "reportcount", "value", "total"]) {
+        if (Object.prototype.hasOwnProperty.call(v, key)) {
+          const n = toNum(v[key]);
+          if (n !== null) return n;
+        }
+      }
     }
     const n = extractReportCount(v);
     return n;
@@ -285,8 +294,18 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
   let page = pageOrOptions;
   let before = beforeCount;
   let after = afterCount;
-  if (pageOrOptions && typeof pageOrOptions === "object" && !Array.isArray(pageOrOptions) &&
-      (pageOrOptions.page !== undefined || pageOrOptions.pageObject !== undefined)) {
+  const isOptionObject =
+    pageOrOptions && typeof pageOrOptions === "object" && !Array.isArray(pageOrOptions) &&
+    (pageOrOptions.page !== undefined || pageOrOptions.pageObject !== undefined ||
+      "beforeCount" in pageOrOptions || "before" in pageOrOptions ||
+      "before_count" in pageOrOptions || "countBefore" in pageOrOptions ||
+      "previousCount" in pageOrOptions || "previous" in pageOrOptions ||
+      "oldCount" in pageOrOptions || "startCount" in pageOrOptions ||
+      "afterCount" in pageOrOptions || "after" in pageOrOptions ||
+      "after_count" in pageOrOptions || "countAfter" in pageOrOptions ||
+      "currentCount" in pageOrOptions || "current" in pageOrOptions ||
+      "newCount" in pageOrOptions || "endCount" in pageOrOptions);
+  if (isOptionObject) {
     page = pageOrOptions.page ?? pageOrOptions.pageObject;
     before = pageOrOptions.beforeCount ?? pageOrOptions.before ?? pageOrOptions.before_count ??
       pageOrOptions.countBefore ?? pageOrOptions.previousCount ?? pageOrOptions.previous ??
@@ -305,11 +324,30 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
   }
   if (typeof before === "string") {
     const cleaned = before.replace(/[,\s]/g, "");
-    if (/^-?\d+$/.test(cleaned)) before = parseInt(cleaned, 10);
+    if (/^-?\\d+$/.test(cleaned)) before = parseInt(cleaned, 10);
     else {
       const n = extractReportCount(before);
       if (n !== null) before = n;
     }
+  } else if (before !== null && typeof before === "object" && !Array.isArray(before)) {
+    let n = null;
+    for (const key of ["count", "reportCount", "report_count", "reportcount", "value", "total", "beforeCount", "before"]) {
+      if (Object.prototype.hasOwnProperty.call(before, key)) {
+        const v = before[key];
+        if (typeof v === "number" && !Number.isNaN(v)) { n = v; break; }
+        if (typeof v === "string") {
+          const cleaned = v.replace(/[,\s]/g, "");
+          if (/^-?\\d+$/.test(cleaned)) { n = parseInt(cleaned, 10); break; }
+          const r = extractReportCount(v);
+          if (r !== null) { n = r; break; }
+        }
+      }
+    }
+    if (n === null) {
+      const r = extractReportCount(before);
+      if (r !== null) n = r;
+    }
+    if (n !== null) before = n;
   }
   if (typeof after === "string") {
     const cleaned = after.replace(/[,\s]/g, "");
@@ -318,6 +356,25 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
       const n = extractReportCount(after);
       if (n !== null) after = n;
     }
+  } else if (after !== null && typeof after === "object" && !Array.isArray(after)) {
+    let n = null;
+    for (const key of ["count", "reportCount", "report_count", "reportcount", "value", "total", "afterCount", "after"]) {
+      if (Object.prototype.hasOwnProperty.call(after, key)) {
+        const v = after[key];
+        if (typeof v === "number" && !Number.isNaN(v)) { n = v; break; }
+        if (typeof v === "string") {
+          const cleaned = v.replace(/[,\s]/g, "");
+          if (/^-?\d+$/.test(cleaned)) { n = parseInt(cleaned, 10); break; }
+          const r = extractReportCount(v);
+          if (r !== null) { n = r; break; }
+        }
+      }
+    }
+    if (n === null) {
+      const r = extractReportCount(after);
+      if (r !== null) n = r;
+    }
+    if (n !== null) after = n;
   }
 
   // Read the after count from the page when it wasn't supplied.
@@ -333,35 +390,48 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
     return after > before;
   }
 
-  const successIndicators = [
-    page.getByRole("heading", { name: /thank you|reported|success|ありがとう/i }),
-    page.getByText(/thank you for your report/i),
-    page.getByText(/report submitted/i),
-    page.getByText(/ありがとうございました/i),
-    page.getByText(/ありがとうございます/i),
-    page.getByText(/報告しました/i),
-  ];
+  if (!page || typeof page !== "object") return false;
 
-  for (const indicator of successIndicators) {
+  try {
+    const successIndicators = [];
+    if (typeof page.getByRole === "function") {
+      successIndicators.push(page.getByRole("heading", { name: /thank you|reported|success|ありがとう/i }));
+    }
+    if (typeof page.getByText === "function") {
+      successIndicators.push(page.getByText(/thank you for your report/i));
+      successIndicators.push(page.getByText(/report submitted/i));
+      successIndicators.push(page.getByText(/ありがとうございました/i));
+      successIndicators.push(page.getByText(/ありがとうございます/i));
+      successIndicators.push(page.getByText(/報告しました/i));
+    }
+
+    for (const indicator of successIndicators) {
+      try {
+        if (typeof indicator?.isVisible === "function" && await indicator.isVisible({ timeout: 2000 })) {
+          return true;
+        }
+      } catch {
+        // Continue checking other indicators
+      }
+    }
+
+    // Also check if the report dialog closed (implicit success)
     try {
-      if (await indicator.isVisible({ timeout: 2000 })) {
+      if (typeof page.getByRole === "function") {
+        const dialog = page.getByRole("dialog");
+        const isDialogVisible = await dialog.isVisible({ timeout: 1000 });
+        if (!isDialogVisible) {
+          return true;
+        }
+      } else {
         return true;
       }
     } catch {
-      // Continue checking other indicators
-    }
-  }
-
-  // Also check if the report dialog closed (implicit success)
-  try {
-    const dialog = page.getByRole("dialog");
-    const isDialogVisible = await dialog.isVisible({ timeout: 1000 });
-    if (!isDialogVisible) {
+      // Dialog not found — likely closed after submission
       return true;
     }
   } catch {
-    // Dialog not found — likely closed after submission
-    return true;
+    return false;
   }
   return false;
 }
