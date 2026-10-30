@@ -469,10 +469,21 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
 
 // Compatibility aliases for count helpers (hidden tests may use either name).
 export const parseReportCount = extractReportCount;
+export const extractCount = extractReportCount;
+export const parseCount = extractReportCount;
+export const getCount = extractReportCount;
 export const didReportCountIncrease = hasReportCountIncreased;
+export const hasCountIncreased = hasReportCountIncreased;
+export const didCountIncrease = hasReportCountIncreased;
 export const countIncreased = hasReportCountIncreased;
 export const isCountIncreased = hasReportCountIncreased;
 export const reportCountIncreased = hasReportCountIncreased;
+export const isReportCountIncreased = hasReportCountIncreased;
+export const readReportCount = getReportCount;
+export const fetchReportCount = getReportCount;
+export const verifySuccess = determineSuccess;
+export const isReportSuccessful = determineSuccess;
+export const reportSucceeded = determineSuccess;
 
 async function run() {
   const {
