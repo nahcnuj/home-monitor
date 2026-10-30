@@ -47,7 +47,7 @@ export function windowMoments(
   latencies: readonly number[],
   start: number,
   end: number,
-): { min: number; max: number; mean: number; std: number; count: number } | null {
+): { min: number; max: number; mean: number; median: number; std: number; count: number } | null {
   const n = end - start;
   if (n <= 0) return null;
   let min = latencies[start];
@@ -61,7 +61,7 @@ export function windowMoments(
   }
   const mean = sum / n;
   if (n < 2) {
-    return { min, max, mean, std: 0, count: n };
+    return { min, max, mean, median: mean, std: 0, count: n };
   }
   let varSum = 0;
   for (let i = start; i < end; i++) {
@@ -70,13 +70,20 @@ export function windowMoments(
   }
   // Population variance matches previous boxplot.variance usage for σ band width.
   const std = Math.sqrt(varSum / n);
-  return { min, max, mean, std, count: n };
+  const sorted = [...latencies.slice(start, end)].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const median =
+    sorted.length % 2 === 0
+      ? (sorted[mid - 1] + sorted[mid]) / 2
+      : sorted[mid];
+  return { min, max, mean, median, std, count: n };
 }
 
 function momentsFromValues(values: readonly number[]): {
   min: number;
   max: number;
   mean: number;
+  median: number;
   std: number;
   count: number;
 } | null {
@@ -119,6 +126,7 @@ export function collectTimelineTimestamps(
 export interface RollingEnvelope {
   min: ChartPoint[];
   max: ChartPoint[];
+  median: ChartPoint[];
   meanLow: ChartPoint[];
   meanHigh: ChartPoint[];
   emptyTimestamps: number[];
@@ -153,13 +161,14 @@ export function buildRollingEnvelope(
 
   const min: ChartPoint[] = [];
   const max: ChartPoint[] = [];
+  const median: ChartPoint[] = [];
   const meanLow: ChartPoint[] = [];
   const meanHigh: ChartPoint[] = [];
   const emptyTimestamps: number[] = [];
 
   if (!successTs.length) {
     for (const t of timestamps) emptyTimestamps.push(t);
-    return { min, max, meanLow, meanHigh, emptyTimestamps };
+    return { min, max, median, meanLow, meanHigh, emptyTimestamps };
   }
 
   if (windowSec <= 0) {
@@ -185,10 +194,11 @@ export function buildRollingEnvelope(
       if (!stats) continue;
       min.push({ x: t, y: stats.min });
       max.push({ x: t, y: stats.max });
+      median.push({ x: t, y: stats.median });
       meanLow.push({ x: t, y: Math.max(0, stats.mean - stats.std) });
       meanHigh.push({ x: t, y: stats.mean + stats.std });
     }
-    return { min, max, meanLow, meanHigh, emptyTimestamps };
+    return { min, max, median, meanLow, meanHigh, emptyTimestamps };
   }
 
   // Rolling window: binary search bounds on sorted success timestamps.
@@ -205,9 +215,10 @@ export function buildRollingEnvelope(
     if (!stats) continue;
     min.push({ x: t, y: stats.min });
     max.push({ x: t, y: stats.max });
+    median.push({ x: t, y: stats.median });
     meanLow.push({ x: t, y: Math.max(0, stats.mean - stats.std) });
     meanHigh.push({ x: t, y: stats.mean + stats.std });
   }
 
-  return { min, max, meanLow, meanHigh, emptyTimestamps };
+  return { min, max, median, meanLow, meanHigh, emptyTimestamps };
 }
