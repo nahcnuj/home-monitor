@@ -207,12 +207,24 @@ export function hasReportCountIncreased(before, after) {
       const n = extractReportCount(v);
       return n;
     }
-    if (typeof v === "object") {
-      for (const key of ["count", "reportCount", "report_count", "reportcount", "value", "total"]) {
+    if (Array.isArray(v)) {
+      for (const item of v) {
+        const n = toNum(item);
+        if (n !== null) return n;
+      }
+    }
+    if (typeof v === "object" && v !== null) {
+      const preferred = ["count", "reportCount", "report_count", "reportcount", "value", "total", "reports", "problems", "beforeCount", "before", "afterCount", "after", "newCount", "oldCount"];
+      for (const key of preferred) {
         if (Object.prototype.hasOwnProperty.call(v, key)) {
           const n = toNum(v[key]);
           if (n !== null) return n;
         }
+      }
+      for (const key of Object.keys(v)) {
+        if (preferred.includes(key)) continue;
+        const n = toNum(v[key]);
+        if (n !== null) return n;
       }
     }
     const n = extractReportCount(v);
@@ -402,10 +414,11 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
   }
 
   // Count-based completion: only when a before count is available and an
-  // after count could be obtained.
+  // after count could be obtained. When the count can be read, the report is
+  // considered successful only if the count actually increased.
   if (typeof before === "number" && !Number.isNaN(before) &&
       typeof after === "number" && !Number.isNaN(after)) {
-    return after > before;
+    return hasReportCountIncreased(before, after);
   }
 
   if (!page || typeof page !== "object") return false;
