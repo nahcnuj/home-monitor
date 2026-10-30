@@ -670,17 +670,6 @@ async function run() {
   }
 
   if (!radioVisible) {
-    let title = "";
-    let html = "";
-    try {
-      title = await page.title();
-      html = await page.content();
-    } catch {}
-    if (isCloudflareChallenge(title, html) || isCloudflareBlocked(title + " " + html)) {
-      console.log("Cloudflare challenge not resolved; skipping report");
-      await browser.close();
-      process.exit(0);
-    }
     throw new Error("Timed out waiting for the report widget (no radio buttons)");
   }
 
@@ -711,17 +700,6 @@ async function run() {
   }
 
   if (!indicatorBtn) {
-    let title = "";
-    let html = "";
-    try {
-      title = await page.title();
-      html = await page.content();
-    } catch {}
-    if (isCloudflareChallenge(title, html) || isCloudflareBlocked(title + " " + html)) {
-      console.log("Cloudflare challenge not resolved; skipping report");
-      await browser.close();
-      process.exit(0);
-    }
     const available = await page
       .getByRole("radio")
       .allInnerTexts()
@@ -765,23 +743,11 @@ async function run() {
     success = await determineSuccess(page, beforeCount, afterCount);
   }
 
-  let cloudflareBlocked = false;
-  if (!success) {
-    try {
-      const t = await page.title();
-      const h = await page.content();
-      cloudflareBlocked = isCloudflareChallenge(t, h) || isCloudflareBlocked(t + " " + h);
-    } catch {}
-  }
-
   await browser.close();
 
   if (success) {
     markReported(stateFile, { nowSec: now() });
     console.log(`Report submitted successfully (${indicatorLabel}, problem=${problemType}, count=${count})`);
-    process.exit(0);
-  } else if (cloudflareBlocked) {
-    console.log("Cloudflare challenge not resolved; skipping report");
     process.exit(0);
   } else {
     console.error("Report submission could not be confirmed");
@@ -806,10 +772,6 @@ const invokedDirectly =
 
 if (invokedDirectly) {
   run().catch((err) => {
-    if (isCloudflareBlocked(err)) {
-      console.log("Cloudflare challenge not resolved; skipping report");
-      process.exit(0);
-    }
     console.error(`Error: ${err.message}`);
     process.exit(1);
   });

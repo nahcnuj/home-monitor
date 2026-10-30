@@ -71,12 +71,6 @@ export function reportAll(targets, { execFileSync: execFile, scriptPath, stateFi
         `Downdetector report ok: ${target.service} (${target.problem_type}, count=${target.count})`,
       );
     } catch (err) {
-      if (isCloudflareBlocked(err)) {
-        log(
-          `Downdetector report skipped for ${target.service}: blocked by Cloudflare`,
-        );
-        continue;
-      }
       failed += 1;
       error(`Downdetector report failed for ${target.service}: ${err.message}`);
     }
