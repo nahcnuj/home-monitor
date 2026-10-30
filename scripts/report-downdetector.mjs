@@ -178,12 +178,12 @@ export function extractReportCount(text) {
     if (n !== null) return n;
   }
   // Common "N reports/problems/件" phrasings.
-  const labeled = str.match(/([\d,]+)\s*(?:reports?|problems?|issues?|件|回|counts?)/i);
+  const labeled = str.match(/([\d,]+)\s*(?:reports?|problems?|issues?|items?|件|回|counts?)/i);
   if (labeled) {
     const n = toCount(labeled[1]);
     if (n !== null) return n;
   }
-  const keyed = str.match(/(?:count|reports?|problems?|total|value)\s*[:=]\s*([\d,]+)/i);
+  const keyed = str.match(/(?:count|reports?|problems?|issues?|items?|total|value)\s*[:=]\s*([\d,]+)/i);
   if (keyed) {
     const n = toCount(keyed[1]);
     if (n !== null) return n;
