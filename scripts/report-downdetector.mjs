@@ -440,12 +440,14 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
     if (typeof read === "number" && !Number.isNaN(read)) after = read;
   }
 
-  // Count-based completion: only when a before count is available and an
-  // after count could be obtained. When the count can be read, the report is
-  // considered successful only if the count actually increased.
+  // Count-based completion: when a before count is available and an after
+  // count could be obtained, an increase confirms the report. When the count
+  // did not increase (Downdetector often keeps showing the previous count
+  // or updates it only after a reload), fall through to the thank-you /
+  // dialog-closed heuristics instead of failing outright.
   if (typeof before === "number" && !Number.isNaN(before) &&
       typeof after === "number" && !Number.isNaN(after)) {
-    return hasReportCountIncreased(before, after);
+    if (hasReportCountIncreased(before, after)) return true;
   }
 
   if (!page || typeof page !== "object") return false;
@@ -688,8 +690,8 @@ async function run() {
       break;
     }
   }
-  if (beforeCount !== null && afterCount !== null) {
-    success = afterCount > beforeCount;
+  if (beforeCount !== null && afterCount !== null && afterCount > beforeCount) {
+    success = true;
   } else {
     success = await determineSuccess(page, beforeCount, afterCount);
   }
