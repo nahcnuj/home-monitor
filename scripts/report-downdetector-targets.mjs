@@ -55,12 +55,6 @@ export function buildArgs(scriptPath, target, stateFile) {
   ];
 }
 
-import { isCloudflareBlocked as isCloudflareBlockedFromReport } from "./report-downdetector.mjs";
-
-export function isCloudflareBlocked(value) {
-  return isCloudflareBlockedFromReport(value);
-}
-
 export function reportAll(targets, { execFileSync: execFile, scriptPath, stateFile, log = console.log, error = console.error }) {
   let failed = 0;
   for (const target of targets) {
@@ -104,13 +98,6 @@ export function main() {
   }
   process.exit(0);
 }
-
-// Compatibility aliases for Cloudflare helpers (hidden tests may use either name).
-export const isCloudflareBlock = isCloudflareBlocked;
-export const isBlockedByCloudflare = isCloudflareBlocked;
-export const isCloudflareError = isCloudflareBlocked;
-export const isCloudflareBlockedError = isCloudflareBlocked;
-export const cloudflareBlocked = isCloudflareBlocked;
 
 // Only run when executed directly, not when imported by tests.
 const invokedDirectly =

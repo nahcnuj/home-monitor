@@ -92,55 +92,6 @@ export function isCloudflareChallenge(title, content) {
   return false;
 }
 
-/**
- * Determine whether a value (title/content pair, page, Error, or message
- * string) indicates that Downdetector is blocked by a Cloudflare challenge.
- * Used to skip reporting gracefully instead of failing the workflow.
- */
-export function isCloudflareBlocked(value) {
-  if (value === null || value === undefined) return false;
-  if (typeof value === "boolean") return value;
-  if (typeof value === "string") {
-    const s = value.toLowerCase();
-    if (isCloudflareChallenge("", s)) return true;
-    return (
-      s.includes("cloudflare") ||
-      s.includes("_cf_chl") ||
-      s.includes("cf_chl") ||
-      s.includes("challenge-error-text") ||
-      s.includes("enable javascript and cookies") ||
-      s.includes("just a moment") ||
-      s.includes("checking your browser")
-    );
-  }
-  if (typeof value === "object") {
-    // Error-like objects.
-    const parts = [
-      value.message,
-      value.stderr,
-      value.stdout,
-      value.output,
-      value.stack,
-      value.title,
-      value.content,
-      value.html,
-      value.body,
-    ];
-    if (parts.some((p) => isCloudflareBlocked(p))) return true;
-    // Page-like objects exposing title/content.
-    if (typeof value.title === "function" || typeof value.content === "function") {
-      // Best-effort sync check; async callers should await page content separately.
-    }
-    try {
-      if (isCloudflareChallenge(value.title, value.content ?? value.html ?? value.body)) return true;
-    } catch {}
-    // Recurse into nested error.
-    if (value.error) return isCloudflareBlocked(value.error);
-    if (value.cause) return isCloudflareBlocked(value.cause);
-  }
-  return false;
-}
-
 export function extractAvailableCategories(radios) {
   if (!Array.isArray(radios)) return [];
   return radios.map((t) => String(t).trim()).filter(Boolean);
@@ -754,16 +705,6 @@ async function run() {
     process.exit(1);
   }
 }
-
-// Compatibility aliases for Cloudflare helpers (hidden tests may use either name).
-export const isCloudflareBlock = isCloudflareBlocked;
-export const isBlockedByCloudflare = isCloudflareBlocked;
-export const isCloudflareError = isCloudflareBlocked;
-export const isCloudflareBlockedError = isCloudflareBlocked;
-export const cloudflareBlocked = isCloudflareBlocked;
-export const isCloudflare = isCloudflareChallenge;
-export const detectCloudflare = isCloudflareChallenge;
-export const isCloudflareChallengeDetected = isCloudflareChallenge;
 
 // Only run the RPA flow when executed directly, not when imported by tests.
 const invokedDirectly =
