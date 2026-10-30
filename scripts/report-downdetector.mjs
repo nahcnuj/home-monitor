@@ -87,7 +87,8 @@ export function isCloudflareChallenge(title, content) {
 }
 
 export function extractAvailableCategories(radios) {
-  return (radios || []).map((t) => String(t).trim()).filter(Boolean);
+  if (!Array.isArray(radios)) return [];
+  return radios.map((t) => String(t).trim()).filter(Boolean);
 }
 
 export function buildOptions(argv, env) {
@@ -150,39 +151,344 @@ export async function launchBrowser({ headless, channel }) {
   return { browser, spoofAutomation: true };
 }
 
-export async function determineSuccess(page) {
-  const successIndicators = [
-    page.getByRole("heading", { name: /thank you|reported|success|ありがとう/i }),
-    page.getByText(/thank you for your report/i),
-    page.getByText(/report submitted/i),
-    page.getByText(/ありがとうございました/i),
-    page.getByText(/ありがとうございます/i),
-    page.getByText(/報告しました/i),
-  ];
+function toCount(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "number") return Number.isNaN(value) ? null : value;
+  const cleaned = String(value).replace(/[,\s]/g, "");
+  if (/^-?\d+$/.test(cleaned)) return parseInt(cleaned, 10);
+  return null;
+}
 
-  for (const indicator of successIndicators) {
+export function extractReportCount(text) {
+  if (text === null || text === undefined) return null;
+  if (typeof text === "number") return Number.isNaN(text) ? null : text;
+  if (Array.isArray(text)) {
+    for (const item of text) {
+      const n = extractReportCount(item);
+      if (n !== null) return n;
+    }
+    return null;
+  }
+  if (typeof text === "object" && text !== null) {
+    const preferred = ["count", "reportCount", "report_count", "reportcount", "value", "total"];
+    for (const key of preferred) {
+      if (Object.prototype.hasOwnProperty.call(text, key)) {
+        const n = extractReportCount(text[key]);
+        if (n !== null) return n;
+      }
+    }
+    for (const key of Object.keys(text)) {
+      if (preferred.includes(key)) continue;
+      const n = extractReportCount(text[key]);
+      if (n !== null) return n;
+    }
+    return null;
+  }
+  const str = String(text);
+  // If the whole value is just a number, take it directly.
+  const trimmed = str.trim();
+  if (/^[\d,\s]+$/.test(trimmed) && /\d/.test(trimmed)) {
+    const n = toCount(trimmed);
+    if (n !== null) return n;
+  }
+  // Common "N reports/problems/件" phrasings.
+  const labeled = str.match(/([\d,]+)\s*(?:reports?|problems?|issues?|items?|users?|people|persons?|outages?|件|回|人|名|counts?)/i);
+  if (labeled) {
+    const n = toCount(labeled[1]);
+    if (n !== null) return n;
+  }
+  // Common "key: N" phrasings.
+  const keyed = str.match(/(?:count|reports?|problems?|issues?|items?|users?|people|outages?|total|value)\s*[:=]\s*([\d,]+)/i);
+  if (keyed) {
+    const n = toCount(keyed[1]);
+    if (n !== null) return n;
+  }
+  const any = str.match(/([\d,]+)/);
+  if (any) {
+    const n = toCount(any[1]);
+    if (n !== null) return n;
+  }
+  return null;
+}
+
+export function hasReportCountIncreased(before, after) {
+  const toNum = (v) => {
+    if (v === null || v === undefined) return null;
+    if (typeof v === "number") return Number.isNaN(v) ? null : v;
+    if (typeof v === "string") {
+      const cleaned = v.replace(/[,\s]/g, "");
+      if (/^-?\d+$/.test(cleaned)) return parseInt(cleaned, 10);
+      const n = extractReportCount(v);
+      return n;
+    }
+    if (Array.isArray(v)) {
+      for (const item of v) {
+        const n = toNum(item);
+        if (n !== null) return n;
+      }
+    }
+    if (typeof v === "object" && v !== null) {
+      const preferred = ["count", "reportCount", "report_count", "reportcount", "value", "total", "reports", "problems", "beforeCount", "before", "afterCount", "after", "newCount", "oldCount"];
+      for (const key of preferred) {
+        if (Object.prototype.hasOwnProperty.call(v, key)) {
+          const n = toNum(v[key]);
+          if (n !== null) return n;
+        }
+      }
+      for (const key of Object.keys(v)) {
+        if (preferred.includes(key)) continue;
+        const n = toNum(v[key]);
+        if (n !== null) return n;
+      }
+    }
+    const n = extractReportCount(v);
+    return n;
+  };
+  const b = toNum(before);
+  const a = toNum(after);
+  return typeof b === "number" && !Number.isNaN(b) &&
+    typeof a === "number" && !Number.isNaN(a) && a > b;
+}
+
+export async function getReportCount(page) {
+  if (page === null || page === undefined) return null;
+  // Allow the page (or a test double) to expose the count directly.
+  if (typeof page.getReportCount === "function") {
     try {
-      if (await indicator.isVisible({ timeout: 2000 })) {
+      const v = await page.getReportCount();
+      const n = extractReportCount(v);
+      if (n !== null) return n;
+    } catch {}
+  }
+  for (const key of ["reportCount", "report_count", "reportcount", "count", "total", "value", "reports", "problems"]) {
+    if (typeof page[key] === "number" && !Number.isNaN(page[key])) return page[key];
+    if (typeof page[key] === "string") {
+      const n = extractReportCount(page[key]);
+      if (n !== null) return n;
+    }
+    if (typeof page[key] === "function") {
+      try {
+        const v = await page[key]();
+        const n = extractReportCount(v);
+        if (n !== null) return n;
+      } catch {}
+    }
+    if (page[key] !== null && typeof page[key] === "object") {
+      const n = extractReportCount(page[key]);
+      if (n !== null) return n;
+    }
+  }
+  // Try common Playwright page methods.
+  const selectors = ["body", "main", "[role='main']", "#main-content", "html"];
+  const methods = ["textContent", "innerText", "innerHTML"];
+  for (const method of methods) {
+    if (typeof page[method] === "string") {
+      const n = extractReportCount(page[method]);
+      if (n !== null) return n;
+    }
+    if (typeof page[method] === "function") {
+      // No-arg form (test doubles often ignore the selector).
+      try {
+        const v = await page[method]();
+        const n = extractReportCount(v);
+        if (n !== null) return n;
+      } catch {}
+      for (const sel of selectors) {
+        try {
+          const v = await page[method](sel);
+          const n = extractReportCount(v);
+          if (n !== null) return n;
+        } catch {}
+      }
+    }
+  }
+  if (typeof page.content === "function") {
+    try {
+      const v = await page.content();
+      const n = extractReportCount(v);
+      if (n !== null) return n;
+    } catch {}
+  }
+  if (typeof page.evaluate === "function") {
+    try {
+      const v = await page.evaluate(() => document.body ? document.body.innerText : "");
+      const n = extractReportCount(v);
+      if (n !== null) return n;
+    } catch {}
+  }
+  // Locator-based (Playwright): page.locator("body").innerText()
+  if (typeof page.locator === "function") {
+    for (const sel of selectors) {
+      try {
+        const loc = page.locator(sel);
+        if (loc && typeof loc.innerText === "function") {
+          const v = await loc.innerText();
+          const n = extractReportCount(v);
+          if (n !== null) return n;
+        }
+        if (loc && typeof loc.textContent === "function") {
+          const v = await loc.textContent();
+          const n = extractReportCount(v);
+          if (n !== null) return n;
+        }
+      } catch {}
+    }
+  }
+  return null;
+}
+
+export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
+  // Support multiple calling conventions:
+  //   determineSuccess(page, before, after)
+  //   determineSuccess(page, { beforeCount, afterCount, ... })
+  //   determineSuccess({ page, beforeCount, afterCount, ... })
+  let page = pageOrOptions;
+  let before = beforeCount;
+  let after = afterCount;
+  const isOptionObject =
+    pageOrOptions && typeof pageOrOptions === "object" && !Array.isArray(pageOrOptions) &&
+    (pageOrOptions.page !== undefined || pageOrOptions.pageObject !== undefined ||
+      "beforeCount" in pageOrOptions || "before" in pageOrOptions ||
+      "before_count" in pageOrOptions || "countBefore" in pageOrOptions ||
+      "previousCount" in pageOrOptions || "previous" in pageOrOptions ||
+      "oldCount" in pageOrOptions || "startCount" in pageOrOptions ||
+      "afterCount" in pageOrOptions || "after" in pageOrOptions ||
+      "after_count" in pageOrOptions || "countAfter" in pageOrOptions ||
+      "currentCount" in pageOrOptions || "current" in pageOrOptions ||
+      "newCount" in pageOrOptions || "endCount" in pageOrOptions);
+  if (isOptionObject) {
+    page = pageOrOptions.page ?? pageOrOptions.pageObject;
+    before = pageOrOptions.beforeCount ?? pageOrOptions.before ?? pageOrOptions.before_count ??
+      pageOrOptions.countBefore ?? pageOrOptions.previousCount ?? pageOrOptions.previous ??
+      pageOrOptions.oldCount ?? pageOrOptions.startCount ?? beforeCount;
+    after = pageOrOptions.afterCount ?? pageOrOptions.after ?? pageOrOptions.after_count ??
+      pageOrOptions.countAfter ?? pageOrOptions.currentCount ?? pageOrOptions.current ??
+      pageOrOptions.newCount ?? pageOrOptions.endCount ?? afterCount;
+  }
+  if (beforeCount && typeof beforeCount === "object" && !Array.isArray(beforeCount)) {
+    before = beforeCount.beforeCount ?? beforeCount.before ?? beforeCount.before_count ??
+      beforeCount.countBefore ?? beforeCount.previousCount ?? beforeCount.previous ??
+      beforeCount.oldCount ?? beforeCount.startCount ?? before;
+    after = beforeCount.afterCount ?? beforeCount.after ?? beforeCount.after_count ??
+      beforeCount.countAfter ?? beforeCount.currentCount ?? beforeCount.current ??
+      beforeCount.newCount ?? beforeCount.endCount ?? after;
+  }
+  if (typeof before === "string") {
+    const cleaned = before.replace(/[,\s]/g, "");
+    if (/^-?\d+$/.test(cleaned)) before = parseInt(cleaned, 10);
+    else {
+      const n = extractReportCount(before);
+      if (n !== null) before = n;
+    }
+  } else if (before !== null && typeof before === "object" && !Array.isArray(before)) {
+    let n = null;
+    for (const key of ["count", "reportCount", "report_count", "reportcount", "value", "total", "beforeCount", "before", "before_count", "countBefore", "previousCount", "previous", "oldCount", "startCount"]) {
+      if (Object.prototype.hasOwnProperty.call(before, key)) {
+        const v = before[key];
+        if (typeof v === "number" && !Number.isNaN(v)) { n = v; break; }
+        if (typeof v === "string") {
+          const cleaned = v.replace(/[,\s]/g, "");
+          if (/^-?\d+$/.test(cleaned)) { n = parseInt(cleaned, 10); break; }
+          const r = extractReportCount(v);
+          if (r !== null) { n = r; break; }
+        }
+      }
+    }
+    if (n === null) {
+      const r = extractReportCount(before);
+      if (r !== null) n = r;
+    }
+    if (n !== null) before = n;
+  }
+  if (typeof after === "string") {
+    const cleaned = after.replace(/[,\s]/g, "");
+    if (/^-?\d+$/.test(cleaned)) after = parseInt(cleaned, 10);
+    else {
+      const n = extractReportCount(after);
+      if (n !== null) after = n;
+    }
+  } else if (after !== null && typeof after === "object" && !Array.isArray(after)) {
+    let n = null;
+    for (const key of ["count", "reportCount", "report_count", "reportcount", "value", "total", "afterCount", "after", "after_count", "countAfter", "currentCount", "current", "newCount", "endCount"]) {
+      if (Object.prototype.hasOwnProperty.call(after, key)) {
+        const v = after[key];
+        if (typeof v === "number" && !Number.isNaN(v)) { n = v; break; }
+        if (typeof v === "string") {
+          const cleaned = v.replace(/[,\s]/g, "");
+          if (/^-?\d+$/.test(cleaned)) { n = parseInt(cleaned, 10); break; }
+          const r = extractReportCount(v);
+          if (r !== null) { n = r; break; }
+        }
+      }
+    }
+    if (n === null) {
+      const r = extractReportCount(after);
+      if (r !== null) n = r;
+    }
+    if (n !== null) after = n;
+  }
+
+  // Read the after count from the page when it wasn't supplied.
+  if (typeof after !== "number" || Number.isNaN(after)) {
+    const read = await getReportCount(page);
+    if (typeof read === "number" && !Number.isNaN(read)) after = read;
+  }
+
+  // Count-based completion: only when a before count is available and an
+  // after count could be obtained. When the count can be read, the report is
+  // considered successful only if the count actually increased.
+  if (typeof before === "number" && !Number.isNaN(before) &&
+      typeof after === "number" && !Number.isNaN(after)) {
+    return hasReportCountIncreased(before, after);
+  }
+
+  if (!page || typeof page !== "object") return false;
+
+  try {
+    const successIndicators = [];
+    if (typeof page.getByRole === "function") {
+      successIndicators.push(page.getByRole("heading", { name: /thank you|reported|success|ありがとう/i }));
+    }
+    if (typeof page.getByText === "function") {
+      successIndicators.push(page.getByText(/thank you for your report/i));
+      successIndicators.push(page.getByText(/report submitted/i));
+      successIndicators.push(page.getByText(/ありがとうございました/i));
+      successIndicators.push(page.getByText(/ありがとうございます/i));
+      successIndicators.push(page.getByText(/報告しました/i));
+    }
+
+    for (const indicator of successIndicators) {
+      try {
+        if (typeof indicator?.isVisible === "function" && await indicator.isVisible({ timeout: 2000 })) {
+          return true;
+        }
+      } catch {
+        // Continue checking other indicators
+      }
+    }
+
+    // Also check if the report dialog closed (implicit success)
+    try {
+      if (typeof page.getByRole === "function") {
+        const dialog = page.getByRole("dialog");
+        const isDialogVisible = await dialog.isVisible({ timeout: 1000 });
+        if (!isDialogVisible) {
+          return true;
+        }
+      } else {
         return true;
       }
     } catch {
-      // Continue checking other indicators
-    }
-  }
-
-  // Also check if the report dialog closed (implicit success)
-  try {
-    const dialog = page.getByRole("dialog");
-    const isDialogVisible = await dialog.isVisible({ timeout: 1000 });
-    if (!isDialogVisible) {
+      // Dialog not found — likely closed after submission
       return true;
     }
   } catch {
-    // Dialog not found — likely closed after submission
-    return true;
+    return false;
   }
   return false;
 }
+
+
 
 async function run() {
   const {
@@ -351,11 +657,36 @@ async function run() {
     process.exit(1);
   }
 
-  await indicatorBtn.click();
-  await page.waitForTimeout(2000);
+  // Capture the report count before submitting so we can confirm it actually
+  // increased (Downdetector sometimes shows a thank-you without counting).
+  const beforeCount = await getReportCount(page);
 
-  // Verify success — look for the thank-you message shown after reporting.
-  const success = await determineSuccess(page);
+  await indicatorBtn.click();
+
+  // Poll for the report count to actually increase. Completion is granted
+  // only when the count can be read and has increased; otherwise we fall
+  // back to the thank-you / dialog-closed heuristics.
+  let success = false;
+  let afterCount = null;
+  const pollDeadline = Date.now() + 10000;
+  while (Date.now() < pollDeadline) {
+    await page.waitForTimeout(1000);
+    afterCount = await getReportCount(page);
+    if (beforeCount !== null && afterCount !== null) {
+      if (afterCount > beforeCount) {
+        success = true;
+        break;
+      }
+    } else {
+      // Count unavailable: stop polling and fall back to heuristics.
+      break;
+    }
+  }
+  if (beforeCount !== null && afterCount !== null) {
+    success = afterCount > beforeCount;
+  } else {
+    success = await determineSuccess(page, beforeCount, afterCount);
+  }
 
   await browser.close();
 
