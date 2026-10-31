@@ -566,6 +566,30 @@ export function isHiddenBand(label: string | undefined): boolean {
     || !!label?.endsWith(" median");
 }
 
+export function makeNormalDistributionLegendSwatch(color: string): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = 24;
+  canvas.height = 16;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    ctx.fillStyle = withAlpha(color, SIGMA_BAND_ALPHA);
+    ctx.beginPath();
+    ctx.moveTo(0, 16);
+    ctx.quadraticCurveTo(6, 14, 8, 8);
+    ctx.quadraticCurveTo(12, 0, 16, 8);
+    ctx.quadraticCurveTo(18, 14, 24, 16);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(12, 2);
+    ctx.lineTo(12, 14);
+    ctx.stroke();
+  }
+  return canvas;
+}
+
 export function latencyTooltipTitle(items: TooltipItem<"line">[]): string {
   const raw = items[0]?.raw as { x?: number } | null;
   const x = raw?.x ?? items[0]?.parsed?.x;
@@ -704,7 +728,7 @@ export function buildLatencyChart(
       order: 2,
       data: withGaps(envelope.median, envelope.emptyTimestamps, maxGapSec),
       borderColor: color,
-      backgroundColor: "transparent",
+      backgroundColor: withAlpha(color, sigmaBandAlpha),
       borderWidth: 2,
       pointRadius: 0,
       tension: BAND_TENSION,
@@ -817,6 +841,27 @@ export function buildLatencyChart(
         legend: {
           labels: {
             color: "#e4e6ed",
+            usePointStyle: true,
+            generateLabels: (chart: Chart) => {
+              const items = Chart.defaults.plugins.legend.labels.generateLabels(chart);
+              return items
+                .filter((item: { text: string; datasetIndex?: number }) => {
+                  const dataset = chart.data.datasets[item.datasetIndex ?? -1] as { type?: string } | undefined;
+                  if (dataset?.type === "scatter") return false;
+                  return (
+                    !isFailureDataset(item.text) &&
+                    (!isHiddenBand(item.text) || !!item.text?.endsWith(" median"))
+                  );
+                })
+                .map((item: { text: string; strokeStyle?: unknown }) => {
+                  if (item.text?.endsWith(" median")) {
+                    item.text = item.text.replace(/ median$/, "");
+                    const color = String(item.strokeStyle ?? "#e4e6ed");
+                    (item as { pointStyle?: unknown }).pointStyle = makeNormalDistributionLegendSwatch(color);
+                  }
+                  return item;
+                });
+            },
             filter: (
               item: { text: string; datasetIndex?: number },
               data?: { datasets?: Array<{ type?: string }> },
