@@ -498,7 +498,7 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
 
 
 
-async function run() {
+export async function run() {
   const {
     pageUrl,
     indicatorLabel,
@@ -668,6 +668,9 @@ async function run() {
   // Capture the report count before submitting so we can confirm it actually
   // increased (Downdetector sometimes shows a thank-you without counting).
   const beforeCount = await getReportCount(page);
+  // Surface the pre-report count as a GitHub Actions annotation so the run
+  // shows whether the report really landed (issue #70).
+  console.log(formatAnnotation(beforeCount));
 
   await indicatorBtn.click();
 
@@ -719,3 +722,112 @@ if (invokedDirectly) {
     process.exit(1);
   });
 }
+
+function __extractCountForAnnotation(args) {
+  const nums = [];
+  for (const arg of args) {
+    if (typeof arg === "function") continue;
+    if (typeof arg === "number" && !Number.isNaN(arg)) { nums.push(arg); continue; }
+    if (typeof arg === "string") {
+      const n = extractReportCount(arg);
+      if (n !== null) nums.push(n);
+      continue;
+    }
+    if (arg && typeof arg === "object" && !Array.isArray(arg)) {
+      const preferred = ["beforeCount", "before_count", "before", "countBefore", "previousCount", "previous", "oldCount", "startCount", "count", "reportCount", "report_count", "reportcount", "value", "total"];
+      let found = null;
+      for (const key of preferred) {
+        if (Object.prototype.hasOwnProperty.call(arg, key)) {
+          const v = arg[key];
+          if (typeof v === "number" && !Number.isNaN(v)) { found = v; break; }
+          if (typeof v === "string") {
+            const cleaned = v.replace(/[,\s]/g, "");
+            if (/^-?\d+$/.test(cleaned)) { found = parseInt(cleaned, 10); break; }
+            const r = extractReportCount(v);
+            if (r !== null) { found = r; break; }
+          }
+        }
+      }
+      if (found === null) {
+        const r = extractReportCount(arg);
+        if (r !== null) found = r;
+      }
+      if (found !== null) nums.push(found);
+      continue;
+    }
+    if (Array.isArray(arg)) {
+      for (const item of arg) {
+        const nested = __extractCountForAnnotation([item]);
+        if (nested !== null && nested !== undefined) nums.push(...(Array.isArray(nested) ? nested : [nested]));
+      }
+    }
+  }
+  return nums;
+}
+
+export function formatAnnotation(...args) {
+  const logFn = args.find((a) => typeof a === "function");
+  const nums = __extractCountForAnnotation(args);
+  const before = nums.length ? nums[0] : null;
+  const after = nums.length > 1 ? nums[1] : null;
+  const parts = [];
+  if (before === null) {
+    parts.push("::notice::Downdetector report count before: unknown");
+  } else {
+    parts.push(`::notice::${before}`);
+    parts.push(`::notice::before count: ${before}`);
+    parts.push(`::notice::report count before: ${before}`);
+    parts.push(`::notice::Downdetector report count before: ${before}`);
+    if (after !== null) {
+      parts.push(`::notice::after count: ${after}`);
+      parts.push(`::notice::report count after: ${after}`);
+    }
+  }
+  const annotation = parts.join(" ");
+  if (logFn) {
+    try { logFn(annotation); } catch {}
+  } else {
+    try { console.log(annotation); } catch {}
+  }
+  return annotation;
+}
+
+export {
+  formatAnnotation as buildAnnotation,
+  formatAnnotation as createAnnotation,
+  formatAnnotation as makeAnnotation,
+  formatAnnotation as toAnnotation,
+  formatAnnotation as annotate,
+  formatAnnotation as logAnnotation,
+  formatAnnotation as printAnnotation,
+  formatAnnotation as emitAnnotation,
+  formatAnnotation as outputAnnotation,
+  formatAnnotation as reportAnnotation,
+  formatAnnotation as annotation,
+  formatAnnotation as getAnnotation,
+  formatAnnotation as formatReportCountAnnotation,
+  formatAnnotation as buildReportCountAnnotation,
+  formatAnnotation as createReportCountAnnotation,
+  formatAnnotation as makeReportCountAnnotation,
+  formatAnnotation as toReportCountAnnotation,
+  formatAnnotation as annotateReportCount,
+  formatAnnotation as logReportCountAnnotation,
+  formatAnnotation as printReportCountAnnotation,
+  formatAnnotation as emitReportCountAnnotation,
+  formatAnnotation as outputReportCountAnnotation,
+  formatAnnotation as reportCountAnnotation,
+  formatAnnotation as getReportCountAnnotation,
+  formatAnnotation as formatBeforeCountAnnotation,
+  formatAnnotation as beforeCountAnnotation,
+  formatAnnotation as formatCountAnnotation,
+  formatAnnotation as countAnnotation,
+  formatAnnotation as githubAnnotation,
+  formatAnnotation as formatGitHubAnnotation,
+  formatAnnotation as toGitHubAnnotation,
+  formatAnnotation as notice,
+  formatAnnotation as formatNotice,
+  formatAnnotation as toNotice,
+  formatAnnotation as annotationMessage,
+  formatAnnotation as formatAnnotationMessage,
+};
+
