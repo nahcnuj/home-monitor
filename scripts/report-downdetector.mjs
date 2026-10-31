@@ -445,9 +445,7 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
   // considered successful only if the count actually increased.
   if (typeof before === "number" && !Number.isNaN(before) &&
       typeof after === "number" && !Number.isNaN(after)) {
-    if (hasReportCountIncreased(before, after)) return true;
-    // Count was readable but did not increase: do not fail outright; fall
-    // through to the thank-you / dialog-closed heuristics below.
+    return hasReportCountIncreased(before, after);
   }
 
   if (!page || typeof page !== "object") return false;

@@ -345,9 +345,9 @@ describe("determineSuccess count-based", () => {
     expect(await determineSuccess(page, 4)).toBe(true);
   });
 
-  it("falls back to heuristics when count not increased", async () => {
+  it("fails when count not increased", async () => {
     const page = { count: 5 };
-    expect(await determineSuccess(page, 5)).toBe(true);
+    expect(await determineSuccess(page, 5)).toBe(false);
   });
 
   it("supports object args", async () => {
