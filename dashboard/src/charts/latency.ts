@@ -566,43 +566,87 @@ export function isHiddenBand(label: string | undefined): boolean {
     || !!label?.endsWith(" median");
 }
 
-export function makeNormalDistributionLegendSwatch(color: string): HTMLCanvasElement {
+export function makeNormalDistributionLegendSwatch(
+  color: string | string[],
+): HTMLCanvasElement {
+  const colors = Array.isArray(color) ? color : [color];
   const canvas = document.createElement("canvas");
   canvas.width = 24;
   canvas.height = 16;
   const ctx = canvas.getContext("2d");
   if (ctx) {
-    ctx.fillStyle = withAlpha(color, MINMAX_BAND_ALPHA);
-    ctx.beginPath();
-    ctx.moveTo(0, 16);
-    ctx.quadraticCurveTo(6, 14, 8, 8);
-    ctx.quadraticCurveTo(12, 0, 16, 8);
-    ctx.quadraticCurveTo(18, 14, 24, 16);
-    ctx.closePath();
-    ctx.fill();
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(8, 0, 8, 16);
-    ctx.clip();
-    ctx.fillStyle = withAlpha(color, SIGMA_BAND_ALPHA);
-    ctx.beginPath();
-    ctx.moveTo(0, 16);
-    ctx.quadraticCurveTo(6, 14, 8, 8);
-    ctx.quadraticCurveTo(12, 0, 16, 8);
-    ctx.quadraticCurveTo(18, 14, 24, 16);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(0, 16);
-    ctx.quadraticCurveTo(6, 14, 8, 8);
-    ctx.quadraticCurveTo(12, 0, 16, 8);
-    ctx.quadraticCurveTo(18, 14, 24, 16);
-    ctx.stroke();
+    // Overlay each distribution's tail (min..mean-σ and mean+σ..max) and center
+    // (mean-σ..mean+σ) bands so multiple servers' distributions stack in one swatch.
+    for (const c of colors) {
+      ctx.fillStyle = withAlpha(c, MINMAX_BAND_ALPHA);
+      ctx.beginPath();
+      ctx.moveTo(0, 16);
+      ctx.quadraticCurveTo(6, 14, 8, 8);
+      ctx.quadraticCurveTo(12, 0, 16, 8);
+      ctx.quadraticCurveTo(18, 14, 24, 16);
+      ctx.closePath();
+      ctx.fill();
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(8, 0, 8, 16);
+      ctx.clip();
+      ctx.fillStyle = withAlpha(c, SIGMA_BAND_ALPHA);
+      ctx.beginPath();
+      ctx.moveTo(0, 16);
+      ctx.quadraticCurveTo(6, 14, 8, 8);
+      ctx.quadraticCurveTo(12, 0, 16, 8);
+      ctx.quadraticCurveTo(18, 14, 24, 16);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+    for (const c of colors) {
+      ctx.strokeStyle = c;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, 16);
+      ctx.quadraticCurveTo(6, 14, 8, 8);
+      ctx.quadraticCurveTo(12, 0, 16, 8);
+      ctx.quadraticCurveTo(18, 14, 24, 16);
+      ctx.stroke();
+    }
   }
   return canvas;
+}
+
+export function renderLatencyLegend(servers: string[]): void {
+  const legend = document.getElementById("latencyLegend");
+  if (!legend) return;
+  legend.replaceChildren();
+  if (!servers.length) {
+    legend.hidden = true;
+    return;
+  }
+  legend.hidden = false;
+
+  const colors = servers.map((_, i) => SERVER_COLORS[i % SERVER_COLORS.length]);
+  const swatch = makeNormalDistributionLegendSwatch(colors);
+  swatch.style.width = "6rem";
+  swatch.style.height = "3em";
+  swatch.style.flexShrink = "0";
+
+  const item = document.createElement("div");
+  item.className = "latency-legend-item";
+  item.style.width = "100%";
+  item.style.justifyContent = "space-between";
+
+  if (servers.length >= 2) {
+    const left = document.createElement("span");
+    left.textContent = servers[0];
+    const right = document.createElement("span");
+    right.textContent = servers[servers.length - 1];
+    item.append(left, swatch, right);
+  } else {
+    const label = document.createElement("span");
+    label.textContent = servers[0];
+    item.append(label, swatch);
+  }
+  legend.append(item);
 }
 
 export function latencyTooltipTitle(items: TooltipItem<"line">[]): string {
@@ -797,6 +841,8 @@ export function buildLatencyChart(
     });
   }
 
+  renderLatencyLegend(servers);
+
   const canvas = document.getElementById("latencyChart") as HTMLCanvasElement | null;
   if (!canvas) return;
 
@@ -853,43 +899,7 @@ export function buildLatencyChart(
           timeoutEdgeWidth: showPoints ? TIMEOUT_EDGE_WIDTH : 0,
           minTimeoutBarWidth: 1, // CSS px; short errors (e.g. 170ms no_response) stay visible
         },
-        legend: {
-          labels: {
-            color: "#e4e6ed",
-            usePointStyle: true,
-            generateLabels: (chart: Chart) => {
-              const items = Chart.defaults.plugins.legend.labels.generateLabels(chart);
-              return items
-                .filter((item: { text: string; datasetIndex?: number }) => {
-                  const dataset = chart.data.datasets[item.datasetIndex ?? -1] as { type?: string } | undefined;
-                  if (dataset?.type === "scatter") return false;
-                  return (
-                    !isFailureDataset(item.text) &&
-                    (!isHiddenBand(item.text) || !!item.text?.endsWith(" median"))
-                  );
-                })
-                .map((item: { text: string; strokeStyle?: unknown }) => {
-                  if (item.text?.endsWith(" median")) {
-                    item.text = item.text.replace(/ median$/, "");
-                    const color = String(item.strokeStyle ?? "#e4e6ed");
-                    (item as { pointStyle?: unknown }).pointStyle = makeNormalDistributionLegendSwatch(color);
-                  }
-                  return item;
-                });
-            },
-            filter: (
-              item: { text: string; datasetIndex?: number },
-              data?: { datasets?: Array<{ type?: string }> },
-            ) => {
-              const dataset = data?.datasets?.[item.datasetIndex ?? -1];
-              if (dataset?.type === "scatter") return false;
-              return (
-                !isFailureDataset(item.text) &&
-                (!isHiddenBand(item.text) || !!item.text?.endsWith(" median"))
-              );
-            },
-          },
-        },
+        legend: { display: false },
         tooltip: {
           filter: (item: TooltipItem<"line">) => isTooltipDataset(item.dataset.label),
           itemSort: (a: TooltipItem<"line">, b: TooltipItem<"line">) => {
