@@ -495,10 +495,6 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
   return false;
 }
 
-
-
-
-
 async function run() {
   const {
     pageUrl,
