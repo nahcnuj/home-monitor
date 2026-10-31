@@ -583,8 +583,10 @@ export function makeNormalDistributionLegendSwatch(color: string): HTMLCanvasEle
     ctx.strokeStyle = color;
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(3, 8);
-    ctx.lineTo(21, 8);
+    ctx.moveTo(0, 16);
+    ctx.quadraticCurveTo(6, 14, 8, 8);
+    ctx.quadraticCurveTo(12, 0, 16, 8);
+    ctx.quadraticCurveTo(18, 14, 24, 16);
     ctx.stroke();
   }
   return canvas;
