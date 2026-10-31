@@ -8,6 +8,8 @@ import {
   escapeRegExp,
   extractAvailableCategories,
   extractReportCount,
+  extractReportCountFromLabels,
+  formatAnnotation,
   getReportCount,
   hasReportCountIncreased,
   isCloudflareChallenge,
@@ -297,6 +299,70 @@ describe("extractReportCount", () => {
   });
 });
 
+describe("extractReportCountFromLabels", () => {
+  const labels = [
+    "Most reported problems breakdown",
+    "ブロードバンド: 73 percent of reports, 104 reports",
+    "WiFi: 21 percent of reports, 30 reports",
+    "テレビ: 5 percent of reports, 7 reports",
+  ];
+
+  it("reads the category tally from aria-labels, not the percentage", () => {
+    expect(extractReportCountFromLabels(labels, "ブロードバンド")).toBe(104);
+    expect(extractReportCountFromLabels(labels, "WiFi")).toBe(30);
+  });
+
+  it("matches partial and case-insensitive category names", () => {
+    expect(
+      extractReportCountFromLabels(
+        ["Broadband: 73 percent of reports, 104 reports"],
+        "Broadband Internet",
+      ),
+    ).toBe(104);
+  });
+
+  it("falls back to the first category tally", () => {
+    expect(extractReportCountFromLabels(labels)).toBe(104);
+  });
+
+  it("returns null when no label carries a report tally", () => {
+    expect(extractReportCountFromLabels(["0", "10", "20", "Most reported problems breakdown"])).toBeNull();
+  });
+});
+
+describe("formatAnnotation", () => {
+  it("emits one notice with before/after and the local record count", () => {
+    const out = formatAnnotation({
+      beforeCount: 104,
+      afterCount: 105,
+      count: 22,
+      category: "Broadband Internet",
+      problemType: "high_latency",
+    });
+    expect(out.match(/::notice::/g)).toHaveLength(1);
+    expect(out).toContain("104");
+    expect(out).toContain("105");
+    expect(out).toContain("22");
+    expect(out).toContain("Broadband Internet");
+    expect(out).not.toContain("0 ::notice::");
+  });
+
+  it("supports positional numbers and a logger", () => {
+    const logs = [];
+    const out = formatAnnotation(0, 0, 22, (msg) => logs.push(msg));
+    expect(out).toContain("before: 0");
+    expect(out).toContain("after: 0");
+    expect(out).toContain("22");
+    expect(logs).toEqual([out]);
+  });
+
+  it("can annotate just the submitted record count", () => {
+    const out = formatAnnotation({ count: 22 });
+    expect(out.match(/::notice::/g)).toHaveLength(1);
+    expect(out).toContain("22");
+  });
+});
+
 describe("hasReportCountIncreased", () => {
   it("returns true when after > before", () => {
     expect(hasReportCountIncreased(10, 11)).toBe(true);
@@ -336,6 +402,18 @@ describe("getReportCount", () => {
   it("reads via textContent", async () => {
     const page = { textContent: async () => "count: 3" };
     expect(await getReportCount(page)).toBe(3);
+  });
+
+  it("prefers accessible report tallies over chart axis text", async () => {
+    const page = {
+      $$eval: async () => [
+        "ブロードバンド: 73 percent of reports, 104 reports",
+        "WiFi: 21 percent of reports, 30 reports",
+      ],
+      textContent: async () => "0 10 20 30 40",
+    };
+    expect(await getReportCount(page, { category: "ブロードバンド" })).toBe(104);
+    expect(await getReportCount(page, { category: "WiFi" })).toBe(30);
   });
 });
 
