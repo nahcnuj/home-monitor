@@ -572,6 +572,18 @@ export function makeNormalDistributionLegendSwatch(color: string): HTMLCanvasEle
   canvas.height = 16;
   const ctx = canvas.getContext("2d");
   if (ctx) {
+    ctx.fillStyle = withAlpha(color, MINMAX_BAND_ALPHA);
+    ctx.beginPath();
+    ctx.moveTo(0, 16);
+    ctx.quadraticCurveTo(6, 14, 8, 8);
+    ctx.quadraticCurveTo(12, 0, 16, 8);
+    ctx.quadraticCurveTo(18, 14, 24, 16);
+    ctx.closePath();
+    ctx.fill();
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(8, 0, 8, 16);
+    ctx.clip();
     ctx.fillStyle = withAlpha(color, SIGMA_BAND_ALPHA);
     ctx.beginPath();
     ctx.moveTo(0, 16);
@@ -580,6 +592,7 @@ export function makeNormalDistributionLegendSwatch(color: string): HTMLCanvasEle
     ctx.quadraticCurveTo(18, 14, 24, 16);
     ctx.closePath();
     ctx.fill();
+    ctx.restore();
     ctx.strokeStyle = color;
     ctx.lineWidth = 2;
     ctx.beginPath();
