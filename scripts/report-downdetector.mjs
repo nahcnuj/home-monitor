@@ -83,6 +83,12 @@ export function isCloudflareChallenge(title, content) {
   if (c.includes("cf-chl-widget") || c.includes("challenge-platform") || c.includes("cf-turnstile-response")) return true;
   if (c.includes("cf-challenge") || (c.includes("cloudflare") && c.includes("challenge"))) return true;
   if (c.includes("ray id") && c.includes("please wait")) return true;
+  // Cloudflare managed challenge variants seen on Downdetector (JS challenge,
+  // "Enable JavaScript and cookies to continue", __cf_chl_tk, _cf_chl_opt).
+  if (c.includes("_cf_chl") || c.includes("cf_chl_opt") || c.includes("__cf_chl_tk")) return true;
+  if (c.includes("challenge-error-text") || c.includes("enable javascript and cookies to continue")) return true;
+  if (c.includes("cf-chl-tk")) return true;
+  if (t.includes("downdetector") && c.includes("_cf_chl")) return true;
   return false;
 }
 
