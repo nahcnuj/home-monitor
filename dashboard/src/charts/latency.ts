@@ -580,7 +580,6 @@ export function makeNormalDistributionLegendSwatch(color: string): HTMLCanvasEle
     ctx.quadraticCurveTo(18, 14, 24, 16);
     ctx.closePath();
     ctx.fill();
-    // Overlay the normal-distribution curve on top of the band.
     ctx.strokeStyle = color;
     ctx.lineWidth = 2;
     ctx.beginPath();
