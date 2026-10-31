@@ -217,6 +217,112 @@ export function extractReportCount(text) {
   return null;
 }
 
+function toStringList(value) {
+  if (value === null || value === undefined) return [];
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) return value.flatMap((item) => toStringList(item));
+  if (typeof value === "object") {
+    return Object.values(value).flatMap((item) => toStringList(item));
+  }
+  return [];
+}
+
+/**
+ * Downdetector renders the per-category report tallies only as accessible
+ * labels on the "most reported problems" list, e.g.
+ *   aria-label="ブロードバンド: 73 percent of reports, 104 reports"
+ * The same page also contains a chart whose axis text starts at 0, so reading
+ * the first number from the body text yields a meaningless 0. Prefer the
+ * category tally, matching `category` when one is supplied.
+ */
+export function extractReportCountFromLabels(labels, category = null) {
+  const candidates = [];
+  for (const label of toStringList(labels)) {
+    const text = String(label);
+    if (!/report|報告|件/i.test(text)) continue;
+    const count = extractReportCount(text);
+    if (count !== null) candidates.push({ text, count });
+  }
+  if (candidates.length === 0) return null;
+
+  if (category !== null && category !== undefined && String(category).trim() !== "") {
+    const wanted = String(category).trim().toLowerCase();
+    const match = candidates.find(({ text }) => {
+      const lowered = text.toLowerCase();
+      const categoryPart = lowered.split(/[:：]/, 1)[0].trim();
+      return (
+        lowered.includes(wanted) ||
+        (categoryPart !== "" &&
+          (wanted.includes(categoryPart) || categoryPart.includes(wanted)))
+      );
+    });
+    if (match) return match.count;
+  }
+
+  return candidates[0].count;
+}
+
+async function readReportCountLabels(page) {
+  const labels = [];
+
+  if (typeof page.$$eval === "function") {
+    try {
+      const values = await page.$$eval("[aria-label]", (elements) =>
+        elements
+          .map((element) => element.getAttribute("aria-label"))
+          .filter(Boolean),
+      );
+      labels.push(...toStringList(values));
+    } catch {}
+  }
+
+  if (labels.length === 0 && typeof page.evaluate === "function") {
+    try {
+      const values = await page.evaluate(() =>
+        Array.from(document.querySelectorAll("[aria-label]"))
+          .map((element) => element.getAttribute("aria-label"))
+          .filter(Boolean),
+      );
+      labels.push(...toStringList(values));
+    } catch {}
+  }
+
+  if (labels.length === 0 && typeof page.locator === "function") {
+    try {
+      const locator = page.locator("[aria-label]");
+      if (locator && typeof locator.all === "function") {
+        for (const item of await locator.all()) {
+          if (item && typeof item.getAttribute === "function") {
+            const value = await item.getAttribute("aria-label");
+            if (value) labels.push(value);
+          }
+        }
+      } else if (locator && typeof locator.evaluateAll === "function") {
+        labels.push(
+          ...toStringList(
+            await locator.evaluateAll((elements) =>
+              elements
+                .map((element) => element.getAttribute("aria-label"))
+                .filter(Boolean),
+            ),
+          ),
+        );
+      }
+    } catch {}
+  }
+
+  for (const key of ["ariaLabels", "labels", "accessibleNames"]) {
+    const value = page[key];
+    if (typeof value === "string" || Array.isArray(value)) {
+      labels.push(...toStringList(value));
+    } else if (value !== null && typeof value === "object") {
+      labels.push(...toStringList(value));
+    }
+  }
+
+  return labels;
+}
+
 export function hasReportCountIncreased(before, after) {
   const toNum = (v) => {
     if (v === null || v === undefined) return null;
@@ -256,12 +362,16 @@ export function hasReportCountIncreased(before, after) {
     typeof a === "number" && !Number.isNaN(a) && a > b;
 }
 
-export async function getReportCount(page) {
+export async function getReportCount(page, options = {}) {
   if (page === null || page === undefined) return null;
+  const category =
+    typeof options === "string"
+      ? options
+      : options?.category ?? options?.label ?? options?.indicator ?? null;
   // Allow the page (or a test double) to expose the count directly.
   if (typeof page.getReportCount === "function") {
     try {
-      const v = await page.getReportCount();
+      const v = await page.getReportCount(category ? { category } : undefined);
       const n = extractReportCount(v);
       if (n !== null) return n;
     } catch {}
@@ -284,6 +394,14 @@ export async function getReportCount(page) {
       if (n !== null) return n;
     }
   }
+  // The per-category tallies live in aria-labels, not in the visible body
+  // text. Read them first so the chart axis "0" is not mistaken for the count.
+  const labeledCount = extractReportCountFromLabels(
+    await readReportCountLabels(page),
+    category,
+  );
+  if (labeledCount !== null) return labeledCount;
+
   // Try common Playwright page methods.
   const selectors = ["body", "main", "[role='main']", "#main-content", "html"];
   const methods = ["textContent", "innerText", "innerHTML"];
@@ -640,11 +758,13 @@ export async function run() {
   const candidates = labelCandidates(indicatorLabel);
   const perLabelTimeout = Math.max(8000, Math.floor(timeoutMs / candidates.length));
   let indicatorBtn = null;
+  let selectedLabel = null;
   for (const label of candidates) {
     const btn = page.getByRole("radio", { name: new RegExp(escapeRegExp(label), "i") }).first();
     try {
       await btn.waitFor({ state: "visible", timeout: perLabelTimeout });
       indicatorBtn = btn;
+      selectedLabel = (await btn.innerText().catch(() => "")) || label;
       console.log(`Selecting "${label}"...`);
       break;
     } catch {
@@ -665,12 +785,10 @@ export async function run() {
     process.exit(1);
   }
 
-  // Capture the report count before submitting so we can confirm it actually
-  // increased (Downdetector sometimes shows a thank-you without counting).
-  const beforeCount = await getReportCount(page);
-  // Surface the pre-report count as a GitHub Actions annotation so the run
-  // shows whether the report really landed (issue #70).
-  console.log(formatAnnotation(beforeCount));
+  // Capture the category's report tally before submitting so we can confirm
+  // it actually increased (Downdetector sometimes shows a thank-you without
+  // counting).
+  const beforeCount = await getReportCount(page, { category: selectedLabel });
 
   await indicatorBtn.click();
 
@@ -682,7 +800,7 @@ export async function run() {
   const pollDeadline = Date.now() + 10000;
   while (Date.now() < pollDeadline) {
     await page.waitForTimeout(1000);
-    afterCount = await getReportCount(page);
+    afterCount = await getReportCount(page, { category: selectedLabel });
     if (beforeCount !== null && afterCount !== null) {
       if (afterCount > beforeCount) {
         success = true;
@@ -698,6 +816,13 @@ export async function run() {
   } else {
     success = await determineSuccess(page, beforeCount, afterCount);
   }
+
+  // Emit one well-formed annotation with the category tally before and after
+  // the submission (and the number of local records that triggered the
+  // report), so a 0 from the chart axis is never mistaken for the count.
+  console.log(
+    formatAnnotation({ beforeCount, afterCount, count, category: selectedLabel, problemType }),
+  );
 
   await browser.close();
 
@@ -723,67 +848,148 @@ if (invokedDirectly) {
   });
 }
 
-function __extractCountForAnnotation(args) {
-  const nums = [];
-  for (const arg of args) {
-    if (typeof arg === "function") continue;
-    if (typeof arg === "number" && !Number.isNaN(arg)) { nums.push(arg); continue; }
-    if (typeof arg === "string") {
-      const n = extractReportCount(arg);
-      if (n !== null) nums.push(n);
-      continue;
-    }
-    if (arg && typeof arg === "object" && !Array.isArray(arg)) {
-      const preferred = ["beforeCount", "before_count", "before", "countBefore", "previousCount", "previous", "oldCount", "startCount", "count", "reportCount", "report_count", "reportcount", "value", "total"];
-      let found = null;
-      for (const key of preferred) {
-        if (Object.prototype.hasOwnProperty.call(arg, key)) {
-          const v = arg[key];
-          if (typeof v === "number" && !Number.isNaN(v)) { found = v; break; }
-          if (typeof v === "string") {
-            const cleaned = v.replace(/[,\s]/g, "");
-            if (/^-?\d+$/.test(cleaned)) { found = parseInt(cleaned, 10); break; }
-            const r = extractReportCount(v);
-            if (r !== null) { found = r; break; }
-          }
-        }
-      }
-      if (found === null) {
-        const r = extractReportCount(arg);
-        if (r !== null) found = r;
-      }
-      if (found !== null) nums.push(found);
-      continue;
-    }
-    if (Array.isArray(arg)) {
-      for (const item of arg) {
-        const nested = __extractCountForAnnotation([item]);
-        if (nested !== null && nested !== undefined) nums.push(...(Array.isArray(nested) ? nested : [nested]));
-      }
-    }
-  }
-  return nums;
+function numberFromAnnotationValue(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "number") return Number.isNaN(value) ? null : value;
+  const cleaned = String(value).replace(/[,\s]/g, "");
+  if (/^-?\d+$/.test(cleaned)) return parseInt(cleaned, 10);
+  return extractReportCount(value);
 }
 
+const ANNOTATION_KEYS = {
+  before: [
+    "beforeCount",
+    "before_count",
+    "before",
+    "countBefore",
+    "previousCount",
+    "previous",
+    "oldCount",
+    "startCount",
+  ],
+  after: [
+    "afterCount",
+    "after_count",
+    "after",
+    "countAfter",
+    "currentCount",
+    "current",
+    "newCount",
+    "endCount",
+  ],
+  count: [
+    "count",
+    "reportCount",
+    "report_count",
+    "reportcount",
+    "submitted",
+    "submittedCount",
+    "records",
+    "total",
+    "value",
+  ],
+};
+
+function readAnnotationArgs(args) {
+  const annotation = {
+    before: null,
+    after: null,
+    count: null,
+    label: null,
+    problemType: null,
+  };
+  const positional = [];
+
+  const readObject = (value) => {
+    let recognised = false;
+    for (const field of ["before", "after", "count"]) {
+      for (const key of ANNOTATION_KEYS[field]) {
+        if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+        const number = numberFromAnnotationValue(value[key]);
+        if (number === null) continue;
+        if (annotation[field] === null) annotation[field] = number;
+        recognised = true;
+        break;
+      }
+    }
+    for (const key of ["category", "label", "indicator", "indicatorLabel", "service"]) {
+      if (annotation.label === null && typeof value[key] === "string" && value[key] !== "") {
+        annotation.label = value[key];
+      }
+    }
+    if (
+      annotation.problemType === null &&
+      typeof value.problemType === "string" &&
+      value.problemType !== ""
+    ) {
+      annotation.problemType = value.problemType;
+    }
+    if (!recognised) {
+      const number = numberFromAnnotationValue(value);
+      if (number !== null) positional.push(number);
+    }
+  };
+
+  const walk = (value) => {
+    if (typeof value === "function") return;
+    if (Array.isArray(value)) {
+      for (const item of value) walk(item);
+      return;
+    }
+    if (value !== null && typeof value === "object") {
+      readObject(value);
+      return;
+    }
+    const number = numberFromAnnotationValue(value);
+    if (number !== null) positional.push(number);
+  };
+
+  for (const arg of args) walk(arg);
+
+  for (const value of positional) {
+    if (annotation.before === null) annotation.before = value;
+    else if (annotation.after === null) annotation.after = value;
+    else if (annotation.count === null) annotation.count = value;
+  }
+
+  return annotation;
+}
+
+/**
+ * Build a single GitHub Actions notice for the Downdetector report count.
+ * The notice reports the category tally read from the page (before → after)
+ * and, when supplied, the number of local records that triggered the report.
+ * It must stay one `::notice::` command: the old implementation emitted
+ * several commands on one line, which GitHub rendered as duplicated
+ * "0 ::notice::before count: 0 ..." annotations.
+ */
 export function formatAnnotation(...args) {
   const logFn = args.find((a) => typeof a === "function");
-  const nums = __extractCountForAnnotation(args);
-  const before = nums.length ? nums[0] : null;
-  const after = nums.length > 1 ? nums[1] : null;
-  const parts = [];
-  if (before === null) {
-    parts.push("::notice::Downdetector report count before: unknown");
+  const { before, after, count, label, problemType } = readAnnotationArgs(args);
+
+  let summary;
+  if (before !== null && after !== null) {
+    summary = `report count before: ${before} → after: ${after}`;
+  } else if (before !== null) {
+    summary = `report count before: ${before}`;
+  } else if (after !== null) {
+    summary = `report count after: ${after}`;
+  } else if (count !== null) {
+    summary = `report count: ${count}`;
   } else {
-    parts.push(`::notice::${before}`);
-    parts.push(`::notice::before count: ${before}`);
-    parts.push(`::notice::report count before: ${before}`);
-    parts.push(`::notice::Downdetector report count before: ${before}`);
-    if (after !== null) {
-      parts.push(`::notice::after count: ${after}`);
-      parts.push(`::notice::report count after: ${after}`);
-    }
+    summary = "report count: unknown";
   }
-  const annotation = parts.join(" ");
+
+  const details = [];
+  if (count !== null && (before !== null || after !== null)) {
+    details.push(`${count} local records`);
+  }
+  if (problemType !== null) details.push(`problem=${problemType}`);
+
+  const subject = label ? `${label}: ` : "";
+  const detail = details.length > 0 ? ` (${details.join("; ")})` : "";
+  const annotation = `::notice::Downdetector ${subject}${summary}${detail}`;
+
   if (logFn) {
     try { logFn(annotation); } catch {}
   } else {
