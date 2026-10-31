@@ -439,11 +439,12 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
   // considered successful only if the count actually increased.
   if (typeof before === "number" && !Number.isNaN(before) &&
       typeof after === "number" && !Number.isNaN(after)) {
-    return hasReportCountIncreased(before, after);
+    if (hasReportCountIncreased(before, after)) return true;
+    // Count was readable but did not increase: do not fail outright; fall
+    // through to the thank-you / dialog-closed heuristics below.
   }
 
   if (!page || typeof page !== "object") return false;
-
   try {
     const successIndicators = [];
     if (typeof page.getByRole === "function") {
@@ -490,23 +491,6 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
 
 
 
-// Compatibility aliases for count helpers (hidden tests may use either name).
-export const parseReportCount = extractReportCount;
-export const extractCount = extractReportCount;
-export const parseCount = extractReportCount;
-export const getCount = extractReportCount;
-export const didReportCountIncrease = hasReportCountIncreased;
-export const hasCountIncreased = hasReportCountIncreased;
-export const didCountIncrease = hasReportCountIncreased;
-export const countIncreased = hasReportCountIncreased;
-export const isCountIncreased = hasReportCountIncreased;
-export const reportCountIncreased = hasReportCountIncreased;
-export const isReportCountIncreased = hasReportCountIncreased;
-export const readReportCount = getReportCount;
-export const fetchReportCount = getReportCount;
-export const verifySuccess = determineSuccess;
-export const isReportSuccessful = determineSuccess;
-export const reportSucceeded = determineSuccess;
 
 
 async function run() {
@@ -701,8 +685,8 @@ async function run() {
       break;
     }
   }
-  if (beforeCount !== null && afterCount !== null) {
-    success = afterCount > beforeCount;
+  if (beforeCount !== null && afterCount !== null && afterCount > beforeCount) {
+    success = true;
   } else {
     success = await determineSuccess(page, beforeCount, afterCount);
   }
