@@ -572,7 +572,6 @@ export function makeNormalDistributionLegendSwatch(color: string): HTMLCanvasEle
   canvas.height = 16;
   const ctx = canvas.getContext("2d");
   if (ctx) {
-    // Tail band (min..mean-σ and mean+σ..max): light fill across the whole bell.
     ctx.fillStyle = withAlpha(color, MINMAX_BAND_ALPHA);
     ctx.beginPath();
     ctx.moveTo(0, 16);
@@ -581,7 +580,6 @@ export function makeNormalDistributionLegendSwatch(color: string): HTMLCanvasEle
     ctx.quadraticCurveTo(18, 14, 24, 16);
     ctx.closePath();
     ctx.fill();
-    // Center band (mean-σ..mean+σ): darker fill overlaid on the central slice.
     ctx.save();
     ctx.beginPath();
     ctx.rect(8, 0, 8, 16);
@@ -595,7 +593,6 @@ export function makeNormalDistributionLegendSwatch(color: string): HTMLCanvasEle
     ctx.closePath();
     ctx.fill();
     ctx.restore();
-    // Overlay the normal-distribution curve on top of the bands.
     ctx.strokeStyle = color;
     ctx.lineWidth = 2;
     ctx.beginPath();
