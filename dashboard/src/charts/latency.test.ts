@@ -13,7 +13,10 @@ import {
   isLatencyScrollMode,
   isTooltipDataset,
   latencyChartScrollWidth,
+  legendBellLayout,
+  makeNormalDistributionLegendSwatch,
   nearestBatchTs,
+  renderLatencyLegend,
   scrollLatencyChartToLatest,
   shouldShowLatencyPoints,
   viewMaxFromScrollRatio,
@@ -237,6 +240,50 @@ describe("formatFailureLabel / buildFailurePoints", () => {
     const records = parseTsv("1781967662\t203.165.31.152\tline.me\t5000\tdns_timeout");
     const [point] = buildFailurePoints(records);
     expect(formatFailureLabel(point)).toMatch(/dns_timeout|DNS/);
+  });
+});
+
+describe("latency legend", () => {
+  it("spreads each server's distribution so every peak stays visible", () => {
+    expect(legendBellLayout(0)).toEqual({ centers: [], halfWidth: 0 });
+    expect(legendBellLayout(1)).toEqual({ centers: [12], halfWidth: 12 });
+    expect(legendBellLayout(2)).toEqual({ centers: [8, 16], halfWidth: 8 });
+    expect(legendBellLayout(3)).toEqual({ centers: [6, 12, 18], halfWidth: 6 });
+  });
+
+  it("draws one bell per server in a single swatch", () => {
+    const canvas = makeNormalDistributionLegendSwatch(["#5b8def", "#f59e0b"]);
+    expect(canvas.width).toBe(24);
+    expect(canvas.height).toBe(16);
+  });
+
+  it("places the first and last server labels around the swatch", () => {
+    const legend = document.createElement("div");
+    legend.id = "latencyLegend";
+    legend.hidden = true;
+    document.body.append(legend);
+    try {
+      renderLatencyLegend(["122.197.254.136", "203.165.31.152"]);
+      expect(legend.hidden).toBe(false);
+      const spans = [...legend.querySelectorAll("span")].map((s) => s.textContent);
+      expect(spans).toEqual(["122.197.254.136", "203.165.31.152"]);
+      expect(legend.querySelector("canvas")?.style.width).toBe("6rem");
+    } finally {
+      legend.remove();
+    }
+  });
+
+  it("hides the legend when there are no servers", () => {
+    const legend = document.createElement("div");
+    legend.id = "latencyLegend";
+    document.body.append(legend);
+    try {
+      renderLatencyLegend([]);
+      expect(legend.hidden).toBe(true);
+      expect(legend.children).toHaveLength(0);
+    } finally {
+      legend.remove();
+    }
   });
 });
 
