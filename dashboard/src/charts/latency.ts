@@ -213,8 +213,8 @@ function createBatchTooltipPlugin(batchTimestamps: readonly number[]): Plugin<"l
 }
 
 const BAND_TENSION = 0.42;
-const SIGMA_BAND_ALPHA = 0.18;
-const SIGMA_BAND_ALPHA_LONG = 0.32;
+const IQR_BAND_ALPHA = 0.18;
+const IQR_BAND_ALPHA_LONG = 0.32;
 const MINMAX_BAND_ALPHA = 0.07;
 const MINMAX_BAND_ALPHA_LONG = 0.12;
 const TIMEOUT_EDGE_WIDTH = 2;
@@ -561,78 +561,74 @@ export function visibleWindowFromBounds(bounds: TimeBounds): { min: number; max:
 export function isHiddenBand(label: string | undefined): boolean {
   return !!label?.endsWith(" min")
     || !!label?.endsWith(" max")
-    || !!label?.endsWith(" mean-σ")
-    || !!label?.endsWith(" mean+σ")
+    || !!label?.endsWith(" q1")
+    || !!label?.endsWith(" q3")
     || !!label?.endsWith(" median");
 }
 
 const LEGEND_SWATCH_WIDTH = 24;
 const LEGEND_SWATCH_HEIGHT = 32;
 
-export function legendBellLayout(count: number): {
+/**
+ * Vertical centers for one boxplot per server. Staggering them keeps overlapping
+ * boxes readable, like the graph's per-server bands.
+ */
+export function legendBoxplotLayout(count: number): {
   centers: number[];
-  halfWidth: number;
+  boxHalfHeight: number;
 } {
-  if (count <= 0) return { centers: [], halfWidth: 0 };
+  if (count <= 0) return { centers: [], boxHalfHeight: 0 };
+  const boxHalfHeight = Math.max(
+    2,
+    Math.min(4, Math.floor(LEGEND_SWATCH_HEIGHT / (count * 3))),
+  );
   if (count === 1) {
-    return {
-      centers: [LEGEND_SWATCH_WIDTH / 2],
-      halfWidth: LEGEND_SWATCH_WIDTH / 2,
-    };
+    return { centers: [LEGEND_SWATCH_HEIGHT / 2], boxHalfHeight };
   }
-  const halfWidth = LEGEND_SWATCH_WIDTH / (count + 1);
+  const step = LEGEND_SWATCH_HEIGHT / (count + 1);
   return {
-    centers: Array.from({ length: count }, (_, i) => halfWidth * (i + 1)),
-    halfWidth,
+    centers: Array.from({ length: count }, (_, i) => step * (i + 1)),
+    boxHalfHeight,
   };
 }
 
-function traceNormalDistribution(
-  ctx: CanvasRenderingContext2D,
-  centerX: number,
-  halfWidth: number,
-  close: boolean,
-): void {
-  const baseY = LEGEND_SWATCH_HEIGHT;
-  const v = LEGEND_SWATCH_HEIGHT / 16;
-  ctx.beginPath();
-  ctx.moveTo(centerX - halfWidth, baseY);
-  ctx.quadraticCurveTo(centerX - halfWidth / 2, baseY - 2 * v, centerX - halfWidth / 3, baseY - 8 * v);
-  ctx.quadraticCurveTo(centerX, baseY - 16 * v, centerX + halfWidth / 3, baseY - 8 * v);
-  ctx.quadraticCurveTo(centerX + halfWidth / 2, baseY - 2 * v, centerX + halfWidth, baseY);
-  if (close) ctx.closePath();
-}
-
-export function makeNormalDistributionLegendSwatch(
-  color: string | string[],
-): HTMLCanvasElement {
+export function makeBoxplotLegendSwatch(color: string | string[]): HTMLCanvasElement {
   const colors = Array.isArray(color) ? color : [color];
   const canvas = document.createElement("canvas");
   canvas.width = LEGEND_SWATCH_WIDTH;
   canvas.height = LEGEND_SWATCH_HEIGHT;
   const ctx = canvas.getContext("2d");
   if (ctx) {
-    const { centers, halfWidth } = legendBellLayout(colors.length);
+    const { centers, boxHalfHeight } = legendBoxplotLayout(colors.length);
+    const whiskerLeft = 1;
+    const whiskerRight = LEGEND_SWATCH_WIDTH - 1;
+    const boxLeft = LEGEND_SWATCH_WIDTH * 0.25;
+    const boxRight = LEGEND_SWATCH_WIDTH * 0.75;
+    const medianX = (boxLeft + boxRight) / 2;
     for (let i = 0; i < colors.length; i++) {
-      ctx.fillStyle = withAlpha(colors[i], MINMAX_BAND_ALPHA);
-      traceNormalDistribution(ctx, centers[i], halfWidth, true);
-      ctx.fill();
-    }
-    const bandHalfWidth = halfWidth / 3;
-    for (let i = 0; i < colors.length; i++) {
-      ctx.save();
+      const color = colors[i];
+      const centerY = centers[i];
+      // Min–max whisker: light, matching the outer band.
+      ctx.strokeStyle = withAlpha(color, MINMAX_BAND_ALPHA * 4);
+      ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.rect(
-        centers[i] - bandHalfWidth,
-        0,
-        bandHalfWidth * 2,
-        LEGEND_SWATCH_HEIGHT,
-      );
-      ctx.clip();
-      ctx.fillStyle = withAlpha(colors[i], SIGMA_BAND_ALPHA);
-      traceNormalDistribution(ctx, centers[i], halfWidth, true);
-      ctx.fill();
-      ctx.restore();
+      ctx.moveTo(whiskerLeft, centerY);
+      ctx.lineTo(whiskerRight, centerY);
+      ctx.moveTo(whiskerLeft, centerY - 2);
+      ctx.lineTo(whiskerLeft, centerY + 2);
+      ctx.moveTo(whiskerRight, centerY - 2);
+      ctx.lineTo(whiskerRight, centerY + 2);
+      ctx.stroke();
+      // Q1–Q3 box: dark, matching the inner band.
+      ctx.fillStyle = withAlpha(color, IQR_BAND_ALPHA * 4);
+      ctx.fillRect(boxLeft, centerY - boxHalfHeight, boxRight - boxLeft, boxHalfHeight * 2);
+      // Median: solid line.
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(medianX, centerY - boxHalfHeight);
+      ctx.lineTo(medianX, centerY + boxHalfHeight);
+      ctx.stroke();
     }
   }
   return canvas;
@@ -649,7 +645,7 @@ export function renderLatencyLegend(servers: string[]): void {
   legend.hidden = false;
 
   const colors = servers.map((_, i) => SERVER_COLORS[i % SERVER_COLORS.length]);
-  const swatch = makeNormalDistributionLegendSwatch(colors);
+  const swatch = makeBoxplotLegendSwatch(colors);
   swatch.style.width = "6rem";
   swatch.style.height = "5em";
   swatch.style.flexShrink = "0";
@@ -757,7 +753,7 @@ export function buildLatencyChart(
   const showPoints = shouldShowLatencyPoints();
   latencyShowPoints = showPoints;
   latencySuccessesByServer = successesByServer;
-  const sigmaBandAlpha = showPoints ? SIGMA_BAND_ALPHA : SIGMA_BAND_ALPHA_LONG;
+  const iqrBandAlpha = showPoints ? IQR_BAND_ALPHA : IQR_BAND_ALPHA_LONG;
   const minMaxBandAlpha = showPoints ? MINMAX_BAND_ALPHA : MINMAX_BAND_ALPHA_LONG;
   // Scatter is clipped to the visible X window (refreshed on pan) so Chart.js is not
   // handed ~100k points for a week of multi-domain samples.
@@ -792,9 +788,9 @@ export function buildLatencyChart(
       spanGaps: false,
     });
     datasets.push({
-      label: `${server} mean+σ`,
+      label: `${server} q3`,
       order: 3,
-      data: withGaps(envelope.meanHigh, envelope.emptyTimestamps, maxGapSec),
+      data: withGaps(envelope.q3, envelope.emptyTimestamps, maxGapSec),
       borderColor: "transparent",
       backgroundColor: "transparent",
       borderWidth: 0,
@@ -804,11 +800,11 @@ export function buildLatencyChart(
       spanGaps: false,
     });
     datasets.push({
-      label: `${server} mean-σ`,
+      label: `${server} q1`,
       order: 3,
-      data: withGaps(envelope.meanLow, envelope.emptyTimestamps, maxGapSec),
+      data: withGaps(envelope.q1, envelope.emptyTimestamps, maxGapSec),
       borderColor: "transparent",
-      backgroundColor: withAlpha(color, sigmaBandAlpha),
+      backgroundColor: withAlpha(color, iqrBandAlpha),
       borderWidth: 0,
       pointRadius: 0,
       tension: BAND_TENSION,
@@ -820,7 +816,7 @@ export function buildLatencyChart(
       order: 2,
       data: withGaps(envelope.median, envelope.emptyTimestamps, maxGapSec),
       borderColor: color,
-      backgroundColor: withAlpha(color, sigmaBandAlpha),
+      backgroundColor: withAlpha(color, iqrBandAlpha),
       borderWidth: 2,
       pointRadius: 0,
       tension: BAND_TENSION,

@@ -20,13 +20,22 @@ describe("lowerBound / upperBound / windowMoments", () => {
     expect(upperBound(sorted, 40)).toBe(5);
   });
 
-  it("computes min max mean std over a slice", () => {
+  it("computes min max and quartiles over a slice", () => {
     const values = [10, 20, 30, 40];
     const m = windowMoments(values, 1, 4)!;
     expect(m.min).toBe(20);
     expect(m.max).toBe(40);
-    expect(m.mean).toBe(30);
+    expect(m.q1).toBe(25);
+    expect(m.median).toBe(30);
+    expect(m.q3).toBe(35);
     expect(m.count).toBe(3);
+  });
+
+  it("interpolates quartiles for an even-sized window", () => {
+    const m = windowMoments([10, 20, 30, 40], 0, 4)!;
+    expect(m.q1).toBe(17.5);
+    expect(m.median).toBe(25);
+    expect(m.q3).toBe(32.5);
   });
 });
 
@@ -112,10 +121,31 @@ describe("buildRollingEnvelope", () => {
 
     const envelope = buildRollingEnvelope(records, "203.165.31.152", [ts]);
     const max = envelope.max.find((point) => point.x === ts);
-    const meanHigh = envelope.meanHigh.find((point) => point.x === ts);
+    const q3 = envelope.q3.find((point) => point.x === ts);
 
     expect(max?.y).toBe(290);
-    expect(meanHigh?.y).toBeLessThan(290);
+    expect(q3?.y).toBeLessThan(290);
+  });
+
+  it("keeps Q1–Q3 inside the min–max whisker band", () => {
+    setDisplayRangeSec(HOUR_SEC);
+    const ts = 1000;
+    const records = parseTsv([
+      `${ts}\t203.165.31.152\ta.com\t100`,
+      `${ts}\t203.165.31.152\tb.com\t200`,
+      `${ts}\t203.165.31.152\tc.com\t300`,
+      `${ts}\t203.165.31.152\td.com\t400`,
+    ].join("\n"));
+
+    const envelope = buildRollingEnvelope(records, "203.165.31.152", [ts]);
+    const at = (points: { x: number; y: number | null }[]) =>
+      points.find((point) => point.x === ts)?.y;
+
+    expect(at(envelope.min)).toBe(100);
+    expect(at(envelope.q1)).toBe(175);
+    expect(at(envelope.median)).toBe(250);
+    expect(at(envelope.q3)).toBe(325);
+    expect(at(envelope.max)).toBe(400);
   });
 
   it("uses only samples from the same measurement timestamp below 6h", () => {

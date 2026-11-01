@@ -39,52 +39,56 @@ export function upperBound(sorted: readonly number[], target: number): number {
   return lo;
 }
 
+/** Linear-interpolated quantile of an already sorted array (0 ≤ p ≤ 1). */
+export function quantile(sorted: readonly number[], p: number): number {
+  const n = sorted.length;
+  if (n === 0) return Number.NaN;
+  if (n === 1) return sorted[0];
+  const pos = (n - 1) * p;
+  const lo = Math.floor(pos);
+  const hi = Math.ceil(pos);
+  if (lo === hi) return sorted[lo];
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
+}
+
 /**
- * min / max / mean / sample-std over latencies[start..end) without full sort
- * (boxplot was O(w log w) per anchor and dominated render time).
+ * min / max / quartiles over latencies[start..end).
+ * Q1–Q3 drives the dark band, min–max the light whisker band, median the solid line.
  */
 export function windowMoments(
   latencies: readonly number[],
   start: number,
   end: number,
-): { min: number; max: number; mean: number; median: number; std: number; count: number } | null {
+): { min: number; max: number; q1: number; median: number; q3: number; count: number } | null {
   const n = end - start;
   if (n <= 0) return null;
   let min = latencies[start];
   let max = latencies[start];
-  let sum = 0;
   for (let i = start; i < end; i++) {
     const v = latencies[i];
     if (v < min) min = v;
     if (v > max) max = v;
-    sum += v;
   }
-  const mean = sum / n;
   if (n < 2) {
-    return { min, max, mean, median: mean, std: 0, count: n };
+    return { min, max, q1: min, median: min, q3: max, count: n };
   }
-  let varSum = 0;
-  for (let i = start; i < end; i++) {
-    const d = latencies[i] - mean;
-    varSum += d * d;
-  }
-  // Population variance matches previous boxplot.variance usage for σ band width.
-  const std = Math.sqrt(varSum / n);
   const sorted = [...latencies.slice(start, end)].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  const median =
-    sorted.length % 2 === 0
-      ? (sorted[mid - 1] + sorted[mid]) / 2
-      : sorted[mid];
-  return { min, max, mean, median, std, count: n };
+  return {
+    min,
+    max,
+    q1: quantile(sorted, 0.25),
+    median: quantile(sorted, 0.5),
+    q3: quantile(sorted, 0.75),
+    count: n,
+  };
 }
 
 function momentsFromValues(values: readonly number[]): {
   min: number;
   max: number;
-  mean: number;
+  q1: number;
   median: number;
-  std: number;
+  q3: number;
   count: number;
 } | null {
   return windowMoments(values, 0, values.length);
@@ -126,9 +130,9 @@ export function collectTimelineTimestamps(
 export interface RollingEnvelope {
   min: ChartPoint[];
   max: ChartPoint[];
+  q1: ChartPoint[];
   median: ChartPoint[];
-  meanLow: ChartPoint[];
-  meanHigh: ChartPoint[];
+  q3: ChartPoint[];
   emptyTimestamps: number[];
 }
 
@@ -161,14 +165,14 @@ export function buildRollingEnvelope(
 
   const min: ChartPoint[] = [];
   const max: ChartPoint[] = [];
+  const q1: ChartPoint[] = [];
   const median: ChartPoint[] = [];
-  const meanLow: ChartPoint[] = [];
-  const meanHigh: ChartPoint[] = [];
+  const q3: ChartPoint[] = [];
   const emptyTimestamps: number[] = [];
 
   if (!successTs.length) {
     for (const t of timestamps) emptyTimestamps.push(t);
-    return { min, max, median, meanLow, meanHigh, emptyTimestamps };
+    return { min, max, q1, median, q3, emptyTimestamps };
   }
 
   if (windowSec <= 0) {
@@ -194,11 +198,11 @@ export function buildRollingEnvelope(
       if (!stats) continue;
       min.push({ x: t, y: stats.min });
       max.push({ x: t, y: stats.max });
+      q1.push({ x: t, y: stats.q1 });
       median.push({ x: t, y: stats.median });
-      meanLow.push({ x: t, y: Math.max(0, stats.mean - stats.std) });
-      meanHigh.push({ x: t, y: stats.mean + stats.std });
+      q3.push({ x: t, y: stats.q3 });
     }
-    return { min, max, median, meanLow, meanHigh, emptyTimestamps };
+    return { min, max, q1, median, q3, emptyTimestamps };
   }
 
   // Rolling window: binary search bounds on sorted success timestamps.
@@ -215,10 +219,10 @@ export function buildRollingEnvelope(
     if (!stats) continue;
     min.push({ x: t, y: stats.min });
     max.push({ x: t, y: stats.max });
+    q1.push({ x: t, y: stats.q1 });
     median.push({ x: t, y: stats.median });
-    meanLow.push({ x: t, y: Math.max(0, stats.mean - stats.std) });
-    meanHigh.push({ x: t, y: stats.mean + stats.std });
+    q3.push({ x: t, y: stats.q3 });
   }
 
-  return { min, max, median, meanLow, meanHigh, emptyTimestamps };
+  return { min, max, q1, median, q3, emptyTimestamps };
 }
