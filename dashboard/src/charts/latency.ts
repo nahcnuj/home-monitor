@@ -567,7 +567,7 @@ export function isHiddenBand(label: string | undefined): boolean {
 }
 
 const LEGEND_SWATCH_WIDTH = 24;
-const LEGEND_SWATCH_HEIGHT = 16;
+const LEGEND_SWATCH_HEIGHT = 32;
 
 export function legendBellLayout(count: number): {
   centers: number[];
@@ -594,11 +594,12 @@ function traceNormalDistribution(
   close: boolean,
 ): void {
   const baseY = LEGEND_SWATCH_HEIGHT;
+  const v = LEGEND_SWATCH_HEIGHT / 16;
   ctx.beginPath();
   ctx.moveTo(centerX - halfWidth, baseY);
-  ctx.quadraticCurveTo(centerX - halfWidth / 2, baseY - 2, centerX - halfWidth / 3, baseY - 8);
-  ctx.quadraticCurveTo(centerX, baseY - 16, centerX + halfWidth / 3, baseY - 8);
-  ctx.quadraticCurveTo(centerX + halfWidth / 2, baseY - 2, centerX + halfWidth, baseY);
+  ctx.quadraticCurveTo(centerX - halfWidth / 2, baseY - 2 * v, centerX - halfWidth / 3, baseY - 8 * v);
+  ctx.quadraticCurveTo(centerX, baseY - 16 * v, centerX + halfWidth / 3, baseY - 8 * v);
+  ctx.quadraticCurveTo(centerX + halfWidth / 2, baseY - 2 * v, centerX + halfWidth, baseY);
   if (close) ctx.closePath();
 }
 
@@ -633,12 +634,6 @@ export function makeNormalDistributionLegendSwatch(
       ctx.fill();
       ctx.restore();
     }
-    for (let i = 0; i < colors.length; i++) {
-      ctx.strokeStyle = colors[i];
-      ctx.lineWidth = 2;
-      traceNormalDistribution(ctx, centers[i], halfWidth, false);
-      ctx.stroke();
-    }
   }
   return canvas;
 }
@@ -656,7 +651,7 @@ export function renderLatencyLegend(servers: string[]): void {
   const colors = servers.map((_, i) => SERVER_COLORS[i % SERVER_COLORS.length]);
   const swatch = makeNormalDistributionLegendSwatch(colors);
   swatch.style.width = "6rem";
-  swatch.style.height = "3em";
+  swatch.style.height = "5em";
   swatch.style.flexShrink = "0";
 
   const item = document.createElement("div");
@@ -667,12 +662,21 @@ export function renderLatencyLegend(servers: string[]): void {
   if (servers.length >= 2) {
     const left = document.createElement("span");
     left.textContent = servers[0];
+    left.style.textDecoration = "underline";
+    left.style.textDecorationColor = colors[0];
+    left.style.textDecorationThickness = "2px";
     const right = document.createElement("span");
     right.textContent = servers[servers.length - 1];
+    right.style.textDecoration = "underline";
+    right.style.textDecorationColor = colors[colors.length - 1];
+    right.style.textDecorationThickness = "2px";
     item.append(left, swatch, right);
   } else {
     const label = document.createElement("span");
     label.textContent = servers[0];
+    label.style.textDecoration = "underline";
+    label.style.textDecorationColor = colors[0];
+    label.style.textDecorationThickness = "2px";
     item.append(label, swatch);
   }
   legend.append(item);
