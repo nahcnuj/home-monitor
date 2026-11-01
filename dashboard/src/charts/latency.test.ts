@@ -13,8 +13,8 @@ import {
   isLatencyScrollMode,
   isTooltipDataset,
   latencyChartScrollWidth,
-  legendBellLayout,
-  makeNormalDistributionLegendSwatch,
+  legendBoxplotLayout,
+  makeBoxplotLegendSwatch,
   nearestBatchTs,
   renderLatencyLegend,
   scrollLatencyChartToLatest,
@@ -244,17 +244,22 @@ describe("formatFailureLabel / buildFailurePoints", () => {
 });
 
 describe("latency legend", () => {
-  it("spreads each server's distribution so every peak stays visible", () => {
-    expect(legendBellLayout(0)).toEqual({ centers: [], halfWidth: 0 });
-    expect(legendBellLayout(1)).toEqual({ centers: [12], halfWidth: 12 });
-    expect(legendBellLayout(2)).toEqual({ centers: [8, 16], halfWidth: 8 });
-    expect(legendBellLayout(3)).toEqual({ centers: [6, 12, 18], halfWidth: 6 });
+  it("stacks each server's boxplot so overlapping boxes stay visible", () => {
+    expect(legendBoxplotLayout(0)).toEqual({ centers: [], boxHalfHeight: 0 });
+    expect(legendBoxplotLayout(1)).toEqual({ centers: [16], boxHalfHeight: 4 });
+    const two = legendBoxplotLayout(2);
+    expect(two.boxHalfHeight).toBe(4);
+    expect(two.centers[0]).toBeCloseTo(32 / 3);
+    expect(two.centers[1]).toBeCloseTo(64 / 3);
+    const three = legendBoxplotLayout(3);
+    expect(three.boxHalfHeight).toBe(3);
+    expect(three.centers).toEqual([8, 16, 24]);
   });
 
-  it("draws one bell per server in a single swatch", () => {
-    const canvas = makeNormalDistributionLegendSwatch(["#5b8def", "#f59e0b"]);
-  expect(canvas.width).toBe(24);
-  expect(canvas.height).toBe(32);
+  it("draws one boxplot per server in a single swatch", () => {
+    const canvas = makeBoxplotLegendSwatch(["#5b8def", "#f59e0b"]);
+    expect(canvas.width).toBe(24);
+    expect(canvas.height).toBe(32);
   });
 
   it("places the first and last server labels around the swatch", () => {
@@ -292,6 +297,8 @@ describe("isTooltipDataset", () => {
     expect(isTooltipDataset("1.1.1.1")).toBe(true);
     expect(isTooltipDataset("error")).toBe(true);
     expect(isTooltipDataset("1.1.1.1 min")).toBe(false);
+    expect(isTooltipDataset("1.1.1.1 q1")).toBe(false);
+    expect(isTooltipDataset("1.1.1.1 q3")).toBe(false);
   });
 });
 
