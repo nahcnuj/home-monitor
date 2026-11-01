@@ -566,48 +566,77 @@ export function isHiddenBand(label: string | undefined): boolean {
     || !!label?.endsWith(" median");
 }
 
+const LEGEND_SWATCH_WIDTH = 24;
+const LEGEND_SWATCH_HEIGHT = 16;
+
+export function legendBellLayout(count: number): {
+  centers: number[];
+  halfWidth: number;
+} {
+  if (count <= 0) return { centers: [], halfWidth: 0 };
+  if (count === 1) {
+    return {
+      centers: [LEGEND_SWATCH_WIDTH / 2],
+      halfWidth: LEGEND_SWATCH_WIDTH / 2,
+    };
+  }
+  const halfWidth = LEGEND_SWATCH_WIDTH / (count + 1);
+  return {
+    centers: Array.from({ length: count }, (_, i) => halfWidth * (i + 1)),
+    halfWidth,
+  };
+}
+
+function traceNormalDistribution(
+  ctx: CanvasRenderingContext2D,
+  centerX: number,
+  halfWidth: number,
+  close: boolean,
+): void {
+  const baseY = LEGEND_SWATCH_HEIGHT;
+  ctx.beginPath();
+  ctx.moveTo(centerX - halfWidth, baseY);
+  ctx.quadraticCurveTo(centerX - halfWidth / 2, baseY - 2, centerX - halfWidth / 3, baseY - 8);
+  ctx.quadraticCurveTo(centerX, baseY - 16, centerX + halfWidth / 3, baseY - 8);
+  ctx.quadraticCurveTo(centerX + halfWidth / 2, baseY - 2, centerX + halfWidth, baseY);
+  if (close) ctx.closePath();
+}
+
 export function makeNormalDistributionLegendSwatch(
   color: string | string[],
 ): HTMLCanvasElement {
   const colors = Array.isArray(color) ? color : [color];
   const canvas = document.createElement("canvas");
-  canvas.width = 24;
-  canvas.height = 16;
+  canvas.width = LEGEND_SWATCH_WIDTH;
+  canvas.height = LEGEND_SWATCH_HEIGHT;
   const ctx = canvas.getContext("2d");
   if (ctx) {
-    // Overlay each distribution's tail (min..mean-σ and mean+σ..max) and center
-    // (mean-σ..mean+σ) bands so multiple servers' distributions stack in one swatch.
-    for (const c of colors) {
-      ctx.fillStyle = withAlpha(c, MINMAX_BAND_ALPHA);
-      ctx.beginPath();
-      ctx.moveTo(0, 16);
-      ctx.quadraticCurveTo(6, 14, 8, 8);
-      ctx.quadraticCurveTo(12, 0, 16, 8);
-      ctx.quadraticCurveTo(18, 14, 24, 16);
-      ctx.closePath();
+    const { centers, halfWidth } = legendBellLayout(colors.length);
+    for (let i = 0; i < colors.length; i++) {
+      ctx.fillStyle = withAlpha(colors[i], MINMAX_BAND_ALPHA);
+      traceNormalDistribution(ctx, centers[i], halfWidth, true);
       ctx.fill();
+    }
+    const bandHalfWidth = halfWidth / 3;
+    for (let i = 0; i < colors.length; i++) {
       ctx.save();
       ctx.beginPath();
-      ctx.rect(8, 0, 8, 16);
+      ctx.rect(
+        centers[i] - bandHalfWidth,
+        0,
+        bandHalfWidth * 2,
+        LEGEND_SWATCH_HEIGHT,
+      );
       ctx.clip();
-      ctx.fillStyle = withAlpha(c, SIGMA_BAND_ALPHA);
-      ctx.beginPath();
-      ctx.moveTo(0, 16);
-      ctx.quadraticCurveTo(6, 14, 8, 8);
-      ctx.quadraticCurveTo(12, 0, 16, 8);
-      ctx.quadraticCurveTo(18, 14, 24, 16);
-      ctx.closePath();
+      ctx.fillStyle = withAlpha(colors[i], SIGMA_BAND_ALPHA);
+      traceNormalDistribution(ctx, centers[i], halfWidth, true);
       ctx.fill();
       ctx.restore();
     }
-    for (const c of colors) {
-      ctx.strokeStyle = c;
+    for (let i = 0; i < colors.length; i++) {
+      ctx.strokeStyle = colors[i];
       ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(0, 16);
-      ctx.quadraticCurveTo(6, 14, 8, 8);
-      ctx.quadraticCurveTo(12, 0, 16, 8);
-      ctx.quadraticCurveTo(18, 14, 24, 16);
+      traceNormalDistribution(ctx, centers[i], halfWidth, false);
       ctx.stroke();
     }
   }
