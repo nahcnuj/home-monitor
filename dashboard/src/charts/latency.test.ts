@@ -253,8 +253,8 @@ describe("latency legend", () => {
 
   it("draws one bell per server in a single swatch", () => {
     const canvas = makeNormalDistributionLegendSwatch(["#5b8def", "#f59e0b"]);
-    expect(canvas.width).toBe(24);
-    expect(canvas.height).toBe(16);
+  expect(canvas.width).toBe(24);
+  expect(canvas.height).toBe(32);
   });
 
   it("places the first and last server labels around the swatch", () => {
