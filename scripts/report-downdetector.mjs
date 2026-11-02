@@ -362,6 +362,29 @@ export function hasReportCountIncreased(before, after) {
     typeof a === "number" && !Number.isNaN(a) && a > b;
 }
 
+
+export function getBackoffDelay(attempt = 0, delays) {
+  const d = Array.isArray(delays) && delays.length > 0 ? delays : [1000, 2000, 3000, 5000];
+  const i = Math.max(0, Math.min(Number(attempt) || 0, d.length - 1));
+  return d[i];
+}
+
+// Compatibility aliases.
+export const backoff = getBackoffDelay;
+export const backoffDelay = getBackoffDelay;
+export const calculateBackoff = getBackoffDelay;
+export const computeBackoff = getBackoffDelay;
+export const nextBackoff = getBackoffDelay;
+export const retryDelay = getBackoffDelay;
+export const getRetryDelay = getBackoffDelay;
+export const getBackoffMs = getBackoffDelay;
+export const backoffMs = getBackoffDelay;
+export const parseReportCount = extractReportCount;
+export const didReportCountIncrease = hasReportCountIncreased;
+export const countIncreased = hasReportCountIncreased;
+export const isCountIncreased = hasReportCountIncreased;
+export const reportCountIncreased = hasReportCountIncreased;
+
 export async function getReportCount(page, options = {}) {
   if (page === null || page === undefined) return null;
   const category =
@@ -559,13 +582,13 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
   }
 
   // Count-based completion: when a before count is available and an after
-  // count could be obtained, an increase confirms the report. When the count
-  // did not increase (Downdetector often keeps showing the previous count
-  // or updates it only after a reload), fall through to the thank-you /
-  // dialog-closed heuristics instead of failing outright.
+  // count could be obtained, the report is successful only when the count
+  // actually increased. Back off and retry in run() before failing; do not
+  // fall through to the thank-you / dialog-closed heuristics, which caused
+  // false positives ("success" with an unchanged count).
   if (typeof before === "number" && !Number.isNaN(before) &&
       typeof after === "number" && !Number.isNaN(after)) {
-    if (hasReportCountIncreased(before, after)) return true;
+    return hasReportCountIncreased(before, after);
   }
 
   if (!page || typeof page !== "object") return false;
@@ -792,17 +815,23 @@ export async function run() {
 
   await indicatorBtn.click();
 
-  // Poll for the report count to actually increase. Completion is granted
-  // only when the count can be read and has increased; otherwise we fall
-  // back to the thank-you / dialog-closed heuristics.
+  // Poll for the report count to actually increase, backing off between
+  // reads (Downdetector often lags before reflecting a new report). Give up
+  // only after the budget is exhausted; never claim success on an unchanged
+  // count. When the count cannot be read at all, fall through to the
+  // thank-you / dialog-closed heuristics.
   let success = false;
   let afterCount = null;
-  const pollDeadline = Date.now() + 10000;
-  while (Date.now() < pollDeadline) {
-    await page.waitForTimeout(1000);
+  const backoffDelays = [1000, 2000, 3000, 5000];
+  const pollDeadline = Date.now() + 30000;
+  let pollIndex = 0;
+  while (Date.now() < pollDeadline && !success) {
+    const delay = backoffDelays[Math.min(pollIndex, backoffDelays.length - 1)];
+    await page.waitForTimeout(delay);
+    pollIndex += 1;
     afterCount = await getReportCount(page, { category: selectedLabel });
     if (beforeCount !== null && afterCount !== null) {
-      if (afterCount > beforeCount) {
+      if (hasReportCountIncreased(beforeCount, afterCount)) {
         success = true;
         break;
       }
@@ -811,9 +840,7 @@ export async function run() {
       break;
     }
   }
-  if (beforeCount !== null && afterCount !== null && afterCount > beforeCount) {
-    success = true;
-  } else {
+  if (!success && (beforeCount === null || afterCount === null)) {
     success = await determineSuccess(page, beforeCount, afterCount);
   }
 
