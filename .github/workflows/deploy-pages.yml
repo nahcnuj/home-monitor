@@ -39,13 +39,6 @@ jobs:
       - name: Prepare data store
         run: mkdir -p data-store/data
 
-      - name: Migrate legacy published data
-        run: |
-          if [[ ! -f data-store/data/dns-latency.tsv && -f docs/data/dns-latency.tsv ]]; then
-            cp docs/data/dns-latency.tsv data-store/data/dns-latency.tsv
-            echo "Migrated legacy gh-pages data into the data store."
-          fi
-
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
