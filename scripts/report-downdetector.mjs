@@ -442,22 +442,6 @@ export function getBackoffDelay(attempt = 0, delays) {
   return d[i];
 }
 
-// Compatibility aliases.
-export const backoff = getBackoffDelay;
-export const backoffDelay = getBackoffDelay;
-export const calculateBackoff = getBackoffDelay;
-export const computeBackoff = getBackoffDelay;
-export const nextBackoff = getBackoffDelay;
-export const retryDelay = getBackoffDelay;
-export const getRetryDelay = getBackoffDelay;
-export const getBackoffMs = getBackoffDelay;
-export const backoffMs = getBackoffDelay;
-export const parseReportCount = extractReportCount;
-export const didReportCountIncrease = hasReportCountIncreased;
-export const countIncreased = hasReportCountIncreased;
-export const isCountIncreased = hasReportCountIncreased;
-export const reportCountIncreased = hasReportCountIncreased;
-
 export async function getReportCount(page, options = {}) {
   if (page === null || page === undefined) return null;
   const category =
@@ -1135,43 +1119,4 @@ export function formatAnnotation(...args) {
   }
   return annotation;
 }
-
-export {
-  formatAnnotation as buildAnnotation,
-  formatAnnotation as createAnnotation,
-  formatAnnotation as makeAnnotation,
-  formatAnnotation as toAnnotation,
-  formatAnnotation as annotate,
-  formatAnnotation as logAnnotation,
-  formatAnnotation as printAnnotation,
-  formatAnnotation as emitAnnotation,
-  formatAnnotation as outputAnnotation,
-  formatAnnotation as reportAnnotation,
-  formatAnnotation as annotation,
-  formatAnnotation as getAnnotation,
-  formatAnnotation as formatReportCountAnnotation,
-  formatAnnotation as buildReportCountAnnotation,
-  formatAnnotation as createReportCountAnnotation,
-  formatAnnotation as makeReportCountAnnotation,
-  formatAnnotation as toReportCountAnnotation,
-  formatAnnotation as annotateReportCount,
-  formatAnnotation as logReportCountAnnotation,
-  formatAnnotation as printReportCountAnnotation,
-  formatAnnotation as emitReportCountAnnotation,
-  formatAnnotation as outputReportCountAnnotation,
-  formatAnnotation as reportCountAnnotation,
-  formatAnnotation as getReportCountAnnotation,
-  formatAnnotation as formatBeforeCountAnnotation,
-  formatAnnotation as beforeCountAnnotation,
-  formatAnnotation as formatCountAnnotation,
-  formatAnnotation as countAnnotation,
-  formatAnnotation as githubAnnotation,
-  formatAnnotation as formatGitHubAnnotation,
-  formatAnnotation as toGitHubAnnotation,
-  formatAnnotation as notice,
-  formatAnnotation as formatNotice,
-  formatAnnotation as toNotice,
-  formatAnnotation as annotationMessage,
-  formatAnnotation as formatAnnotationMessage,
-};
 
