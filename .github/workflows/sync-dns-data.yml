@@ -21,7 +21,7 @@ concurrency:
 jobs:
   sync:
     name: Sync DNS data
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       downdetector_targets: ${{ steps.merge.outputs.downdetector_targets }}
     steps:
@@ -241,7 +241,7 @@ jobs:
     name: Report to Downdetector
     needs: sync
     if: needs.sync.outputs.downdetector_targets != ''
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
         with:
