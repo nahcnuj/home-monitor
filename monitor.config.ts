@@ -26,7 +26,7 @@ export interface MonitorConfig {
      *  "ブロードバンド, Broadband Internet" for J:COM fixed-line internet. */
     services: Readonly<Record<string, {
       page_url: string;
-      indicator_label: string;
+      indicator_label: string | readonly string[];
     }>>;
   };
 }
@@ -59,7 +59,7 @@ export const monitorConfig = {
     services: {
       "J:COM": {
         page_url: "https://downdetector.jp/shougai/jcom/",
-        indicator_label: "ブロードバンド, Broadband Internet, Broadband, Internet, インターネット",
+        indicator_label: ["ブロードバンド", "Broadband Internet", "Broadband", "Internet", "インターネット"],
       },
     },
   },
