@@ -1,5 +1,8 @@
 data/local/
-docs/
+docs/*
+!docs/data/
+docs/data/*
+!docs/data/dns-latency.tsv
 node_modules/
 dashboard/dist/
 terminals/

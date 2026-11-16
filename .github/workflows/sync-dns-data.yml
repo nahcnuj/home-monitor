@@ -47,6 +47,13 @@ jobs:
       - name: Prepare data store
         run: mkdir -p data-store/data
 
+      - name: Migrate legacy published data
+        run: |
+          if [[ ! -f data-store/data/dns-latency.tsv && -f source/docs/data/dns-latency.tsv ]]; then
+            cp source/docs/data/dns-latency.tsv data-store/data/dns-latency.tsv
+            echo "Migrated legacy gh-pages data into the data store."
+          fi
+
       - name: Merge incoming TSV data
         id: merge
         env:
@@ -206,24 +213,13 @@ jobs:
             echo '[]' > "$JSON"
           fi
 
-      - name: Check published data
-        id: check_data
-        run: |
-          if [[ -f data-store/data/dns-latency.tsv ]]; then
-            echo "has_data=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_data=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Save published data
-        if: steps.check_data.outputs.has_data == 'true'
         uses: actions/cache/save@v4
         with:
           path: data-store
           key: dns-data-${{ github.run_id }}
 
       - name: Build Pages artifact
-        if: steps.check_data.outputs.has_data == 'true'
         env:
           PAGES_DATA_DIR: ${{ github.workspace }}/data-store
         run: |
@@ -231,15 +227,12 @@ jobs:
           bash scripts/prepare-pages.sh
 
       - uses: actions/configure-pages@v6
-        if: steps.check_data.outputs.has_data == 'true'
 
       - uses: actions/upload-pages-artifact@v5
-        if: steps.check_data.outputs.has_data == 'true'
         with:
           path: source/dashboard/dist
 
       - id: deployment
-        if: steps.check_data.outputs.has_data == 'true'
         uses: actions/deploy-pages@v5
 
   report:
