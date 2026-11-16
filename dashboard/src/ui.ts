@@ -38,12 +38,11 @@ export function renderStats(stats: Stats): void {
   if (uptime) {
     if (!stats.total) {
       uptime.innerHTML = `<span class="label">Uptime</span><span class="value">—</span>`;
-      uptime.classList.remove("ok", "warn");
+      uptime.classList.remove("green", "orange", "yellow", "red");
       return;
     }
-    const cls = stats.uptime < 95 ? "warn" : "ok";
-    uptime.classList.toggle("ok", cls === "ok");
-    uptime.classList.toggle("warn", cls === "warn");
+    uptime.classList.remove("green", "orange", "yellow", "red");
+    uptime.classList.add(uptimeColorClass(stats.uptime));
     uptime.innerHTML =
       `<span class="label">Uptime</span>` +
       `<span class="value">${stats.uptime.toFixed(1)}%</span>`;
@@ -94,4 +93,11 @@ export function loadDisplayRangeFromConfig(): number {
   }
 
   return isValidDisplayRangeSec(configDefaultSec) ? configDefaultSec : DEFAULT_DISPLAY_RANGE_SEC;
+}
+
+export function uptimeColorClass(uptime: number): "green" | "orange" | "yellow" | "red" {
+  if (uptime >= 99.95) return "green";
+  if (uptime >= 99.9) return "orange";
+  if (uptime >= 99.0) return "yellow";
+  return "red";
 }
