@@ -77,11 +77,14 @@ export function normalizeCategoryLabel(value) {
 export function labelCandidates(indicatorLabel) {
   const seen = new Set();
   const out = [];
-  const values = Array.isArray(indicatorLabel)
-    ? indicatorLabel
-    : indicatorLabel === null || indicatorLabel === undefined
-      ? []
-      : [indicatorLabel];
+  const values = [];
+  const collect = (v) => {
+    if (v === null || v === undefined) return;
+    if (Array.isArray(v)) { v.forEach(collect); return; }
+    values.push(v);
+  };
+  collect(indicatorLabel);
+  if (values.length === 0) return out;
   for (const value of values) {
     const parts = typeof value === "string" ? value.split(/[,;\n\r]+/) : [value];
     for (const part of parts) {
