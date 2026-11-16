@@ -68,11 +68,35 @@ export function escapeRegExp(text) {
  * to try, in order. Accepts a single label (no comma) too, so the config can
  * stay a plain string. Empty entries are dropped.
  */
+export function normalizeCategoryLabel(value) {
+  return String(value ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function labelCandidates(indicatorLabel) {
-  return String(indicatorLabel)
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const seen = new Set();
+  const out = [];
+  const values = [];
+  const collect = (v) => {
+    if (v === null || v === undefined) return;
+    if (Array.isArray(v)) { v.forEach(collect); return; }
+    values.push(v);
+  };
+  collect(indicatorLabel);
+  if (values.length === 0) return out;
+  for (const value of values) {
+    const parts = typeof value === "string" ? value.split(/[,;\n\r]+/) : [value];
+    for (const part of parts) {
+      const normalized = String(part ?? "").replace(/\s+/g, " ").trim();
+      if (!normalized) continue;
+      const key = normalized.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(normalized);
+    }
+  }
+  return out;
 }
 
 export function isCloudflareChallenge(title, content) {
@@ -94,7 +118,49 @@ export function isCloudflareChallenge(title, content) {
 
 export function extractAvailableCategories(radios) {
   if (!Array.isArray(radios)) return [];
-  return radios.map((t) => String(t).trim()).filter(Boolean);
+  const seen = new Set();
+  const out = [];
+  for (const t of radios) {
+    const normalized = String(t ?? "").replace(/\s+/g, " ").trim();
+    if (!normalized) continue;
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(normalized);
+  }
+  return out;
+}
+
+export function categoryMatches(candidate, available) {
+  const c = normalizeCategoryLabel(candidate).toLowerCase();
+  const a = normalizeCategoryLabel(available).toLowerCase();
+  if (!c || !a) return false;
+  if (a === c) return true;
+  if (a.includes(c) || c.includes(a)) return true;
+  // Token overlap for multi-word labels that differ only in word order or
+  // extra qualifiers (e.g. "Broadband Internet" vs "Internet (Broadband)").
+  const cTokens = c.split(/[^a-z0-9\u3040-\u30ff\u4e00-\u9faf]+/).filter((t) => t.length >= 2);
+  const aTokens = a.split(/[^a-z0-9\u3040-\u30ff\u4e00-\u9faf]+/).filter((t) => t.length >= 2);
+  if (cTokens.length > 0 && aTokens.length > 0) {
+    return cTokens.some((t) => aTokens.includes(t));
+  }
+  return false;
+}
+
+export function findMatchingIndex(candidates, available) {
+  const candList = Array.isArray(candidates) ? candidates : labelCandidates(candidates);
+  const availList = Array.isArray(available)
+    ? available
+    : (available === null || available === undefined ? [] : [available]);
+  const normalizedAvail = availList.map((v) => String(v ?? "").replace(/\s+/g, " ").trim());
+  for (const candidate of candList) {
+    for (let i = 0; i < normalizedAvail.length; i++) {
+      if (categoryMatches(candidate, normalizedAvail[i])) {
+        return i;
+      }
+    }
+  }
+  return -1;
 }
 
 export function buildOptions(argv, env) {
@@ -143,7 +209,7 @@ export function markReported(stateFile, { nowSec }) {
  * challenge without any spoofing, so only the bundled fallback gets the
  * automation-signal overrides.
  */
-export async function launchBrowser({ headless, channel }) {
+async function launchBrowser({ headless, channel }) {
   const args = ["--no-sandbox", "--disable-blink-features=AutomationControlled"];
   if (channel) {
     try {
@@ -246,9 +312,9 @@ export function extractReportCountFromLabels(labels, category = null) {
   if (candidates.length === 0) return null;
 
   if (category !== null && category !== undefined && String(category).trim() !== "") {
-    const wanted = String(category).trim().toLowerCase();
+    const wanted = normalizeCategoryLabel(category).toLowerCase();
     const match = candidates.find(({ text }) => {
-      const lowered = text.toLowerCase();
+      const lowered = normalizeCategoryLabel(text).toLowerCase();
       const categoryPart = lowered.split(/[:：]/, 1)[0].trim();
       return (
         lowered.includes(wanted) ||
@@ -363,27 +429,6 @@ export function hasReportCountIncreased(before, after) {
 }
 
 
-export function getBackoffDelay(attempt = 0, delays) {
-  const d = Array.isArray(delays) && delays.length > 0 ? delays : [1000, 2000, 3000, 5000];
-  const i = Math.max(0, Math.min(Number(attempt) || 0, d.length - 1));
-  return d[i];
-}
-
-// Compatibility aliases.
-export const backoff = getBackoffDelay;
-export const backoffDelay = getBackoffDelay;
-export const calculateBackoff = getBackoffDelay;
-export const computeBackoff = getBackoffDelay;
-export const nextBackoff = getBackoffDelay;
-export const retryDelay = getBackoffDelay;
-export const getRetryDelay = getBackoffDelay;
-export const getBackoffMs = getBackoffDelay;
-export const backoffMs = getBackoffDelay;
-export const parseReportCount = extractReportCount;
-export const didReportCountIncrease = hasReportCountIncreased;
-export const countIncreased = hasReportCountIncreased;
-export const isCountIncreased = hasReportCountIncreased;
-export const reportCountIncreased = hasReportCountIncreased;
 
 export async function getReportCount(page, options = {}) {
   if (page === null || page === undefined) return null;
@@ -647,7 +692,7 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
 
 
 
-export async function run() {
+async function run() {
   const {
     pageUrl,
     indicatorLabel,
@@ -788,18 +833,98 @@ export async function run() {
 
   const candidates = labelCandidates(indicatorLabel);
   const perLabelTimeout = Math.max(8000, Math.floor(timeoutMs / candidates.length));
+  const radiosLocator = page.getByRole("radio");
+  const availableTexts = await radiosLocator.allInnerTexts().catch(() => []);
+  // Collect accessible names for every radio, merging with visible inner text by
+  // index so radios whose inner text is empty still get their label (via
+  // aria-label, associated <label>, aria-labelledby, or container text).
+  let accessibleTexts = Array.isArray(availableTexts) ? [...availableTexts] : [];
+  let evaluated = null;
+  try {
+    evaluated = await radiosLocator.evaluateAll((els) =>
+      els.map((el) => {
+        const labelNodes = el.labels ? Array.from(el.labels) : [];
+        const labelText = labelNodes.map((node) => node.textContent || "").join(" ");
+        const closestLabel = typeof el.closest === "function" ? el.closest("label") : null;
+        const closestText = closestLabel ? closestLabel.textContent || "" : "";
+        let labelledByText = "";
+        const labelledBy = el.getAttribute("aria-labelledby");
+        if (labelledBy) {
+          labelledByText = labelledBy
+            .split(/\s+/)
+            .map((id) => {
+              const node = typeof document !== "undefined" ? document.getElementById(id) : null;
+              return node ? node.textContent || "" : "";
+            })
+            .join(" ");
+        }
+        const parent = el.parentElement;
+        const parentText = parent ? parent.textContent || "" : "";
+        return (
+          el.getAttribute("aria-label") ||
+          labelText ||
+          closestText ||
+          labelledByText ||
+          el.textContent ||
+          el.innerText ||
+          parentText ||
+          ""
+        );
+      }),
+    );
+  } catch {}
+  if (Array.isArray(evaluated) && evaluated.length > 0) {
+    if (accessibleTexts.length === 0) {
+      accessibleTexts = evaluated;
+    } else {
+      for (let i = 0; i < accessibleTexts.length; i++) {
+        if (String(accessibleTexts[i] ?? "").trim() === "" && evaluated[i] !== undefined) {
+          accessibleTexts[i] = evaluated[i];
+        }
+      }
+      if (evaluated.length > accessibleTexts.length) {
+        accessibleTexts.push(...evaluated.slice(accessibleTexts.length));
+      }
+    }
+  }
+  // Match against the raw (non-deduped) accessible texts so the returned
+  // index stays aligned with radiosLocator.nth(). Deduplication is only used
+  // for reporting the available categories.
+  const normalizedAccessible = accessibleTexts.map((v) => String(v ?? "").replace(/\s+/g, " ").trim());
+  const matchSource = normalizedAccessible.some((t) => t !== "") ? normalizedAccessible : accessibleTexts;
+  const matchedIndex = findMatchingIndex(candidates, matchSource);
+  const normalizedAvailable = extractAvailableCategories(accessibleTexts);
+
   let indicatorBtn = null;
   let selectedLabel = null;
-  for (const label of candidates) {
-    const btn = page.getByRole("radio", { name: new RegExp(escapeRegExp(label), "i") }).first();
+  let selectedCandidate = null;
+  if (matchedIndex >= 0) {
+    indicatorBtn = radiosLocator.nth(matchedIndex);
+    const availList = matchSource.map((v) => String(v ?? "").replace(/\s+/g, " ").trim());
+    selectedLabel = availList[matchedIndex] || null;
+    // Determine which candidate matched.
+    for (const label of candidates) {
+      if (categoryMatches(label, availList[matchedIndex])) { selectedCandidate = label; break; }
+    }
     try {
-      await btn.waitFor({ state: "visible", timeout: perLabelTimeout });
-      indicatorBtn = btn;
-      selectedLabel = (await btn.innerText().catch(() => "")) || label;
-      console.log(`Selecting "${label}"...`);
-      break;
-    } catch {
-      console.log(`No category matching "${label}" after ${perLabelTimeout}ms`);
+      await indicatorBtn.waitFor({ state: "visible", timeout: perLabelTimeout });
+    } catch {}
+    console.log(`Selecting "${selectedCandidate}"...`);
+  } else {
+    // Fall back to the original Playwright name-based matching in case the
+    // radio accessible names differ from their visible text.
+    for (const label of candidates) {
+      const btn = page.getByRole("radio", { name: new RegExp(escapeRegExp(label), "i") }).first();
+      try {
+        await btn.waitFor({ state: "visible", timeout: perLabelTimeout });
+        indicatorBtn = btn;
+        selectedLabel = (await btn.innerText().catch(() => "")) || label;
+        selectedCandidate = label;
+        console.log(`Selecting "${label}"...`);
+        break;
+      } catch {
+        console.log(`No category matching "${label}" after ${perLabelTimeout}ms`);
+      }
     }
   }
 
@@ -1039,43 +1164,4 @@ export function formatAnnotation(...args) {
   }
   return annotation;
 }
-
-export {
-  formatAnnotation as buildAnnotation,
-  formatAnnotation as createAnnotation,
-  formatAnnotation as makeAnnotation,
-  formatAnnotation as toAnnotation,
-  formatAnnotation as annotate,
-  formatAnnotation as logAnnotation,
-  formatAnnotation as printAnnotation,
-  formatAnnotation as emitAnnotation,
-  formatAnnotation as outputAnnotation,
-  formatAnnotation as reportAnnotation,
-  formatAnnotation as annotation,
-  formatAnnotation as getAnnotation,
-  formatAnnotation as formatReportCountAnnotation,
-  formatAnnotation as buildReportCountAnnotation,
-  formatAnnotation as createReportCountAnnotation,
-  formatAnnotation as makeReportCountAnnotation,
-  formatAnnotation as toReportCountAnnotation,
-  formatAnnotation as annotateReportCount,
-  formatAnnotation as logReportCountAnnotation,
-  formatAnnotation as printReportCountAnnotation,
-  formatAnnotation as emitReportCountAnnotation,
-  formatAnnotation as outputReportCountAnnotation,
-  formatAnnotation as reportCountAnnotation,
-  formatAnnotation as getReportCountAnnotation,
-  formatAnnotation as formatBeforeCountAnnotation,
-  formatAnnotation as beforeCountAnnotation,
-  formatAnnotation as formatCountAnnotation,
-  formatAnnotation as countAnnotation,
-  formatAnnotation as githubAnnotation,
-  formatAnnotation as formatGitHubAnnotation,
-  formatAnnotation as toGitHubAnnotation,
-  formatAnnotation as notice,
-  formatAnnotation as formatNotice,
-  formatAnnotation as toNotice,
-  formatAnnotation as annotationMessage,
-  formatAnnotation as formatAnnotationMessage,
-};
 

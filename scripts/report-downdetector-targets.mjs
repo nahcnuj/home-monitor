@@ -45,7 +45,9 @@ export function buildArgs(scriptPath, target, stateFile) {
     "--page-url",
     String(target.page_url),
     "--indicator",
-    String(target.indicator_label),
+    Array.isArray(target.indicator_label)
+      ? target.indicator_label.map(String).join(", ")
+      : String(target.indicator_label),
     "--problem-type",
     String(target.problem_type),
     "--count",
@@ -72,7 +74,7 @@ export function reportAll(targets, { execFileSync: execFile, scriptPath, stateFi
   return failed;
 }
 
-export function main() {
+function main() {
   const { targets, error } = parseTargets(process.env.DD_TARGETS);
   if (error) {
     console.error(error);
