@@ -45,9 +45,7 @@ export function buildArgs(scriptPath, target, stateFile) {
     "--page-url",
     String(target.page_url),
     "--indicator",
-    Array.isArray(target.indicator_label)
-      ? target.indicator_label.join(", ")
-      : String(target.indicator_label),
+    String(target.indicator_label),
     "--problem-type",
     String(target.problem_type),
     "--count",
