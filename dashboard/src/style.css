@@ -7,6 +7,8 @@
   --text-muted: #8b90a0;
   --accent: #5b8def;
   --success: #4ade80;
+  --warning: #fb923c;
+  --caution: #facc15;
   --error: #f87171;
 }
 
@@ -189,8 +191,12 @@ main {
   color: var(--text);
 }
 
-.uptime-badge.ok .value { color: var(--success); }
-.uptime-badge.warn .value { color: var(--error); }
+.uptime-badge.ok .value,
+.uptime-badge.green .value { color: var(--success); }
+.uptime-badge.orange .value { color: var(--warning); }
+.uptime-badge.yellow .value { color: var(--caution); }
+.uptime-badge.warn .value,
+.uptime-badge.red .value { color: var(--error); }
 
 .chart-section h2 {
   font-size: 0.875rem;
