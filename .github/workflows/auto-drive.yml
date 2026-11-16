@@ -1,0 +1,32 @@
+name: Auto-drive
+
+on:
+  issues:
+    types: [opened, reopened]
+  pull_request_review:
+    types: [submitted]
+  workflow_dispatch:
+    inputs:
+      number:
+        description: Issue or pull request number to drive
+        required: true
+        type: number
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  actions: write
+
+jobs:
+  auto-drive:
+    name: Auto-drive issue
+    uses: conahcnuj/conahcnuj/.github/workflows/issue-driver.yml@16b52459add47acae1bd755b29ea558171a554d9
+    with:
+      number: ${{ github.event.pull_request.number || github.event.issue.number || (github.event.inputs.number && fromJSON(github.event.inputs.number)) }}
+      repository: ${{ github.repository }}
+      environment: conahcnuj
+    secrets:
+      APP_ID: ${{ secrets.CONAHCNUJ_APP_ID }}
+      INSTALLATION_ID: ${{ secrets.CONAHCNUJ_INSTALLATION_ID }}
+      PRIVATE_KEY: ${{ secrets.CONAHCNUJ_PRIVATE_KEY }}
