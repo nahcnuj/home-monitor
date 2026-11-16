@@ -19,14 +19,15 @@ export interface MonitorConfig {
     /** Report target per service name (a value in service_by_resolver).
      *  page_url: Downdetector status page URL (the public web UI is driven via
      *  Playwright RPA — no private API is used);
-     *  indicator_label: on-page label(s) of the issue category to select. A
-     *  comma-separated list, tried in order, because Downdetector renders the
-     *  category in the region's UI language (Japanese in the JP region, English
-     *  elsewhere — a GitHub Actions runner is a foreign datacenter). E.g.
-     *  "ブロードバンド, Broadband Internet" for J:COM fixed-line internet. */
+     *  indicator_label: on-page label(s) of the issue category to select. An
+     *  array (or comma-separated string) tried in order, because Downdetector
+     *  renders the category in the region's UI language (Japanese in the JP
+     *  region, English elsewhere — a GitHub Actions runner is a foreign
+     *  datacenter). E.g. ["ブロードバンド", "Broadband Internet"] for J:COM
+     *  fixed-line internet. */
     services: Readonly<Record<string, {
       page_url: string;
-      indicator_label: string;
+      indicator_label: string | readonly string[];
     }>>;
   };
 }
@@ -59,7 +60,7 @@ export const monitorConfig = {
     services: {
       "J:COM": {
         page_url: "https://downdetector.jp/shougai/jcom/",
-        indicator_label: "ブロードバンド, Broadband Internet, Broadband, Internet, インターネット",
+        indicator_label: ["ブロードバンド", "Broadband Internet", "Broadband", "Internet", "インターネット"],
       },
     },
   },

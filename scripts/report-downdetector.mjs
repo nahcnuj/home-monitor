@@ -76,16 +76,24 @@ export function normalizeCategoryLabel(value) {
 
 export function labelCandidates(indicatorLabel) {
   const seen = new Set();
-  return String(indicatorLabel ?? "")
-    .split(/[,;\n\r]+/)
-    .map((s) => s.replace(/\s+/g, " ").trim())
-    .filter(Boolean)
-    .filter((s) => {
-      const key = s.toLowerCase();
-      if (seen.has(key)) return false;
+  const out = [];
+  const values = Array.isArray(indicatorLabel)
+    ? indicatorLabel
+    : indicatorLabel === null || indicatorLabel === undefined
+      ? []
+      : [indicatorLabel];
+  for (const value of values) {
+    const parts = typeof value === "string" ? value.split(/[,;\n\r]+/) : [value];
+    for (const part of parts) {
+      const normalized = String(part ?? "").replace(/\s+/g, " ").trim();
+      if (!normalized) continue;
+      const key = normalized.toLowerCase();
+      if (seen.has(key)) continue;
       seen.add(key);
-      return true;
-    });
+      out.push(normalized);
+    }
+  }
+  return out;
 }
 
 export function isCloudflareChallenge(title, content) {
@@ -1127,43 +1135,6 @@ export function formatAnnotation(...args) {
   }
   return annotation;
 }
-
-// Compatibility aliases for category matching helpers (issue #111). Hidden
-// tests may refer to the new helpers under any of these names.
-export const normalizeCategory = normalizeCategoryLabel;
-export const normalizeLabel = normalizeCategoryLabel;
-export const normalizeWhitespace = normalizeCategoryLabel;
-export const normalizeText = normalizeCategoryLabel;
-export const collapseWhitespace = normalizeCategoryLabel;
-export const cleanCategory = normalizeCategoryLabel;
-export const cleanLabel = normalizeCategoryLabel;
-
-export const categoriesMatch = categoryMatches;
-export const matchCategory = categoryMatches;
-export const matchLabel = categoryMatches;
-export const labelsMatch = categoryMatches;
-export const isCategoryMatch = categoryMatches;
-export const categoryMatch = categoryMatches;
-export const isMatch = categoryMatches;
-export const match = categoryMatches;
-export const matchesCategory = categoryMatches;
-export const matchCategoryLabel = categoryMatches;
-
-export const findMatchingLabel = findMatchingCategory;
-export const findCategory = findMatchingCategory;
-export const findLabel = findMatchingCategory;
-export const selectCategory = findMatchingCategory;
-export const selectLabel = findMatchingCategory;
-export const chooseCategory = findMatchingCategory;
-export const chooseLabel = findMatchingCategory;
-export const pickCategory = findMatchingCategory;
-export const pickLabel = findMatchingCategory;
-export const matchCategoryToAvailable = findMatchingCategory;
-export const findCategoryIndex = findMatchingCategory;
-export const findMatchingRadio = findMatchingCategory;
-export const findRadio = findMatchingCategory;
-export const selectRadio = findMatchingCategory;
-export const findAvailableCategory = findMatchingCategory;
 
 export {
   formatAnnotation as buildAnnotation,
