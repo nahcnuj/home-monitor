@@ -1,15 +1,9 @@
 name: Deploy Pages
 
 on:
-  # Human/manual runs and explicit dispatch from Sync (after a real push).
-  workflow_dispatch:
-  # master → gh-pages merge (GITHUB_TOKEN push does not fire `push` here).
-  workflow_run:
-    workflows: [Merge to gh-pages]
-    types: [completed]
-  # Rare non-bot pushes to gh-pages (local PAT etc.).
   push:
-    branches: [gh-pages]
+    branches: [master]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -22,25 +16,36 @@ concurrency:
 
 jobs:
   deploy:
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
-        with:
-          ref: gh-pages
 
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
 
+      - name: Restore published data
+        uses: actions/cache/restore@v4
+        with:
+          path: data-store
+          key: data-store-restore-${{ github.run_id }}
+          restore-keys: |
+            dns-data-
+
+      - name: Prepare data store
+        run: mkdir -p data-store/data
+
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
-      - run: bash scripts/prepare-pages.sh
+      - name: Build Pages artifact
+        env:
+          PAGES_DATA_DIR: ${{ github.workspace }}/data-store
+        run: bash scripts/prepare-pages.sh
 
       - uses: actions/configure-pages@v6
 

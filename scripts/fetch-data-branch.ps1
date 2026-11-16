@@ -3,23 +3,18 @@
 $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path $PSScriptRoot -Parent
 $DocsDataDir = Join-Path $RepoRoot "docs\data"
-$PagesBranch = "gh-pages"
+$LocalDataFile = Join-Path $RepoRoot "data\local\dns-latency.tsv"
 
 Push-Location $RepoRoot
 try {
-    if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-        throw "git is not installed"
-    }
-
-    git fetch origin $PagesBranch 2>&1 | Out-Host
-    if ($LASTEXITCODE -ne 0) {
-        throw "git fetch origin $PagesBranch failed"
+    if (-not (Test-Path $LocalDataFile)) {
+        throw "Local data not found: $LocalDataFile"
     }
 
     New-Item -ItemType Directory -Path $DocsDataDir -Force | Out-Null
-    git show "origin/${PagesBranch}:docs/data/dns-latency.tsv" | Set-Content -Path (Join-Path $DocsDataDir "dns-latency.tsv") -Encoding UTF8
+    Copy-Item -LiteralPath $LocalDataFile -Destination (Join-Path $DocsDataDir "dns-latency.tsv") -Force
 
-    Write-Host "Fetched gh-pages TSV into docs/data for local preview."
+    Write-Host "Copied local TSV into docs/data for local preview."
 }
 finally {
     Pop-Location

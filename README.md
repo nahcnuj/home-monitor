@@ -14,17 +14,13 @@
 | ブランチ | 内容 |
 |----------|------|
 | `master` | ソース（ダッシュボード、スクリプト、ワークフロー、`monitor.config.ts`） |
-| `gh-pages` | 公開用ブランチ（`master` + `docs/data`） |
-
-`master` への push で **Merge to gh-pages** が走り、ソースを `gh-pages` にマージします（`docs/data/` はそのまま残ります）。**Sync DNS Data** は計測データを `gh-pages` の `docs/data/` に直接書き込みます。続けて **Deploy Pages** が `gh-pages` からビルドして公開します（bot による push では後続ワークフローが起動しないため、`workflow_run` で連鎖させています）。
-
-GitHub Pages は **GitHub Actions** でデプロイします（Settings → Pages → GitHub Actions）。
+GitHub Pages は **GitHub Actions** でデプロイします（Settings → Pages → GitHub Actions）。ビルド成果物は Actions の artifact としてアップロードされます。計測データは Actions のキャッシュに保持されます。
 
 ## 仕組み
 
 1. **Windows PC** — 1分ごとに `nslookup` を実行し、レイテンシをローカル TSV に記録
 2. **10分ごと** — `gh workflow run` で未送信データをワークフローへ送信（失敗時は自動リトライ）
-3. **GitHub Actions** — `gh-pages` の `docs/data/` を更新 → Pages デプロイ
+3. **GitHub Actions** — Actions キャッシュの `docs/data/` を更新 → Pages デプロイ
 4. **ダッシュボード** — `https://www.nahcnuj.work/home-monitor/` でグラフ表示
 
 ## セットアップ
@@ -130,7 +126,7 @@ GitHub Actions（**Sync DNS Data** / **Deploy Pages** の `prepare-pages`）が 
 
 ## ダッシュボード開発 (Vite + TypeScript)
 
-ソースは `dashboard/src/`。ビルド成果物は `dashboard/dist/` に出力され、CI が `gh-pages` からビルドして Pages へ公開します。
+ソースは `dashboard/src/`。ビルド成果物は `dashboard/dist/` に出力され、Actions がビルドして Pages へ公開します。
 
 ```powershell
 npm install
@@ -144,10 +140,10 @@ npm run bench    # レイテンシチャート描画のベンチ（7日分合成
 公開 TSV をローカルで確認したい場合:
 
 ```powershell
-.\scripts\fetch-data-branch.ps1   # gh-pages の docs/data を取得（gitignore 済み）
+.\scripts\fetch-data-branch.ps1   # ローカル data/local の TSV を docs/data にコピー（gitignore 済み）
 ```
 
-UI や設定を `master` に push すると **Merge to gh-pages** → **Deploy Pages** が順に走ります。
+UI や設定を `master` に push すると **Deploy Pages** が走ります。
 
 ## ファイル構成
 
@@ -158,16 +154,9 @@ scripts/publish-data.ps1  データ送信
 scripts/report-downdetector-targets.mjs  GitHub Actions からの Downdetector 報告（オーケストレータ）
 scripts/report-downdetector.mjs  Playwright によるステータスページ操作（RPA 本体）
 scripts/Get-MonitorConfig.ps1  PS から設定を読むヘルパー
-scripts/merge-gh-pages.sh master → gh-pages マージ
 scripts/install-scheduled-task.ps1  タスク登録
 dashboard/                ダッシュボードソース (Vite + TS)
 data/local/               ローカルデータ (gitignore)
 docs/                     ローカルプレビュー用 TSV キャッシュ (gitignore)
 ```
 
-`gh-pages` ブランチ:
-
-```
-dashboard/ scripts/ monitor.config.ts package.json ...
-docs/data/dns-latency.tsv
-```
