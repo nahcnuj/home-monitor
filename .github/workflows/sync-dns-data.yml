@@ -48,11 +48,9 @@ jobs:
         run: mkdir -p data-store/data
 
       - name: Migrate legacy published data
-        run: |
-          if [[ ! -f data-store/data/dns-latency.tsv && -f source/docs/data/dns-latency.tsv ]]; then
-            cp source/docs/data/dns-latency.tsv data-store/data/dns-latency.tsv
-            echo "Migrated legacy gh-pages data into the data store."
-          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash source/scripts/migrate-legacy-published-data.sh
 
       - name: Merge incoming TSV data
         id: merge
