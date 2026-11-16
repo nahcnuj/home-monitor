@@ -847,9 +847,9 @@ export async function run() {
   // Emit one well-formed annotation with the category tally before and after
   // the submission (and the number of local records that triggered the
   // report), so a 0 from the chart axis is never mistaken for the count.
-  console.log(
-    formatAnnotation({ beforeCount, afterCount, count, category: selectedLabel, problemType }),
-  );
+  // formatAnnotation already writes the notice itself, so do not wrap it in
+  // another console.log (that would duplicate the GitHub Actions annotation).
+  formatAnnotation({ beforeCount, afterCount, count, category: selectedLabel, problemType });
 
   await browser.close();
 
