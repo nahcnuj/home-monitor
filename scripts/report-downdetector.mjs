@@ -163,16 +163,6 @@ export function findMatchingIndex(candidates, available) {
   return -1;
 }
 
-export function findMatchingCategory(candidates, available) {
-  const i = findMatchingIndex(candidates, available);
-  if (i < 0) return null;
-  const availList = Array.isArray(available)
-    ? available
-    : (available === null || available === undefined ? [] : [available]);
-  const normalizedAvail = availList.map((v) => String(v ?? "").replace(/\s+/g, " ").trim());
-  return normalizedAvail[i] ?? null;
-}
-
 export function buildOptions(argv, env) {
   const parsed = parseArgs(argv);
   return {
@@ -439,11 +429,6 @@ export function hasReportCountIncreased(before, after) {
 }
 
 
-export function getBackoffDelay(attempt = 0, delays) {
-  const d = Array.isArray(delays) && delays.length > 0 ? delays : [1000, 2000, 3000, 5000];
-  const i = Math.max(0, Math.min(Number(attempt) || 0, d.length - 1));
-  return d[i];
-}
 
 export async function getReportCount(page, options = {}) {
   if (page === null || page === undefined) return null;
