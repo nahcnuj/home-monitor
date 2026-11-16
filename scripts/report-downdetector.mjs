@@ -319,9 +319,9 @@ export function extractReportCountFromLabels(labels, category = null) {
   if (candidates.length === 0) return null;
 
   if (category !== null && category !== undefined && String(category).trim() !== "") {
-    const wanted = String(category).trim().toLowerCase();
+    const wanted = normalizeCategoryLabel(category).toLowerCase();
     const match = candidates.find(({ text }) => {
-      const lowered = text.toLowerCase();
+      const lowered = normalizeCategoryLabel(text).toLowerCase();
       const categoryPart = lowered.split(/[:：]/, 1)[0].trim();
       return (
         lowered.includes(wanted) ||
