@@ -59,7 +59,7 @@ export const monitorConfig = {
     services: {
       "J:COM": {
         page_url: "https://downdetector.jp/shougai/jcom/",
-        indicator_label: "ブロードバンド, Broadband Internet",
+        indicator_label: "ブロードバンド, Broadband Internet, Broadband, Internet, インターネット",
       },
     },
   },

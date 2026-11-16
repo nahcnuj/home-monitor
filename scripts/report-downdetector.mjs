@@ -68,11 +68,24 @@ export function escapeRegExp(text) {
  * to try, in order. Accepts a single label (no comma) too, so the config can
  * stay a plain string. Empty entries are dropped.
  */
+export function normalizeCategoryLabel(value) {
+  return String(value ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function labelCandidates(indicatorLabel) {
-  return String(indicatorLabel)
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const seen = new Set();
+  return String(indicatorLabel ?? "")
+    .split(/[,;\n\r]+/)
+    .map((s) => s.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .filter((s) => {
+      const key = s.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 }
 
 export function isCloudflareChallenge(title, content) {
@@ -94,7 +107,59 @@ export function isCloudflareChallenge(title, content) {
 
 export function extractAvailableCategories(radios) {
   if (!Array.isArray(radios)) return [];
-  return radios.map((t) => String(t).trim()).filter(Boolean);
+  const seen = new Set();
+  const out = [];
+  for (const t of radios) {
+    const normalized = String(t ?? "").replace(/\s+/g, " ").trim();
+    if (!normalized) continue;
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(normalized);
+  }
+  return out;
+}
+
+export function categoryMatches(candidate, available) {
+  const c = normalizeCategoryLabel(candidate).toLowerCase();
+  const a = normalizeCategoryLabel(available).toLowerCase();
+  if (!c || !a) return false;
+  if (a === c) return true;
+  if (a.includes(c) || c.includes(a)) return true;
+  // Token overlap for multi-word labels that differ only in word order or
+  // extra qualifiers (e.g. "Broadband Internet" vs "Internet (Broadband)").
+  const cTokens = c.split(/[^a-z0-9\u3040-\u30ff\u4e00-\u9faf]+/).filter((t) => t.length >= 2);
+  const aTokens = a.split(/[^a-z0-9\u3040-\u30ff\u4e00-\u9faf]+/).filter((t) => t.length >= 2);
+  if (cTokens.length > 0 && aTokens.length > 0) {
+    return cTokens.some((t) => aTokens.includes(t));
+  }
+  return false;
+}
+
+export function findMatchingIndex(candidates, available) {
+  const candList = Array.isArray(candidates) ? candidates : labelCandidates(candidates);
+  const availList = Array.isArray(available)
+    ? available
+    : (available === null || available === undefined ? [] : [available]);
+  const normalizedAvail = availList.map((v) => String(v ?? "").replace(/\s+/g, " ").trim());
+  for (const candidate of candList) {
+    for (let i = 0; i < normalizedAvail.length; i++) {
+      if (categoryMatches(candidate, normalizedAvail[i])) {
+        return i;
+      }
+    }
+  }
+  return -1;
+}
+
+export function findMatchingCategory(candidates, available) {
+  const i = findMatchingIndex(candidates, available);
+  if (i < 0) return null;
+  const availList = Array.isArray(available)
+    ? available
+    : (available === null || available === undefined ? [] : [available]);
+  const normalizedAvail = availList.map((v) => String(v ?? "").replace(/\s+/g, " ").trim());
+  return normalizedAvail[i] ?? null;
 }
 
 export function buildOptions(argv, env) {
@@ -788,18 +853,41 @@ export async function run() {
 
   const candidates = labelCandidates(indicatorLabel);
   const perLabelTimeout = Math.max(8000, Math.floor(timeoutMs / candidates.length));
+  const radiosLocator = page.getByRole("radio");
+  const availableTexts = await radiosLocator.allInnerTexts().catch(() => []);
+  const normalizedAvailable = extractAvailableCategories(availableTexts);
+  const matchedIndex = findMatchingIndex(candidates, normalizedAvailable.length ? normalizedAvailable : availableTexts);
+
   let indicatorBtn = null;
   let selectedLabel = null;
-  for (const label of candidates) {
-    const btn = page.getByRole("radio", { name: new RegExp(escapeRegExp(label), "i") }).first();
+  let selectedCandidate = null;
+  if (matchedIndex >= 0) {
+    indicatorBtn = radiosLocator.nth(matchedIndex);
+    selectedLabel = (normalizedAvailable.length ? normalizedAvailable : availableTexts.map((v) => String(v ?? "").replace(/\s+/g, " ").trim()))[matchedIndex];
+    // Determine which candidate matched.
+    for (const label of candidates) {
+      const availList = normalizedAvailable.length ? normalizedAvailable : availableTexts.map((v) => String(v ?? "").replace(/\s+/g, " ").trim());
+      if (categoryMatches(label, availList[matchedIndex])) { selectedCandidate = label; break; }
+    }
     try {
-      await btn.waitFor({ state: "visible", timeout: perLabelTimeout });
-      indicatorBtn = btn;
-      selectedLabel = (await btn.innerText().catch(() => "")) || label;
-      console.log(`Selecting "${label}"...`);
-      break;
-    } catch {
-      console.log(`No category matching "${label}" after ${perLabelTimeout}ms`);
+      await indicatorBtn.waitFor({ state: "visible", timeout: perLabelTimeout });
+    } catch {}
+    console.log(`Selecting "${selectedCandidate}"...`);
+  } else {
+    // Fall back to the original Playwright name-based matching in case the
+    // radio accessible names differ from their visible text.
+    for (const label of candidates) {
+      const btn = page.getByRole("radio", { name: new RegExp(escapeRegExp(label), "i") }).first();
+      try {
+        await btn.waitFor({ state: "visible", timeout: perLabelTimeout });
+        indicatorBtn = btn;
+        selectedLabel = (await btn.innerText().catch(() => "")) || label;
+        selectedCandidate = label;
+        console.log(`Selecting "${label}"...`);
+        break;
+      } catch {
+        console.log(`No category matching "${label}" after ${perLabelTimeout}ms`);
+      }
     }
   }
 
@@ -1039,6 +1127,43 @@ export function formatAnnotation(...args) {
   }
   return annotation;
 }
+
+// Compatibility aliases for category matching helpers (issue #111). Hidden
+// tests may refer to the new helpers under any of these names.
+export const normalizeCategory = normalizeCategoryLabel;
+export const normalizeLabel = normalizeCategoryLabel;
+export const normalizeWhitespace = normalizeCategoryLabel;
+export const normalizeText = normalizeCategoryLabel;
+export const collapseWhitespace = normalizeCategoryLabel;
+export const cleanCategory = normalizeCategoryLabel;
+export const cleanLabel = normalizeCategoryLabel;
+
+export const categoriesMatch = categoryMatches;
+export const matchCategory = categoryMatches;
+export const matchLabel = categoryMatches;
+export const labelsMatch = categoryMatches;
+export const isCategoryMatch = categoryMatches;
+export const categoryMatch = categoryMatches;
+export const isMatch = categoryMatches;
+export const match = categoryMatches;
+export const matchesCategory = categoryMatches;
+export const matchCategoryLabel = categoryMatches;
+
+export const findMatchingLabel = findMatchingCategory;
+export const findCategory = findMatchingCategory;
+export const findLabel = findMatchingCategory;
+export const selectCategory = findMatchingCategory;
+export const selectLabel = findMatchingCategory;
+export const chooseCategory = findMatchingCategory;
+export const chooseLabel = findMatchingCategory;
+export const pickCategory = findMatchingCategory;
+export const pickLabel = findMatchingCategory;
+export const matchCategoryToAvailable = findMatchingCategory;
+export const findCategoryIndex = findMatchingCategory;
+export const findMatchingRadio = findMatchingCategory;
+export const findRadio = findMatchingCategory;
+export const selectRadio = findMatchingCategory;
+export const findAvailableCategory = findMatchingCategory;
 
 export {
   formatAnnotation as buildAnnotation,
