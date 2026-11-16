@@ -74,7 +74,7 @@ export function reportAll(targets, { execFileSync: execFile, scriptPath, stateFi
   return failed;
 }
 
-export function main() {
+function main() {
   const { targets, error } = parseTargets(process.env.DD_TARGETS);
   if (error) {
     console.error(error);

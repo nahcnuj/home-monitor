@@ -219,7 +219,7 @@ export function markReported(stateFile, { nowSec }) {
  * challenge without any spoofing, so only the bundled fallback gets the
  * automation-signal overrides.
  */
-export async function launchBrowser({ headless, channel }) {
+async function launchBrowser({ headless, channel }) {
   const args = ["--no-sandbox", "--disable-blink-features=AutomationControlled"];
   if (channel) {
     try {
@@ -707,7 +707,7 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
 
 
 
-export async function run() {
+async function run() {
   const {
     pageUrl,
     indicatorLabel,
