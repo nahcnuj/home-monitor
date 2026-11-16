@@ -847,18 +847,31 @@ export async function run() {
   const perLabelTimeout = Math.max(8000, Math.floor(timeoutMs / candidates.length));
   const radiosLocator = page.getByRole("radio");
   const availableTexts = await radiosLocator.allInnerTexts().catch(() => []);
-  const normalizedAvailable = extractAvailableCategories(availableTexts);
-  const matchedIndex = findMatchingIndex(candidates, normalizedAvailable.length ? normalizedAvailable : availableTexts);
+  let accessibleTexts = availableTexts;
+  if (!accessibleTexts || accessibleTexts.length === 0 || accessibleTexts.every((t) => String(t ?? "").trim() === "")) {
+    try {
+      const evaluated = await radiosLocator.evaluateAll((els) =>
+        els.map((el) => {
+          const labelNodes = el.labels ? Array.from(el.labels) : [];
+          const labelText = labelNodes.map((node) => node.textContent || "").join(" ");
+          return el.getAttribute("aria-label") || labelText || el.textContent || el.innerText || "";
+        }),
+      );
+      if (Array.isArray(evaluated) && evaluated.length > 0) accessibleTexts = evaluated;
+    } catch {}
+  }
+  const normalizedAvailable = extractAvailableCategories(accessibleTexts);
+  const matchedIndex = findMatchingIndex(candidates, normalizedAvailable.length ? normalizedAvailable : accessibleTexts);
 
   let indicatorBtn = null;
   let selectedLabel = null;
   let selectedCandidate = null;
   if (matchedIndex >= 0) {
     indicatorBtn = radiosLocator.nth(matchedIndex);
-    selectedLabel = (normalizedAvailable.length ? normalizedAvailable : availableTexts.map((v) => String(v ?? "").replace(/\s+/g, " ").trim()))[matchedIndex];
+    selectedLabel = (normalizedAvailable.length ? normalizedAvailable : accessibleTexts.map((v) => String(v ?? "").replace(/\s+/g, " ").trim()))[matchedIndex];
     // Determine which candidate matched.
     for (const label of candidates) {
-      const availList = normalizedAvailable.length ? normalizedAvailable : availableTexts.map((v) => String(v ?? "").replace(/\s+/g, " ").trim());
+      const availList = normalizedAvailable.length ? normalizedAvailable : accessibleTexts.map((v) => String(v ?? "").replace(/\s+/g, " ").trim());
       if (categoryMatches(label, availList[matchedIndex])) { selectedCandidate = label; break; }
     }
     try {
