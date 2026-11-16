@@ -115,6 +115,8 @@ GitHub Actions（**Sync DNS Data** / **Deploy Pages** の `prepare-pages`）が 
 
 報告は **GitHub Actions（Sync DNS Data）** で行われます。ローカル PC の DNS が死んでいるとき、PC からは Downdetector に届かない可能性が高いため、クラウド側で報告します。ワークフローが新規挿入（未記録）かつ直近1時間のレコードから高レイテンシまたはタイムアウトを検出し、`report-downdetector-targets.mjs` が Playwright で Downdetector のステータスページを操作します（公的な書き込み API は無いため公開 Web ページを RPA）。報告は同期とは別ジョブ（**Report to Downdetector**）で、同期ジョブが完了してから実行されます（報告対象が無いときはスキップ）。レポートが失敗してもデータ同期は完了済みで、ローカルの `publish-data.ps1` は再送信しません。失敗はそのジョブの失敗（赤い実行結果）として確認できます。
 
+同期ジョブの annotation `Sync DNS data intends to report to Downdetector: ... (timeout, count=N local records)` の `count=N` は、直近1時間に新規挿入された高レイテンシ/タイムアウトの DNS レコード数（ローカルで観測した件数）です。Downdetector への報告はサービスごとに **1 回** だけ行われ、`N` 回報告するわけではありません。
+
 複数ドメインは並列で `nslookup` するため、1分間隔の計測でも全体の所要時間はおおむねタイムアウト値程度です。
 
 旧形式・カットオフ以前のデータを削除する場合:

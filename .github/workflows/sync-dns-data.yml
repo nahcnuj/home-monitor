@@ -193,8 +193,12 @@ jobs:
                   with open(os.environ["GITHUB_OUTPUT"], "a") as out:
                       out.write("downdetector_targets=" + json.dumps(targets) + "\n")
                   print("downdetector targets:", json.dumps(targets))
+                  # `count` is the number of newly inserted bad DNS records for
+                  # this service in the last hour (high latency or timeout). It
+                  # is reported as metadata only: Downdetector gets ONE report
+                  # per service, not `count` reports.
                   summary = ", ".join(
-                      f"{t['service']} ({t['problem_type']}, count={t['count']})" for t in targets
+                      f"{t['service']} ({t['problem_type']}, count={t['count']} local records)" for t in targets
                   )
                   print(f"::notice::Sync DNS data intends to report to Downdetector: {summary}")
 
