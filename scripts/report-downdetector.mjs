@@ -581,19 +581,19 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
     if (typeof read === "number" && !Number.isNaN(read)) after = read;
   }
 
-  // Count-based completion: when a before count is available and an after
-  // count could be obtained, the report is successful only when the count
-  // actually increased. Back off and retry in run() before failing; do not
-  // fall through to the thank-you / dialog-closed heuristics, which caused
-  // false positives ("success" with an unchanged count).
-  if (typeof before === "number" && !Number.isNaN(before) &&
-      typeof after === "number" && !Number.isNaN(after)) {
-    return hasReportCountIncreased(before, after);
+  if (!page || typeof page !== "object") {
+    // If counts are known, decide by count alone.
+    if (typeof before === "number" && !Number.isNaN(before) &&
+        typeof after === "number" && !Number.isNaN(after)) {
+      return hasReportCountIncreased(before, after);
+    }
+    return false;
   }
 
-  if (!page || typeof page !== "object") return false;
-
   try {
+    // Success indicators take precedence: Downdetector (e.g. J:COM) shows a
+    // thank-you message even when the global report tally has not changed, so
+    // an unchanged count must not override a visible thank-you.
     const successIndicators = [];
     if (typeof page.getByRole === "function") {
       successIndicators.push(page.getByRole("heading", { name: /thank you|reported|success|ありがとう/i }));
@@ -604,6 +604,7 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
       successIndicators.push(page.getByText(/ありがとうございました/i));
       successIndicators.push(page.getByText(/ありがとうございます/i));
       successIndicators.push(page.getByText(/報告しました/i));
+      successIndicators.push(page.getByText(/報告いただきありがとうございます/i));
     }
 
     for (const indicator of successIndicators) {
@@ -614,6 +615,13 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
       } catch {
         // Continue checking other indicators
       }
+    }
+
+    // Count-based completion when both counts are known and no success
+    // indicator is visible.
+    if (typeof before === "number" && !Number.isNaN(before) &&
+        typeof after === "number" && !Number.isNaN(after)) {
+      return hasReportCountIncreased(before, after);
     }
 
     // Also check if the report dialog closed (implicit success)
@@ -835,12 +843,19 @@ export async function run() {
         success = true;
         break;
       }
+      // The global tally may stay unchanged (e.g. J:COM) even though
+      // Downdetector shows a thank-you message, so check the page-level
+      // success indicators before continuing to poll.
+      if (await determineSuccess(page, beforeCount, afterCount)) {
+        success = true;
+        break;
+      }
     } else {
       // Count unavailable: stop polling and fall back to heuristics.
       break;
     }
   }
-  if (!success && (beforeCount === null || afterCount === null)) {
+  if (!success) {
     success = await determineSuccess(page, beforeCount, afterCount);
   }
 
