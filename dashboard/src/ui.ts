@@ -38,51 +38,11 @@ export function renderStats(stats: Stats): void {
   if (uptime) {
     if (!stats.total) {
       uptime.innerHTML = `<span class="label">Uptime</span><span class="value">—</span>`;
-      uptime.classList.remove(
-        "green",
-        "orange",
-        "yellow",
-        "red",
-        "ok",
-        "warn",
-        "warning",
-        "caution",
-        "error",
-        "bad",
-        "danger",
-        "success",
-        "good",
-      );
+      uptime.classList.remove("green", "orange", "yellow", "red");
       return;
     }
-    const allClasses = [
-      "green",
-      "orange",
-      "yellow",
-      "red",
-      "ok",
-      "warn",
-      "warning",
-      "caution",
-      "error",
-      "bad",
-      "danger",
-      "success",
-      "good",
-    ];
-    allClasses.forEach((c) => uptime.classList.remove(c));
-    let level: "green" | "orange" | "yellow" | "red";
-    if (stats.uptime >= 99.95) level = "green";
-    else if (stats.uptime >= 99.9) level = "orange";
-    else if (stats.uptime >= 99.0) level = "yellow";
-    else level = "red";
-    const aliases: Record<string, string[]> = {
-      green: ["green", "ok", "success", "good"],
-      orange: ["orange", "warning"],
-      yellow: ["yellow", "caution"],
-      red: ["red", "error", "bad", "danger", "warn"],
-    };
-    aliases[level].forEach((c) => uptime.classList.add(c));
+    uptime.classList.remove("green", "orange", "yellow", "red");
+    uptime.classList.add(uptimeColorClass(stats.uptime));
     uptime.innerHTML =
       `<span class="label">Uptime</span>` +
       `<span class="value">${stats.uptime.toFixed(1)}%</span>`;
@@ -135,18 +95,9 @@ export function loadDisplayRangeFromConfig(): number {
   return isValidDisplayRangeSec(configDefaultSec) ? configDefaultSec : DEFAULT_DISPLAY_RANGE_SEC;
 }
 
-export function uptimeColorClass(uptime: number): string {
+export function uptimeColorClass(uptime: number): "green" | "orange" | "yellow" | "red" {
   if (uptime >= 99.95) return "green";
   if (uptime >= 99.9) return "orange";
   if (uptime >= 99.0) return "yellow";
   return "red";
 }
-
-export const uptimeClass = uptimeColorClass;
-export const uptimeColor = uptimeColorClass;
-export const uptimeLevel = uptimeColorClass;
-export const uptimeStatus = uptimeColorClass;
-export const getUptimeClass = uptimeColorClass;
-export const getUptimeColor = uptimeColorClass;
-export const getUptimeLevel = uptimeColorClass;
-export const getUptimeStatus = uptimeColorClass;
