@@ -847,31 +847,75 @@ export async function run() {
   const perLabelTimeout = Math.max(8000, Math.floor(timeoutMs / candidates.length));
   const radiosLocator = page.getByRole("radio");
   const availableTexts = await radiosLocator.allInnerTexts().catch(() => []);
-  let accessibleTexts = availableTexts;
-  if (!accessibleTexts || accessibleTexts.length === 0 || accessibleTexts.every((t) => String(t ?? "").trim() === "")) {
-    try {
-      const evaluated = await radiosLocator.evaluateAll((els) =>
-        els.map((el) => {
-          const labelNodes = el.labels ? Array.from(el.labels) : [];
-          const labelText = labelNodes.map((node) => node.textContent || "").join(" ");
-          return el.getAttribute("aria-label") || labelText || el.textContent || el.innerText || "";
-        }),
-      );
-      if (Array.isArray(evaluated) && evaluated.length > 0) accessibleTexts = evaluated;
-    } catch {}
+  // Collect accessible names for every radio, merging with visible inner text by
+  // index so radios whose inner text is empty still get their label (via
+  // aria-label, associated <label>, aria-labelledby, or container text).
+  let accessibleTexts = Array.isArray(availableTexts) ? [...availableTexts] : [];
+  let evaluated = null;
+  try {
+    evaluated = await radiosLocator.evaluateAll((els) =>
+      els.map((el) => {
+        const labelNodes = el.labels ? Array.from(el.labels) : [];
+        const labelText = labelNodes.map((node) => node.textContent || "").join(" ");
+        const closestLabel = typeof el.closest === "function" ? el.closest("label") : null;
+        const closestText = closestLabel ? closestLabel.textContent || "" : "";
+        let labelledByText = "";
+        const labelledBy = el.getAttribute("aria-labelledby");
+        if (labelledBy) {
+          labelledByText = labelledBy
+            .split(/\s+/)
+            .map((id) => {
+              const node = typeof document !== "undefined" ? document.getElementById(id) : null;
+              return node ? node.textContent || "" : "";
+            })
+            .join(" ");
+        }
+        const parent = el.parentElement;
+        const parentText = parent ? parent.textContent || "" : "";
+        return (
+          el.getAttribute("aria-label") ||
+          labelText ||
+          closestText ||
+          labelledByText ||
+          el.textContent ||
+          el.innerText ||
+          parentText ||
+          ""
+        );
+      }),
+    );
+  } catch {}
+  if (Array.isArray(evaluated) && evaluated.length > 0) {
+    if (accessibleTexts.length === 0) {
+      accessibleTexts = evaluated;
+    } else {
+      for (let i = 0; i < accessibleTexts.length; i++) {
+        if (String(accessibleTexts[i] ?? "").trim() === "" && evaluated[i] !== undefined) {
+          accessibleTexts[i] = evaluated[i];
+        }
+      }
+      if (evaluated.length > accessibleTexts.length) {
+        accessibleTexts.push(...evaluated.slice(accessibleTexts.length));
+      }
+    }
   }
+  // Match against the raw (non-deduped) accessible texts so the returned
+  // index stays aligned with radiosLocator.nth(). Deduplication is only used
+  // for reporting the available categories.
+  const normalizedAccessible = accessibleTexts.map((v) => String(v ?? "").replace(/\s+/g, " ").trim());
+  const matchSource = normalizedAccessible.some((t) => t !== "") ? normalizedAccessible : accessibleTexts;
+  const matchedIndex = findMatchingIndex(candidates, matchSource);
   const normalizedAvailable = extractAvailableCategories(accessibleTexts);
-  const matchedIndex = findMatchingIndex(candidates, normalizedAvailable.length ? normalizedAvailable : accessibleTexts);
 
   let indicatorBtn = null;
   let selectedLabel = null;
   let selectedCandidate = null;
   if (matchedIndex >= 0) {
     indicatorBtn = radiosLocator.nth(matchedIndex);
-    selectedLabel = (normalizedAvailable.length ? normalizedAvailable : accessibleTexts.map((v) => String(v ?? "").replace(/\s+/g, " ").trim()))[matchedIndex];
+    const availList = matchSource.map((v) => String(v ?? "").replace(/\s+/g, " ").trim());
+    selectedLabel = availList[matchedIndex] || null;
     // Determine which candidate matched.
     for (const label of candidates) {
-      const availList = normalizedAvailable.length ? normalizedAvailable : accessibleTexts.map((v) => String(v ?? "").replace(/\s+/g, " ").trim());
       if (categoryMatches(label, availList[matchedIndex])) { selectedCandidate = label; break; }
     }
     try {
