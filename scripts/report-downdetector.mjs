@@ -1040,6 +1040,18 @@ async function run() {
     success = await determineSuccess(page, beforeCount, afterCount);
   }
 
+  // Downdetector often keeps showing the pre-submission tally in the DOM
+  // after a successful report, so reload the page and re-read the count
+  // before reporting it (avoids a stale "before -> before" annotation).
+  if (beforeCount !== null) {
+    try {
+      await page.reload({ waitUntil, timeout: timeoutMs });
+      await page.waitForTimeout(5000);
+      const refreshed = await getReportCount(page, { category: selectedLabel });
+      if (refreshed !== null) afterCount = refreshed;
+    } catch {}
+  }
+
   // Emit one well-formed annotation with the category tally before and after
   // the submission (and the number of local records that triggered the
   // report), so a 0 from the chart axis is never mistaken for the count.
@@ -1051,7 +1063,7 @@ async function run() {
 
   if (success) {
     markReported(stateFile, { nowSec: now() });
-    console.log(`Report submitted successfully (${indicatorLabel}, problem=${problemType}, count=${count})`);
+    console.log(`Report submitted successfully (${indicatorLabel}, problem=${problemType})`);
     process.exit(0);
   } else {
     console.error("Report submission could not be confirmed");
@@ -1204,9 +1216,6 @@ export function formatAnnotation(...args) {
   }
 
   const details = [];
-  if (count !== null && (before !== null || after !== null)) {
-    details.push(`${count} local records`);
-  }
   if (problemType !== null) details.push(`problem=${problemType}`);
 
   const subject = label ? `${label}: ` : "";

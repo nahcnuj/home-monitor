@@ -342,7 +342,6 @@ describe("formatAnnotation", () => {
     expect(out.match(/::notice::/g)).toHaveLength(1);
     expect(out).toContain("104");
     expect(out).toContain("105");
-    expect(out).toContain("22");
     expect(out).toContain("Broadband Internet");
     expect(out).not.toContain("0 ::notice::");
   });
@@ -352,7 +351,6 @@ describe("formatAnnotation", () => {
     const out = formatAnnotation(0, 0, 22, (msg) => logs.push(msg));
     expect(out).toContain("before: 0");
     expect(out).toContain("after: 0");
-    expect(out).toContain("22");
     expect(logs).toEqual([out]);
   });
 
