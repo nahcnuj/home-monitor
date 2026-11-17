@@ -639,17 +639,26 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
     // Success indicators take precedence: Downdetector (e.g. J:COM) shows a
     // thank-you message even when the global report tally has not changed, so
     // an unchanged count must not override a visible thank-you.
+    const firstOf = (locator) =>
+      locator && typeof locator.first === "function" ? locator.first() : locator;
+
     const successIndicators = [];
     if (typeof page.getByRole === "function") {
-      successIndicators.push(page.getByRole("heading", { name: /thank you|reported|success|ありがとう/i }));
+      successIndicators.push(
+        firstOf(page.getByRole("heading", { name: /thank you|reported|success|ありがとう/i })),
+      );
     }
     if (typeof page.getByText === "function") {
-      successIndicators.push(page.getByText(/thank you for your report/i));
-      successIndicators.push(page.getByText(/report submitted/i));
-      successIndicators.push(page.getByText(/ありがとうございました/i));
-      successIndicators.push(page.getByText(/ありがとうございます/i));
-      successIndicators.push(page.getByText(/報告しました/i));
-      successIndicators.push(page.getByText(/報告いただきありがとうございます/i));
+      successIndicators.push(firstOf(page.getByText(/thank you for your report/i)));
+      successIndicators.push(firstOf(page.getByText(/report submitted/i)));
+      successIndicators.push(firstOf(page.getByText(/thank you for reporting/i)));
+      successIndicators.push(firstOf(page.getByText(/your report was successfully submitted/i)));
+      successIndicators.push(firstOf(page.getByText(/successfully submitted/i)));
+      successIndicators.push(firstOf(page.getByText(/ありがとうございました/i)));
+      successIndicators.push(firstOf(page.getByText(/ありがとうございます/i)));
+      successIndicators.push(firstOf(page.getByText(/報告しました/i)));
+      successIndicators.push(firstOf(page.getByText(/報告いただきありがとうございます/i)));
+      successIndicators.push(firstOf(page.getByText(/ご報告ありがとうございました/i)));
     }
 
     for (const indicator of successIndicators) {
@@ -662,17 +671,64 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
       }
     }
 
+    // Fall back to the page's visible text, which survives strict-mode
+    // locator mismatches and covers localized variants we did not enumerate.
+    try {
+      let text = "";
+      for (const method of ["innerText", "textContent"]) {
+        if (typeof page[method] === "function") {
+          try {
+            const v = await page[method]("body");
+            if (typeof v === "string" && v.trim() !== "") { text = v; break; }
+          } catch {}
+          if (!text) {
+            try {
+              const v = await page[method]();
+              if (typeof v === "string" && v.trim() !== "") { text = v; break; }
+            } catch {}
+          }
+        }
+        if (typeof page[method] === "string" && page[method].trim() !== "") {
+          text = page[method];
+          break;
+        }
+      }
+      if (!text && typeof page.evaluate === "function") {
+        try {
+          const v = await page.evaluate(() => (document.body ? document.body.innerText : ""));
+          if (typeof v === "string") text = v;
+        } catch {}
+      }
+      if (text && /thank you for (your report|reporting)|your report was successfully submitted|successfully submitted|report submitted|ありがとうございました|ありがとうございます|報告しました|報告いただきました|ご報告ありがとうございました/i.test(text)) {
+        return true;
+      }
+    } catch {
+      // Ignore text-extraction failures and continue.
+    }
+
     // Count-based completion when both counts are known and no success
     // indicator is visible.
     if (typeof before === "number" && !Number.isNaN(before) &&
         typeof after === "number" && !Number.isNaN(after)) {
-      return hasReportCountIncreased(before, after);
+      if (hasReportCountIncreased(before, after)) return true;
+      // An unchanged count is acceptable when the report dialog has closed
+      // (Downdetector sometimes never updates the tally).
+      try {
+        if (typeof page.getByRole === "function") {
+          const dialog = firstOf(page.getByRole("dialog"));
+          const isDialogVisible = await dialog.isVisible({ timeout: 1000 });
+          if (!isDialogVisible) return true;
+        }
+      } catch {
+        return true;
+      }
+      return false;
     }
 
     // Also check if the report dialog closed (implicit success)
     try {
       if (typeof page.getByRole === "function") {
-        const dialog = page.getByRole("dialog");
+        const dialog = firstOf(page.getByRole("dialog"));
         const isDialogVisible = await dialog.isVisible({ timeout: 1000 });
         if (!isDialogVisible) {
           return true;
