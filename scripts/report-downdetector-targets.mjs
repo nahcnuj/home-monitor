@@ -39,8 +39,12 @@ export function parseTargets(rawJson) {
   return { targets };
 }
 
-export function buildArgs(scriptPath, target, stateFile) {
-  return [
+export function buildArgs(scriptPath, target, stateFile, rateLimitSec) {
+  const resolvedRateLimit =
+    rateLimitSec && typeof rateLimitSec === "object" && !Array.isArray(rateLimitSec)
+      ? (rateLimitSec.rateLimitSec ?? rateLimitSec.rate_limit_sec ?? rateLimitSec.rateLimit)
+      : rateLimitSec;
+  const args = [
     scriptPath,
     "--page-url",
     String(target.page_url),
@@ -55,12 +59,16 @@ export function buildArgs(scriptPath, target, stateFile) {
     "--state-file",
     stateFile,
   ];
+  if (resolvedRateLimit !== undefined && resolvedRateLimit !== null && resolvedRateLimit !== "") {
+    args.push("--rate-limit-sec", String(resolvedRateLimit));
+  }
+  return args;
 }
 
-export function reportAll(targets, { execFileSync: execFile, scriptPath, stateFile, log = console.log, error = console.error }) {
+export function reportAll(targets, { execFileSync: execFile, scriptPath, stateFile, rateLimitSec, log = console.log, error = console.error }) {
   let failed = 0;
   for (const target of targets) {
-    const args = buildArgs(scriptPath, target, stateFile);
+    const args = buildArgs(scriptPath, target, stateFile, rateLimitSec);
     try {
       execFile(process.execPath, args, { stdio: "inherit" });
       log(

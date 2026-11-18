@@ -4,12 +4,17 @@
  * configured Downdetector pages. Because a successful run submits a real
  * report, this is only invoked from the dedicated workflow, which is itself
  * gated on changes to the report implementation or this test.
+ *
+ * Reporting goes through the same orchestrator as the Sync DNS Data workflow
+ * (report-downdetector-targets.mjs / reportAll) so the method and expected
+ * result match production exactly.
  */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { reportAll } from "./report-downdetector-targets.mjs";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
 
@@ -26,7 +31,6 @@ function main() {
   const cfg = readConfig();
   const dd = cfg.downdetector || {};
   const services = dd.services || {};
-  const serviceByResolver = dd.service_by_resolver || {};
   // Report for every configured service that has a page_url.
   const targets = [];
   for (const [service, svc] of Object.entries(services)) {
@@ -47,33 +51,12 @@ function main() {
 
   const stateDir = mkdtempSync(join(tmpdir(), "dd-e2e-"));
   const stateFile = join(stateDir, "last-report");
-  let failed = 0;
-  for (const target of targets) {
-    const args = [
-      join(here, "report-downdetector.mjs"),
-      "--page-url",
-      String(target.page_url),
-      "--indicator",
-      Array.isArray(target.indicator_label)
-        ? target.indicator_label.map(String).join(", ")
-        : String(target.indicator_label),
-      "--problem-type",
-      target.problem_type,
-      "--count",
-      String(target.count),
-      "--state-file",
-      stateFile,
-      "--rate-limit-sec",
-      "0",
-    ];
-    try {
-      execFileSync(process.execPath, args, { stdio: "inherit" });
-      console.log(`E2E report ok: ${target.service}`);
-    } catch (err) {
-      failed += 1;
-      console.error(`E2E report failed for ${target.service}: ${err.message}`);
-    }
-  }
+  const failed = reportAll(targets, {
+    execFileSync,
+    scriptPath: join(here, "report-downdetector.mjs"),
+    stateFile,
+    rateLimitSec: 0,
+  });
   rmSync(stateDir, { recursive: true, force: true });
   if (failed > 0) process.exit(1);
   process.exit(0);

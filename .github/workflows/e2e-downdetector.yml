@@ -4,16 +4,20 @@ on:
   pull_request:
     paths:
       - "scripts/report-downdetector.mjs"
+      - "scripts/report-downdetector-targets.mjs"
       - "scripts/e2e-downdetector.mjs"
       - "monitor.config.ts"
       - ".github/workflows/e2e-downdetector.yml"
+      - ".github/workflows/sync-dns-data.yml"
   push:
     branches: [master]
     paths:
       - "scripts/report-downdetector.mjs"
+      - "scripts/report-downdetector-targets.mjs"
       - "scripts/e2e-downdetector.mjs"
       - "monitor.config.ts"
       - ".github/workflows/e2e-downdetector.yml"
+      - ".github/workflows/sync-dns-data.yml"
   workflow_dispatch:
 
 permissions:
