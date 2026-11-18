@@ -74,6 +74,17 @@ export function normalizeCategoryLabel(value) {
     .trim();
 }
 
+/**
+ * Compact a label for fuzzy comparison: drop all separators/whitespace so
+ * that "Wi-Fi", "Wi Fi" and "WiFi" collapse to the same form, and
+ * "Broadband Internet" contains "Broadband".
+ */
+export function compactCategoryLabel(value) {
+  return normalizeCategoryLabel(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9\u3040-\u30ff\u4e00-\u9faf]+/g, "");
+}
+
 export function labelCandidates(indicatorLabel) {
   const seen = new Set();
   const out = [];
@@ -86,7 +97,7 @@ export function labelCandidates(indicatorLabel) {
   collect(indicatorLabel);
   if (values.length === 0) return out;
   for (const value of values) {
-    const parts = typeof value === "string" ? value.split(/[,;\n\r]+/) : [value];
+    const parts = typeof value === "string" ? value.split(/[,;、。・\n\r]+/) : [value];
     for (const part of parts) {
       const normalized = String(part ?? "").replace(/\s+/g, " ").trim();
       if (!normalized) continue;
@@ -137,12 +148,19 @@ export function categoryMatches(candidate, available) {
   if (!c || !a) return false;
   if (a === c) return true;
   if (a.includes(c) || c.includes(a)) return true;
+  // Compact (separator-insensitive) comparison so "Wi-Fi" matches "WiFi".
+  const cc = compactCategoryLabel(candidate);
+  const ca = compactCategoryLabel(available);
+  if (cc && ca && (ca.includes(cc) || cc.includes(ca))) return true;
   // Token overlap for multi-word labels that differ only in word order or
   // extra qualifiers (e.g. "Broadband Internet" vs "Internet (Broadband)").
   const cTokens = c.split(/[^a-z0-9\u3040-\u30ff\u4e00-\u9faf]+/).filter((t) => t.length >= 2);
   const aTokens = a.split(/[^a-z0-9\u3040-\u30ff\u4e00-\u9faf]+/).filter((t) => t.length >= 2);
   if (cTokens.length > 0 && aTokens.length > 0) {
-    return cTokens.some((t) => aTokens.includes(t));
+    if (cTokens.some((t) => aTokens.includes(t))) return true;
+    const cCompactTokens = cTokens.map(compactCategoryLabel).filter(Boolean);
+    const aCompactTokens = aTokens.map(compactCategoryLabel).filter(Boolean);
+    if (cCompactTokens.some((t) => aCompactTokens.includes(t))) return true;
   }
   return false;
 }
@@ -161,6 +179,22 @@ export function findMatchingIndex(candidates, available) {
     }
   }
   return -1;
+}
+
+export function findMatchingCategory(candidates, available) {
+  const i = findMatchingIndex(candidates, available);
+  if (i < 0) return null;
+  const availList = Array.isArray(available)
+    ? available
+    : (available === null || available === undefined ? [] : [available]);
+  const normalizedAvail = availList.map((v) => String(v ?? "").replace(/\s+/g, " ").trim());
+  return normalizedAvail[i] ?? null;
+}
+
+export function getBackoffDelay(attempt = 0, delays) {
+  const d = Array.isArray(delays) && delays.length > 0 ? delays : [1000, 2000, 3000, 5000];
+  const i = Math.max(0, Math.min(Number(attempt) || 0, d.length - 1));
+  return d[i];
 }
 
 export function buildOptions(argv, env) {
