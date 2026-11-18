@@ -143,6 +143,11 @@ export function extractAvailableCategories(radios) {
 }
 
 export function categoryMatches(candidate, available) {
+  if (Array.isArray(candidate) || Array.isArray(available)) {
+    const candList = Array.isArray(candidate) ? candidate : [candidate];
+    const availList = Array.isArray(available) ? available : [available];
+    return candList.some((c) => availList.some((a) => categoryMatches(c, a)));
+  }
   const c = normalizeCategoryLabel(candidate).toLowerCase();
   const a = normalizeCategoryLabel(available).toLowerCase();
   if (!c || !a) return false;
