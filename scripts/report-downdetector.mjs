@@ -674,12 +674,20 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
     return false;
   }
 
-  // When both the before and after tallies are known, require an actual
-  // increase. A thank-you message must not override an unchanged count
-  // (issue #116: "silently broken: success but count not increased").
+  // When both tallies are known, an increased count is definitive success.
+  // An unchanged count is not an immediate failure though: Downdetector
+  // (e.g. J:COM) shows a thank-you message even when the global tally has
+  // not changed, so the success indicators below still get a chance to
+  // confirm the submission. Only when no success indicator is visible do we
+  // treat an unchanged count as a failure (issue #116).
+  const countKnownUnchanged =
+    typeof before === "number" && !Number.isNaN(before) &&
+    typeof after === "number" && !Number.isNaN(after) &&
+    !hasReportCountIncreased(before, after);
   if (typeof before === "number" && !Number.isNaN(before) &&
-      typeof after === "number" && !Number.isNaN(after)) {
-    return hasReportCountIncreased(before, after);
+      typeof after === "number" && !Number.isNaN(after) &&
+      hasReportCountIncreased(before, after)) {
+    return true;
   }
 
   try {
@@ -751,6 +759,13 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
       }
     } catch {
       // Ignore text-extraction failures and continue.
+    }
+
+    // When the count is known to be unchanged and no success indicator was
+    // visible above, do not fall through to the dialog-closed heuristics:
+    // that would re-introduce the false positives from issue #116.
+    if (countKnownUnchanged) {
+      return false;
     }
 
     // Count-based completion when both counts are known and no success
