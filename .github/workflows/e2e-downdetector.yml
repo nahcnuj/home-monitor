@@ -1,0 +1,46 @@
+name: Downdetector E2E
+
+on:
+  pull_request:
+    paths:
+      - "scripts/report-downdetector.mjs"
+      - "scripts/e2e-downdetector.mjs"
+      - "monitor.config.ts"
+      - ".github/workflows/e2e-downdetector.yml"
+  push:
+    branches: [master]
+    paths:
+      - "scripts/report-downdetector.mjs"
+      - "scripts/e2e-downdetector.mjs"
+      - "monitor.config.ts"
+      - ".github/workflows/e2e-downdetector.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: Downdetector end-to-end report
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --silent
+
+      - name: Install Playwright browsers (Downdetector RPA)
+        run: |
+          npx playwright install chromium --with-deps
+          npx playwright install chrome
+
+      - name: Install Xvfb (Downdetector RPA needs a headed browser to pass Cloudflare)
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Run Downdetector E2E report
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x800x24" node scripts/e2e-downdetector.mjs
