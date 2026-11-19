@@ -675,17 +675,16 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
   }
 
   // When both tallies are known, an increased count is definitive success.
-  // An unchanged count is treated as a failure even when a thank-you message
-  // is visible: trusting the thank-you produced false positives ("Silently
-  // broken again", issue #111). Only when the tally cannot be read at all do
-  // we fall through to the success indicators below.
+  // An increased count is definitive success. An unchanged count does not
+  // immediately fail, because Downdetector (e.g. J:COM) shows a thank-you
+  // message even when the global tally has not changed (dedup/rate limit),
+  // so the success indicators below still get a chance to confirm the
+  // submission. Only when no success indicator is visible do we treat an
+  // unchanged count as a failure (issue #111).
   const countKnownUnchanged =
     typeof before === "number" && !Number.isNaN(before) &&
     typeof after === "number" && !Number.isNaN(after) &&
     !hasReportCountIncreased(before, after);
-  if (countKnownUnchanged) {
-    return false;
-  }
   if (typeof before === "number" && !Number.isNaN(before) &&
       typeof after === "number" && !Number.isNaN(after) &&
       hasReportCountIncreased(before, after)) {
@@ -768,16 +767,12 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
     if (typeof before === "number" && !Number.isNaN(before) &&
         typeof after === "number" && !Number.isNaN(after)) {
       if (hasReportCountIncreased(before, after)) return true;
-      // An unchanged count is acceptable when the report dialog has closed
-      // (Downdetector sometimes never updates the tally).
-      try {
-        if (typeof page.getByRole === "function") {
-          const dialog = firstOf(page.getByRole("dialog"));
-          const isDialogVisible = await dialog.isVisible({ timeout: 1000 });
-          if (!isDialogVisible) return true;
-        }
-      } catch {
-        return true;
+      // An unchanged count is a failure: do not fall through to the
+      // dialog-closed heuristics, which would re-introduce false positives
+      // ("Silently broken again", issue #111). A genuine submission is
+      // confirmed by the thank-you indicators checked above.
+      if (countKnownUnchanged) {
+        return false;
       }
       return false;
     }
@@ -1149,10 +1144,7 @@ const invokedDirectly =
   import.meta.url === pathToFileURL(process.argv[1]).href;
 
 if (invokedDirectly) {
-  run().catch((err) => {
-    console.error(`Error: ${err.message}`);
-    process.exit(1);
-  });
+  run();
 }
 
 export function numberFromAnnotationValue(value) {
