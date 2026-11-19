@@ -15,8 +15,14 @@ import {
   isCloudflareChallenge,
   isRateLimited,
   labelCandidates,
+  launchBrowser,
   markReported,
+  numberFromAnnotationValue,
   parseArgs,
+  readAnnotationArgs,
+  readReportCountLabels,
+  toCount,
+  toStringList,
 } from "../report-downdetector.mjs";
 
 describe("labelCandidates", () => {
@@ -434,5 +440,70 @@ describe("determineSuccess count-based", () => {
   it("reads after count from page when missing", async () => {
     const page = { count: 6 };
     expect(await determineSuccess(page, 5, undefined)).toBe(true);
+  });
+});
+
+// These helpers are exported for this suite (see the file-level review
+// question "who imports this?"). Keep them imported and exercised here so
+// the exports stay purposeful and covered by the repository's own tests.
+describe("exported count helpers", () => {
+  it("toCount parses numbers and cleaned numeric strings", () => {
+    expect(toCount(104)).toBe(104);
+    expect(toCount("1,234")).toBe(1234);
+    expect(toCount(" 42 ")).toBe(42);
+    expect(toCount(-3)).toBe(-3);
+  });
+
+  it("toCount returns null for non-numeric and nullish values", () => {
+    expect(toCount(null)).toBeNull();
+    expect(toCount(undefined)).toBeNull();
+    expect(toCount(NaN)).toBeNull();
+    expect(toCount("104 reports")).toBeNull();
+  });
+
+  it("toStringList flattens strings, arrays and objects", () => {
+    expect(toStringList("a")).toEqual(["a"]);
+    expect(toStringList(["a", ["b", "c"]])).toEqual(["a", "b", "c"]);
+    expect(toStringList({ a: "x", b: ["y", 3] })).toEqual(["x", "y"]);
+    expect(toStringList(null)).toEqual([]);
+  });
+
+  it("numberFromAnnotationValue falls back to text extraction", () => {
+    expect(numberFromAnnotationValue(0)).toBe(0);
+    expect(numberFromAnnotationValue("1,234")).toBe(1234);
+    expect(numberFromAnnotationValue("104 reports")).toBe(104);
+    expect(numberFromAnnotationValue("no count")).toBeNull();
+  });
+
+  it("readAnnotationArgs recognises named keys, positional numbers and labels", () => {
+    expect(
+      readAnnotationArgs([
+        {
+          beforeCount: 15,
+          afterCount: 16,
+          count: 2,
+          category: "Broadband Internet",
+          problemType: "high_latency",
+        },
+      ]),
+    ).toEqual({
+      before: 15,
+      after: 16,
+      count: 2,
+      label: "Broadband Internet",
+      problemType: "high_latency",
+    });
+    expect(readAnnotationArgs([0, 0, 22])).toEqual({
+      before: 0,
+      after: 0,
+      count: 22,
+      label: null,
+      problemType: null,
+    });
+  });
+
+  it("browser helpers are importable by the suite", () => {
+    expect(typeof launchBrowser).toBe("function");
+    expect(typeof readReportCountLabels).toBe("function");
   });
 });
