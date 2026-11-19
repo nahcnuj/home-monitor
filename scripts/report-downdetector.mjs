@@ -79,7 +79,7 @@ export function normalizeCategoryLabel(value) {
  * that "Wi-Fi", "Wi Fi" and "WiFi" collapse to the same form, and
  * "Broadband Internet" contains "Broadband".
  */
-function compactCategoryLabel(value) {
+export function compactCategoryLabel(value) {
   return normalizeCategoryLabel(value)
     .toLowerCase()
     .replace(/[^a-z0-9\u3040-\u30ff\u4e00-\u9faf]+/g, "");
