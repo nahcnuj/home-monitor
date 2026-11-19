@@ -262,7 +262,7 @@ async function launchBrowser({ headless, channel }) {
   return { browser, spoofAutomation: true };
 }
 
-function toCount(value) {
+export function toCount(value) {
   if (value === null || value === undefined) return null;
   if (typeof value === "number") return Number.isNaN(value) ? null : value;
   const cleaned = String(value).replace(/[,\s]/g, "");
@@ -322,7 +322,7 @@ export function extractReportCount(text) {
   return null;
 }
 
-function toStringList(value) {
+export function toStringList(value) {
   if (value === null || value === undefined) return [];
   if (typeof value === "string") return [value];
   if (Array.isArray(value)) return value.flatMap((item) => toStringList(item));
@@ -1148,7 +1148,7 @@ if (invokedDirectly) {
   });
 }
 
-function numberFromAnnotationValue(value) {
+export function numberFromAnnotationValue(value) {
   if (value === null || value === undefined) return null;
   if (typeof value === "number") return Number.isNaN(value) ? null : value;
   const cleaned = String(value).replace(/[,\s]/g, "");
@@ -1190,7 +1190,7 @@ const ANNOTATION_KEYS = {
   ],
 };
 
-function readAnnotationArgs(args) {
+export function readAnnotationArgs(args) {
   const annotation = {
     before: null,
     after: null,
