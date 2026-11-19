@@ -1094,7 +1094,7 @@ async function run() {
   // If the visible inner text was misleading or empty, retry against the
   // collected accessible names before giving up.
   if (matchedIndex < 0 && Array.isArray(evaluated) && evaluated.length > 0) {
-    const evaluatedNormalized = evaluated.map((v) => String(v ?? "").replace(/\\s+/g, " ").trim());
+    const evaluatedNormalized = evaluated.map((v) => String(v ?? "").replace(/\s+/g, " ").trim());
     const retryIndex = findMatchingIndex(candidates, evaluatedNormalized);
     if (retryIndex >= 0) {
       matchedIndex = retryIndex;
