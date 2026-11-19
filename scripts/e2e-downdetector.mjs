@@ -45,8 +45,7 @@ function main() {
     }
   }
   if (targets.length === 0) {
-    console.log("No Downdetector services configured");
-    process.exit(0);
+    throw new Error("No Downdetector services configured");
   }
 
   const stateDir = mkdtempSync(join(tmpdir(), "dd-e2e-"));
@@ -68,4 +67,6 @@ const invokedDirectly =
 
 if (invokedDirectly) {
   main();
+} else {
+  throw new Error("unreachable");
 }
