@@ -1,6 +1,7 @@
 import { chromium } from "playwright";
+import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 /**
@@ -800,6 +801,92 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
 
 
 
+export function parseTargets(rawJson) {
+  let targets;
+  try {
+    targets = JSON.parse(rawJson || "[]");
+  } catch (err) {
+    return { error: `Invalid DD_TARGETS JSON: ${err.message}` };
+  }
+  if (!Array.isArray(targets) || targets.length === 0) {
+    return { targets: [] };
+  }
+  return { targets };
+}
+
+export function buildArgs(scriptPath, target, stateFile, rateLimitSec) {
+  const resolvedRateLimit =
+    rateLimitSec && typeof rateLimitSec === "object" && !Array.isArray(rateLimitSec)
+      ? (rateLimitSec.rateLimitSec ?? rateLimitSec.rate_limit_sec ?? rateLimitSec.rateLimit)
+      : rateLimitSec;
+  const args = [
+    scriptPath,
+    "--page-url",
+    String(target.page_url),
+    "--indicator",
+    Array.isArray(target.indicator_label)
+      ? target.indicator_label.map(String).join(", ")
+      : String(target.indicator_label),
+    "--problem-type",
+    String(target.problem_type),
+    "--count",
+    String(target.count),
+    "--state-file",
+    stateFile,
+  ];
+  if (resolvedRateLimit !== undefined && resolvedRateLimit !== null && resolvedRateLimit !== "") {
+    args.push("--rate-limit-sec", String(resolvedRateLimit));
+  }
+  return args;
+}
+
+export function reportAll(targets, { execFileSync: execFile, scriptPath, stateFile, rateLimitSec, log = console.log, error = console.error }) {
+  let failed = 0;
+  for (const target of targets) {
+    const args = buildArgs(scriptPath, target, stateFile, rateLimitSec);
+    try {
+      execFile(process.execPath, args, { stdio: "inherit" });
+      log(
+        `Downdetector report ok: ${target.service} (${target.problem_type}, count=${target.count})`,
+      );
+    } catch (err) {
+      failed += 1;
+      error(`Downdetector report failed for ${target.service}: ${err.message}`);
+    }
+  }
+  return failed;
+}
+
+export function main() {
+  const { targets, error } = parseTargets(process.env.DD_TARGETS);
+  if (error) {
+    console.error(error);
+    process.exit(1);
+  }
+
+  if (targets.length === 0) {
+    console.log("No Downdetector targets");
+    process.exit(0);
+  }
+
+  const here = dirname(fileURLToPath(import.meta.url));
+  const stateDir = join(here, ".downdetector-state");
+  mkdirSync(stateDir, { recursive: true });
+  const stateFile = join(stateDir, "last-report");
+
+  const failed = reportAll(targets, {
+    execFileSync,
+    scriptPath: join(here, "report-downdetector.mjs"),
+    stateFile,
+  });
+
+  if (failed > 0) {
+    process.exit(1);
+  }
+  process.exit(0);
+}
+
+
 async function run() {
   const {
     pageUrl,
@@ -1144,7 +1231,11 @@ const invokedDirectly =
   import.meta.url === pathToFileURL(process.argv[1]).href;
 
 if (invokedDirectly) {
-  run();
+  if (process.argv.includes("--page-url")) {
+    run();
+  } else {
+    main();
+  }
 }
 
 export function numberFromAnnotationValue(value) {

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildArgs, parseTargets, reportAll } from "../report-downdetector-targets.mjs";
+import { buildArgs, parseTargets, reportAll } from "../report-downdetector.mjs";
 
 const target = (overrides = {}) => ({
   service: "J:COM",

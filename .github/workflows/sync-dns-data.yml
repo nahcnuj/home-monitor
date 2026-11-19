@@ -275,4 +275,4 @@ jobs:
         working-directory: source
         env:
           DD_TARGETS: ${{ needs.sync.outputs.downdetector_targets }}
-        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x800x24" node scripts/report-downdetector-targets.mjs
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x800x24" node scripts/report-downdetector.mjs

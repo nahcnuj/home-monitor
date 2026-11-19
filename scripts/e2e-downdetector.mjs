@@ -14,7 +14,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { reportAll } from "./report-downdetector-targets.mjs";
+import { reportAll } from "./report-downdetector.mjs";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
 
