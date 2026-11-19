@@ -79,7 +79,7 @@ export function normalizeCategoryLabel(value) {
  * that "Wi-Fi", "Wi Fi" and "WiFi" collapse to the same form, and
  * "Broadband Internet" contains "Broadband".
  */
-export function compactCategoryLabel(value) {
+function compactCategoryLabel(value) {
   return normalizeCategoryLabel(value)
     .toLowerCase()
     .replace(/[^a-z0-9\u3040-\u30ff\u4e00-\u9faf]+/g, "");
@@ -186,7 +186,7 @@ export function findMatchingIndex(candidates, available) {
   return -1;
 }
 
-export function findMatchingCategory(candidates, available) {
+function findMatchingCategory(candidates, available) {
   const i = findMatchingIndex(candidates, available);
   if (i < 0) return null;
   const availList = Array.isArray(available)
@@ -196,7 +196,7 @@ export function findMatchingCategory(candidates, available) {
   return normalizedAvail[i] ?? null;
 }
 
-export function getBackoffDelay(attempt = 0, delays) {
+function getBackoffDelay(attempt = 0, delays) {
   const d = Array.isArray(delays) && delays.length > 0 ? delays : [1000, 2000, 3000, 5000];
   const i = Math.max(0, Math.min(Number(attempt) || 0, d.length - 1));
   return d[i];
@@ -248,7 +248,7 @@ export function markReported(stateFile, { nowSec }) {
  * challenge without any spoofing, so only the bundled fallback gets the
  * automation-signal overrides.
  */
-export async function launchBrowser({ headless, channel }) {
+async function launchBrowser({ headless, channel }) {
   const args = ["--no-sandbox", "--disable-blink-features=AutomationControlled"];
   if (channel) {
     try {
@@ -367,7 +367,7 @@ export function extractReportCountFromLabels(labels, category = null) {
   return candidates[0].count;
 }
 
-export async function readReportCountLabels(page) {
+async function readReportCountLabels(page) {
   const labels = [];
 
   if (typeof page.$$eval === "function") {

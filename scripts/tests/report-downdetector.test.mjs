@@ -15,12 +15,10 @@ import {
   isCloudflareChallenge,
   isRateLimited,
   labelCandidates,
-  launchBrowser,
   markReported,
   numberFromAnnotationValue,
   parseArgs,
   readAnnotationArgs,
-  readReportCountLabels,
   toCount,
   toStringList,
 } from "../report-downdetector.mjs";
@@ -502,8 +500,4 @@ describe("exported count helpers", () => {
     });
   });
 
-  it("browser helpers are importable by the suite", () => {
-    expect(typeof launchBrowser).toBe("function");
-    expect(typeof readReportCountLabels).toBe("function");
-  });
 });
