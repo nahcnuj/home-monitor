@@ -65,8 +65,7 @@ const invokedDirectly =
   process.argv[1] !== undefined &&
   import.meta.url === pathToFileURL(process.argv[1]).href;
 
-if (invokedDirectly) {
-  main();
-} else {
+if (!invokedDirectly) {
   throw new Error("unreachable");
 }
+main();
