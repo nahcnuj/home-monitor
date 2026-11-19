@@ -6,7 +6,7 @@
  * gated on changes to the report implementation or this test.
  *
  * Reporting goes through the same orchestrator as the Sync DNS Data workflow
- * (report-downdetector-targets.mjs / reportAll) so the method and expected
+ * (report-downdetector.mjs / reportAll) so the method and expected
  * result match production exactly.
  */
 import { execFileSync } from "node:child_process";

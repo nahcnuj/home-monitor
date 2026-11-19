@@ -113,7 +113,7 @@ GitHub Actions（**Sync DNS Data** / **Deploy Pages** の `prepare-pages`）が 
 - `downdetector.latency_threshold_ms` — 高レイテンシ判定しきい値（デフォルト 1000 ms）
 - `downdetector.services.<name>` — サービス名（`service_by_resolver` の値）ごとの報告先。`page_url`（Downdetector ステータスページの URL）、`indicator_label`（報告で選択する問題カテゴリのページ上のラベル。Downdetector は地域の UI 言語でラベルを描画する（JP 地域は日本語、それ以外は英語）ため、カンマ区切りで複数のラベルを順に試す。例: "ブロードバンド, Broadband Internet" = 固定電話のインターネット）
 
-報告は **GitHub Actions（Sync DNS Data）** で行われます。ローカル PC の DNS が死んでいるとき、PC からは Downdetector に届かない可能性が高いため、クラウド側で報告します。ワークフローが新規挿入（未記録）かつ直近1時間のレコードから高レイテンシまたはタイムアウトを検出し、`report-downdetector-targets.mjs` が Playwright で Downdetector のステータスページを操作します（公的な書き込み API は無いため公開 Web ページを RPA）。報告は同期とは別ジョブ（**Report to Downdetector**）で、同期ジョブが完了してから実行されます（報告対象が無いときはスキップ）。レポートが失敗してもデータ同期は完了済みで、ローカルの `publish-data.ps1` は再送信しません。失敗はそのジョブの失敗（赤い実行結果）として確認できます。
+報告は **GitHub Actions（Sync DNS Data）** で行われます。ローカル PC の DNS が死んでいるとき、PC からは Downdetector に届かない可能性が高いため、クラウド側で報告します。ワークフローが新規挿入（未記録）かつ直近1時間のレコードから高レイテンシまたはタイムアウトを検出し、`report-downdetector.mjs` が Playwright で Downdetector のステータスページを操作します（公的な書き込み API は無いため公開 Web ページを RPA）。報告は同期とは別ジョブ（**Report to Downdetector**）で、同期ジョブが完了してから実行されます（報告対象が無いときはスキップ）。レポートが失敗してもデータ同期は完了済みで、ローカルの `publish-data.ps1` は再送信しません。失敗はそのジョブの失敗（赤い実行結果）として確認できます。
 
 同期ジョブの annotation `Sync DNS data intends to report to Downdetector: ... (timeout)` は、報告対象サービスの一覧です。各 target の `count`（直近1時間に新規挿入された高レイテンシ/タイムアウトの DNS レコード数、ローカルで観測した件数）はメタデータとして保持され、Downdetector への報告はサービスごとに **1 回** だけ行われます（`count` 回報告するわけではありません）。`count` は報告ジョブのログ（`Downdetector report ok: ... (timeout, count=N)`）にも出力されます。
 
@@ -153,7 +153,7 @@ UI や設定を `master` に push すると **Deploy Pages** が走ります。
 monitor.config.ts         共通設定（唯一のソース）
 scripts/collect-dns.ps1   計測スクリプト
 scripts/publish-data.ps1  データ送信
-scripts/report-downdetector-targets.mjs  GitHub Actions からの Downdetector 報告（オーケストレータ）
+scripts/report-downdetector.mjs  GitHub Actions からの Downdetector 報告（オーケストレータ兼 RPA）
 scripts/report-downdetector.mjs  Playwright によるステータスページ操作（RPA 本体）
 scripts/Get-MonitorConfig.ps1  PS から設定を読むヘルパー
 scripts/install-scheduled-task.ps1  タスク登録

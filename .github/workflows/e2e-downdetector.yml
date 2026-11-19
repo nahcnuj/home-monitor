@@ -4,7 +4,6 @@ on:
   pull_request:
     paths:
       - "scripts/report-downdetector.mjs"
-      - "scripts/report-downdetector-targets.mjs"
       - "scripts/e2e-downdetector.mjs"
       - "monitor.config.ts"
       - ".github/workflows/e2e-downdetector.yml"
@@ -13,7 +12,6 @@ on:
     branches: [master]
     paths:
       - "scripts/report-downdetector.mjs"
-      - "scripts/report-downdetector-targets.mjs"
       - "scripts/e2e-downdetector.mjs"
       - "monitor.config.ts"
       - ".github/workflows/e2e-downdetector.yml"
