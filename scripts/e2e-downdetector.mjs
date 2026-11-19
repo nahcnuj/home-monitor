@@ -68,7 +68,4 @@ const invokedDirectly =
 if (!invokedDirectly) {
   throw new Error("unreachable");
 }
-main().catch((err) => {
-  console.error(`Error: ${err.message}`);
-  process.exit(1);
-});
+main();
