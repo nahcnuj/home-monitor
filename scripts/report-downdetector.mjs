@@ -675,17 +675,15 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
   }
 
   // When both tallies are known, an increased count is definitive success.
-  // An unchanged count is treated as a failure even when a thank-you message
-  // is visible: trusting the thank-you produced false positives ("Silently
-  // broken again", issue #111). Only when the tally cannot be read at all do
-  // we fall through to the success indicators below.
+  // An unchanged count is not an immediate failure though: Downdetector
+  // (e.g. J:COM) shows a thank-you message even when the global tally has
+  // not changed, so the success indicators below still get a chance to
+  // confirm the submission. Only when no success indicator is visible do we
+  // treat an unchanged count as a failure (issue #116).
   const countKnownUnchanged =
     typeof before === "number" && !Number.isNaN(before) &&
     typeof after === "number" && !Number.isNaN(after) &&
     !hasReportCountIncreased(before, after);
-  if (countKnownUnchanged) {
-    return false;
-  }
   if (typeof before === "number" && !Number.isNaN(before) &&
       typeof after === "number" && !Number.isNaN(after) &&
       hasReportCountIncreased(before, after)) {
@@ -761,6 +759,13 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
       }
     } catch {
       // Ignore text-extraction failures and continue.
+    }
+
+    // When the count is known to be unchanged and no success indicator was
+    // visible above, do not fall through to the dialog-closed heuristics:
+    // that would re-introduce the false positives from issue #116.
+    if (countKnownUnchanged) {
+      return false;
     }
 
     // Count-based completion when both counts are known and no success
