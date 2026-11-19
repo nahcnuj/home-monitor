@@ -675,21 +675,12 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
     return false;
   }
 
-  // When both tallies are known, an increased count is definitive success.
-  // An increased count is definitive success. An unchanged count does not
-  // immediately fail, because Downdetector (e.g. J:COM) shows a thank-you
-  // message even when the global tally has not changed (dedup/rate limit),
-  // so the success indicators below still get a chance to confirm the
-  // submission. Only when no success indicator is visible do we treat an
-  // unchanged count as a failure (issue #111).
-  const countKnownUnchanged =
-    typeof before === "number" && !Number.isNaN(before) &&
-    typeof after === "number" && !Number.isNaN(after) &&
-    !hasReportCountIncreased(before, after);
+  // When both the before and after tallies are known, require an actual
+  // increase. A thank-you message must not override an unchanged count
+  // (issue #116: "silently broken: success but count not increased").
   if (typeof before === "number" && !Number.isNaN(before) &&
-      typeof after === "number" && !Number.isNaN(after) &&
-      hasReportCountIncreased(before, after)) {
-    return true;
+      typeof after === "number" && !Number.isNaN(after)) {
+    return hasReportCountIncreased(before, after);
   }
 
   try {
@@ -768,13 +759,8 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
     if (typeof before === "number" && !Number.isNaN(before) &&
         typeof after === "number" && !Number.isNaN(after)) {
       if (hasReportCountIncreased(before, after)) return true;
-      // An unchanged count is a failure: do not fall through to the
-      // dialog-closed heuristics, which would re-introduce false positives
-      // ("Silently broken again", issue #111). A genuine submission is
-      // confirmed by the thank-you indicators checked above.
-      if (countKnownUnchanged) {
-        return false;
-      }
+      // An unchanged count is a failure when both tallies are known (issue
+      // #116): do not fall through to the dialog-closed heuristics.
       return false;
     }
 
@@ -1204,6 +1190,12 @@ async function run() {
         afterCount = refreshed;
       }
     } catch {}
+  }
+  // A reload may reflect the updated tally only after the initial polling
+  // window, so re-evaluate success once the refreshed count is known.
+  if (!success && beforeCount !== null && afterCount !== null &&
+      hasReportCountIncreased(beforeCount, afterCount)) {
+    success = true;
   }
 
   // Emit one well-formed annotation with the category tally before and after
