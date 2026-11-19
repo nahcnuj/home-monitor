@@ -1,6 +1,7 @@
 import { chromium } from "playwright";
+import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 /**
@@ -9,8 +10,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
  * Runs in GitHub Actions (Sync DNS Data), not on the home PC: when the home
  * DNS is broken the PC often cannot reach Downdetector at all, so the report
  * must be submitted from the cloud. The workflow detects bad records and
- * passes them to report-downdetector-targets.mjs, which invokes this script
- * per service. Rate-limit state is kept under scripts/.downdetector-state/.
+ * passes them to this script (via DD_TARGETS), which reports per service.
+ * Rate-limit state is kept under scripts/.downdetector-state/.
  *
  * Downdetector has no public write API, so this drives the public status
  * page via Playwright (RPA): it opens the page in a real browser and selects
@@ -74,6 +75,17 @@ export function normalizeCategoryLabel(value) {
     .trim();
 }
 
+/**
+ * Compact a label for fuzzy comparison: drop all separators/whitespace so
+ * that "Wi-Fi", "Wi Fi" and "WiFi" collapse to the same form, and
+ * "Broadband Internet" contains "Broadband".
+ */
+export function compactCategoryLabel(value) {
+  return normalizeCategoryLabel(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9\u3040-\u30ff\u4e00-\u9faf]+/g, "");
+}
+
 export function labelCandidates(indicatorLabel) {
   const seen = new Set();
   const out = [];
@@ -86,7 +98,7 @@ export function labelCandidates(indicatorLabel) {
   collect(indicatorLabel);
   if (values.length === 0) return out;
   for (const value of values) {
-    const parts = typeof value === "string" ? value.split(/[,;\n\r]+/) : [value];
+    const parts = typeof value === "string" ? value.split(/[,;、。・\n\r]+/) : [value];
     for (const part of parts) {
       const normalized = String(part ?? "").replace(/\s+/g, " ").trim();
       if (!normalized) continue;
@@ -132,17 +144,29 @@ export function extractAvailableCategories(radios) {
 }
 
 export function categoryMatches(candidate, available) {
+  if (Array.isArray(candidate) || Array.isArray(available)) {
+    const candList = Array.isArray(candidate) ? candidate : [candidate];
+    const availList = Array.isArray(available) ? available : [available];
+    return candList.some((c) => availList.some((a) => categoryMatches(c, a)));
+  }
   const c = normalizeCategoryLabel(candidate).toLowerCase();
   const a = normalizeCategoryLabel(available).toLowerCase();
   if (!c || !a) return false;
   if (a === c) return true;
   if (a.includes(c) || c.includes(a)) return true;
+  // Compact (separator-insensitive) comparison so "Wi-Fi" matches "WiFi".
+  const cc = compactCategoryLabel(candidate);
+  const ca = compactCategoryLabel(available);
+  if (cc && ca && (ca.includes(cc) || cc.includes(ca))) return true;
   // Token overlap for multi-word labels that differ only in word order or
   // extra qualifiers (e.g. "Broadband Internet" vs "Internet (Broadband)").
   const cTokens = c.split(/[^a-z0-9\u3040-\u30ff\u4e00-\u9faf]+/).filter((t) => t.length >= 2);
   const aTokens = a.split(/[^a-z0-9\u3040-\u30ff\u4e00-\u9faf]+/).filter((t) => t.length >= 2);
   if (cTokens.length > 0 && aTokens.length > 0) {
-    return cTokens.some((t) => aTokens.includes(t));
+    if (cTokens.some((t) => aTokens.includes(t))) return true;
+    const cCompactTokens = cTokens.map(compactCategoryLabel).filter(Boolean);
+    const aCompactTokens = aTokens.map(compactCategoryLabel).filter(Boolean);
+    if (cCompactTokens.some((t) => aCompactTokens.includes(t))) return true;
   }
   return false;
 }
@@ -161,6 +185,22 @@ export function findMatchingIndex(candidates, available) {
     }
   }
   return -1;
+}
+
+export function findMatchingCategory(candidates, available) {
+  const i = findMatchingIndex(candidates, available);
+  if (i < 0) return null;
+  const availList = Array.isArray(available)
+    ? available
+    : (available === null || available === undefined ? [] : [available]);
+  const normalizedAvail = availList.map((v) => String(v ?? "").replace(/\s+/g, " ").trim());
+  return normalizedAvail[i] ?? null;
+}
+
+export function getBackoffDelay(attempt = 0, delays) {
+  const d = Array.isArray(delays) && delays.length > 0 ? delays : [1000, 2000, 3000, 5000];
+  const i = Math.max(0, Math.min(Number(attempt) || 0, d.length - 1));
+  return d[i];
 }
 
 export function buildOptions(argv, env) {
@@ -209,7 +249,7 @@ export function markReported(stateFile, { nowSec }) {
  * challenge without any spoofing, so only the bundled fallback gets the
  * automation-signal overrides.
  */
-async function launchBrowser({ headless, channel }) {
+export async function launchBrowser({ headless, channel }) {
   const args = ["--no-sandbox", "--disable-blink-features=AutomationControlled"];
   if (channel) {
     try {
@@ -223,7 +263,7 @@ async function launchBrowser({ headless, channel }) {
   return { browser, spoofAutomation: true };
 }
 
-function toCount(value) {
+export function toCount(value) {
   if (value === null || value === undefined) return null;
   if (typeof value === "number") return Number.isNaN(value) ? null : value;
   const cleaned = String(value).replace(/[,\s]/g, "");
@@ -283,7 +323,7 @@ export function extractReportCount(text) {
   return null;
 }
 
-function toStringList(value) {
+export function toStringList(value) {
   if (value === null || value === undefined) return [];
   if (typeof value === "string") return [value];
   if (Array.isArray(value)) return value.flatMap((item) => toStringList(item));
@@ -328,7 +368,7 @@ export function extractReportCountFromLabels(labels, category = null) {
   return candidates[0].count;
 }
 
-async function readReportCountLabels(page) {
+export async function readReportCountLabels(page) {
   const labels = [];
 
   if (typeof page.$$eval === "function") {
@@ -635,12 +675,21 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
     return false;
   }
 
-  // When both the before and after tallies are known, require an actual
-  // increase. A thank-you message must not override an unchanged count
-  // (issue #116: "silently broken: success but count not increased").
+  // When both tallies are known, an increased count is definitive success.
+  // An increased count is definitive success. An unchanged count does not
+  // immediately fail, because Downdetector (e.g. J:COM) shows a thank-you
+  // message even when the global tally has not changed (dedup/rate limit),
+  // so the success indicators below still get a chance to confirm the
+  // submission. Only when no success indicator is visible do we treat an
+  // unchanged count as a failure (issue #111).
+  const countKnownUnchanged =
+    typeof before === "number" && !Number.isNaN(before) &&
+    typeof after === "number" && !Number.isNaN(after) &&
+    !hasReportCountIncreased(before, after);
   if (typeof before === "number" && !Number.isNaN(before) &&
-      typeof after === "number" && !Number.isNaN(after)) {
-    return hasReportCountIncreased(before, after);
+      typeof after === "number" && !Number.isNaN(after) &&
+      hasReportCountIncreased(before, after)) {
+    return true;
   }
 
   try {
@@ -719,16 +768,12 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
     if (typeof before === "number" && !Number.isNaN(before) &&
         typeof after === "number" && !Number.isNaN(after)) {
       if (hasReportCountIncreased(before, after)) return true;
-      // An unchanged count is acceptable when the report dialog has closed
-      // (Downdetector sometimes never updates the tally).
-      try {
-        if (typeof page.getByRole === "function") {
-          const dialog = firstOf(page.getByRole("dialog"));
-          const isDialogVisible = await dialog.isVisible({ timeout: 1000 });
-          if (!isDialogVisible) return true;
-        }
-      } catch {
-        return true;
+      // An unchanged count is a failure: do not fall through to the
+      // dialog-closed heuristics, which would re-introduce false positives
+      // ("Silently broken again", issue #111). A genuine submission is
+      // confirmed by the thank-you indicators checked above.
+      if (countKnownUnchanged) {
+        return false;
       }
       return false;
     }
@@ -754,6 +799,92 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
   return false;
 }
 
+
+
+export function parseTargets(rawJson) {
+  let targets;
+  try {
+    targets = JSON.parse(rawJson || "[]");
+  } catch (err) {
+    return { error: `Invalid DD_TARGETS JSON: ${err.message}` };
+  }
+  if (!Array.isArray(targets) || targets.length === 0) {
+    return { targets: [] };
+  }
+  return { targets };
+}
+
+export function buildArgs(scriptPath, target, stateFile, rateLimitSec) {
+  const resolvedRateLimit =
+    rateLimitSec && typeof rateLimitSec === "object" && !Array.isArray(rateLimitSec)
+      ? (rateLimitSec.rateLimitSec ?? rateLimitSec.rate_limit_sec ?? rateLimitSec.rateLimit)
+      : rateLimitSec;
+  const args = [
+    scriptPath,
+    "--page-url",
+    String(target.page_url),
+    "--indicator",
+    Array.isArray(target.indicator_label)
+      ? target.indicator_label.map(String).join(", ")
+      : String(target.indicator_label),
+    "--problem-type",
+    String(target.problem_type),
+    "--count",
+    String(target.count),
+    "--state-file",
+    stateFile,
+  ];
+  if (resolvedRateLimit !== undefined && resolvedRateLimit !== null && resolvedRateLimit !== "") {
+    args.push("--rate-limit-sec", String(resolvedRateLimit));
+  }
+  return args;
+}
+
+export function reportAll(targets, { execFileSync: execFile, scriptPath, stateFile, rateLimitSec, log = console.log, error = console.error }) {
+  let failed = 0;
+  for (const target of targets) {
+    const args = buildArgs(scriptPath, target, stateFile, rateLimitSec);
+    try {
+      execFile(process.execPath, args, { stdio: "inherit" });
+      log(
+        `Downdetector report ok: ${target.service} (${target.problem_type}, count=${target.count})`,
+      );
+    } catch (err) {
+      failed += 1;
+      error(`Downdetector report failed for ${target.service}: ${err.message}`);
+    }
+  }
+  return failed;
+}
+
+export function main() {
+  const { targets, error } = parseTargets(process.env.DD_TARGETS);
+  if (error) {
+    console.error(error);
+    process.exit(1);
+  }
+
+  if (targets.length === 0) {
+    console.log("No Downdetector targets");
+    process.exit(0);
+  }
+
+  const here = dirname(fileURLToPath(import.meta.url));
+  const stateDir = join(here, ".downdetector-state");
+  mkdirSync(stateDir, { recursive: true });
+  const stateFile = join(stateDir, "last-report");
+
+  const failed = reportAll(targets, {
+    execFileSync,
+    scriptPath: join(here, "report-downdetector.mjs"),
+    stateFile,
+  });
+
+  if (failed > 0) {
+    process.exit(1);
+  }
+  process.exit(0);
+}
 
 
 async function run() {
@@ -942,7 +1073,10 @@ async function run() {
       accessibleTexts = evaluated;
     } else {
       for (let i = 0; i < accessibleTexts.length; i++) {
-        if (String(accessibleTexts[i] ?? "").trim() === "" && evaluated[i] !== undefined) {
+        if (
+          String(accessibleTexts[i] ?? "").trim() === "" &&
+          String(evaluated[i] ?? "").trim() !== ""
+        ) {
           accessibleTexts[i] = evaluated[i];
         }
       }
@@ -956,7 +1090,16 @@ async function run() {
   // for reporting the available categories.
   const normalizedAccessible = accessibleTexts.map((v) => String(v ?? "").replace(/\s+/g, " ").trim());
   const matchSource = normalizedAccessible.some((t) => t !== "") ? normalizedAccessible : accessibleTexts;
-  const matchedIndex = findMatchingIndex(candidates, matchSource);
+  let matchedIndex = findMatchingIndex(candidates, matchSource);
+  // If the visible inner text was misleading or empty, retry against the
+  // collected accessible names before giving up.
+  if (matchedIndex < 0 && Array.isArray(evaluated) && evaluated.length > 0) {
+    const evaluatedNormalized = evaluated.map((v) => String(v ?? "").replace(/\s+/g, " ").trim());
+    const retryIndex = findMatchingIndex(candidates, evaluatedNormalized);
+    if (retryIndex >= 0) {
+      matchedIndex = retryIndex;
+    }
+  }
   const normalizedAvailable = extractAvailableCategories(accessibleTexts);
 
   let indicatorBtn = null;
@@ -1088,13 +1231,14 @@ const invokedDirectly =
   import.meta.url === pathToFileURL(process.argv[1]).href;
 
 if (invokedDirectly) {
-  run().catch((err) => {
-    console.error(`Error: ${err.message}`);
-    process.exit(1);
-  });
+  if (process.argv.includes("--page-url")) {
+    run();
+  } else {
+    main();
+  }
 }
 
-function numberFromAnnotationValue(value) {
+export function numberFromAnnotationValue(value) {
   if (value === null || value === undefined) return null;
   if (typeof value === "number") return Number.isNaN(value) ? null : value;
   const cleaned = String(value).replace(/[,\s]/g, "");
@@ -1136,7 +1280,7 @@ const ANNOTATION_KEYS = {
   ],
 };
 
-function readAnnotationArgs(args) {
+export function readAnnotationArgs(args) {
   const annotation = {
     before: null,
     after: null,

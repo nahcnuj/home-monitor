@@ -6,7 +6,7 @@
 .DESCRIPTION
   Covers the TSV filtering and chunking helpers in publish-data.ps1.
   Downdetector reporting moved to GitHub Actions (Sync DNS Data
-  workflow) — see scripts/report-downdetector-targets.mjs and the
+  workflow) — see scripts/report-downdetector.mjs and the
   workflow's detection step — so it is no longer tested here.
 #>
 BeforeAll {
