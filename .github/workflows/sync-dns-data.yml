@@ -276,3 +276,40 @@ jobs:
         env:
           DD_TARGETS: ${{ needs.sync.outputs.downdetector_targets }}
         run: xvfb-run --auto-servernum --server-args="-screen 0 1280x800x24" node scripts/report-downdetector.mjs
+
+      - name: Post to Slack
+        if: always()
+        uses: slackapi/slack-github-action@v4
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            text: "Attempted to report a home network issue to DownDetector"
+            blocks:
+              - type: header
+                text:
+                  type: plain_text
+                  text: "${{ github.workflow }} 実行結果"
+                  emoji: true
+              - type: section
+                fields:
+                  - type: mrkdwn
+                    text: "*ステータス:*\n${{ job.status == 'success' && ':white_check_mark: 成功' || ':x: 失敗' }}"
+                  - type: mrkdwn
+                    text: "*ブランチ:*\n`${{ github.ref_name }}`"
+                  - type: mrkdwn
+                    text: "*実行者:*\n${{ github.actor }}"
+                  - type: mrkdwn
+                    text: "*イベント:*\n`${{ github.event_name }}`"
+              - type: actions
+                elements:
+                  - type: button
+                    text:
+                      type: plain_text
+                      text: "実行結果を見る"
+                      emoji: true
+                    url: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+              - type: context
+                elements:
+                  - type: mrkdwn
+                    text: "リポジトリ: `${{ github.repository }}` | Commit: `${{ github.sha }}`"
