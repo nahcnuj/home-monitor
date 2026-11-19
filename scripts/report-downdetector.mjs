@@ -10,8 +10,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
  * Runs in GitHub Actions (Sync DNS Data), not on the home PC: when the home
  * DNS is broken the PC often cannot reach Downdetector at all, so the report
  * must be submitted from the cloud. The workflow detects bad records and
- * passes them to report-downdetector-targets.mjs, which invokes this script
- * per service. Rate-limit state is kept under scripts/.downdetector-state/.
+ * passes them to this script (via DD_TARGETS), which reports per service.
+ * Rate-limit state is kept under scripts/.downdetector-state/.
  *
  * Downdetector has no public write API, so this drives the public status
  * page via Playwright (RPA): it opens the page in a real browser and selects
