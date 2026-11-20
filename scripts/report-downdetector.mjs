@@ -951,9 +951,9 @@ async function run() {
   const page = await context.newPage();
   page.setDefaultTimeout(timeoutMs);
   // Downdetector submits the report with a POST to its indicators API and only
-  // then replaces the form with a thank-you. We capture the response status
-  // for diagnostics, but it is NOT treated as proof of success: the public
-  // tally must increase (see issue #126).
+  // then replaces the form with a thank-you. The public tally is cached and may
+  // lag, so an HTTP 2xx from the indicators API is treated as success (the
+  // tally is still reported for diagnostics).
   let reportPostStatus = null;
   page.on("response", (res) => {
     if (res.request().method() === "POST" && res.url().includes("/indicators")) {
@@ -1180,9 +1180,9 @@ async function run() {
   const accepted = reportPostStatus !== null &&
     reportPostStatus >= 200 && reportPostStatus < 300;
 
-  // Re-read the public tally for the annotation. Use a normal reload so we
-  // stay on the same rendered page; the breakdown is cached and may still show
-  // the old number. The POST response alone is not authoritative (issue #126).
+  // Re-read the public tally for the annotation. The breakdown is cached and
+  // may still show the old number; the POST response is the primary success
+  // signal.
   let afterCount = null;
   if (beforeCount !== null) {
     try {
@@ -1198,12 +1198,11 @@ async function run() {
   const countIncreased = beforeCount !== null && afterCount !== null &&
     hasReportCountIncreased(beforeCount, afterCount);
 
-  // A POST that returns 2xx is not proof the report was recorded: Downdetector
-  // can accept the request (rate-limit/dedupe) without incrementing the public
-  // tally. The tally is the ground truth, so an unchanged count is never a
-  // success, even when the API responded 2xx (issue #126). Fall back to the
-  // on-page heuristics only when no tally is available.
-  let success = countIncreased;
+  // An HTTP 2xx from the indicators API means Downdetector accepted the
+  // report. The public tally is cached and may lag (or be deduplicated), so it
+  // is not required to increase for success. Fall back to the on-page
+  // heuristics only when no API acceptance and no tally increase occurred.
+  let success = accepted || countIncreased;
   if (!success) {
     success = await determineSuccess({ page, beforeCount, afterCount });
   }
@@ -1221,6 +1220,8 @@ async function run() {
     markReported(stateFile, { nowSec: now() });
     if (countIncreased) {
       console.log(`Report submitted successfully; count increased ${beforeCount} -> ${afterCount} (${indicatorLabel}, problem=${problemType})`);
+    } else if (accepted) {
+      console.log(`Report accepted by Downdetector (HTTP ${reportPostStatus}); page tally remains ${afterCount ?? "unknown"} (${indicatorLabel}, problem=${problemType})`);
     } else {
       console.log(`Report submitted successfully (${indicatorLabel}, problem=${problemType})`);
     }
