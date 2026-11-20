@@ -490,6 +490,9 @@ describe("exported count helpers", () => {
       count: 2,
       label: "Broadband Internet",
       problemType: "high_latency",
+      accepted: null,
+      success: null,
+      status: null,
     });
     expect(readAnnotationArgs([0, 1, 22])).toEqual({
       before: 0,
@@ -497,6 +500,9 @@ describe("exported count helpers", () => {
       count: 22,
       label: null,
       problemType: null,
+      accepted: null,
+      success: null,
+      status: null,
     });
   });
 

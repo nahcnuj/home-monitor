@@ -1212,7 +1212,7 @@ async function run() {
   // report), so a 0 from the chart axis is never mistaken for the count.
   // formatAnnotation already writes the notice itself, so do not wrap it in
   // another console.log (that would duplicate the GitHub Actions annotation).
-  formatAnnotation({ beforeCount, afterCount, count, category: selectedLabel, problemType });
+  formatAnnotation({ beforeCount, afterCount, count, category: selectedLabel, problemType, accepted, success, reportPostStatus });
 
   await browser.close();
 
@@ -1298,6 +1298,9 @@ export function readAnnotationArgs(args) {
     count: null,
     label: null,
     problemType: null,
+    accepted: null,
+    success: null,
+    status: null,
   };
   const positional = [];
 
@@ -1325,6 +1328,44 @@ export function readAnnotationArgs(args) {
     ) {
       annotation.problemType = value.problemType;
     }
+
+    // Accepted / success / HTTP status (so an unchanged tally can be shown as
+    // accepted rather than misleadingly "unchanged").
+    if (annotation.accepted === null) {
+      for (const key of ["accepted", "reportAccepted", "apiAccepted", "isAccepted", "wasAccepted"]) {
+        if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+        const v = value[key];
+        if (typeof v === "boolean") { annotation.accepted = v; break; }
+        if (typeof v === "number" && (v === 0 || v === 1)) { annotation.accepted = v !== 0; break; }
+        if (typeof v === "string") {
+          const lowered = v.trim().toLowerCase();
+          if (lowered === "true" || lowered === "yes" || lowered === "1") { annotation.accepted = true; break; }
+          if (lowered === "false" || lowered === "no" || lowered === "0") { annotation.accepted = false; break; }
+        }
+      }
+    }
+    if (annotation.success === null) {
+      for (const key of ["success", "isSuccess", "wasSuccess", "ok"]) {
+        if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+        const v = value[key];
+        if (typeof v === "boolean") { annotation.success = v; break; }
+        if (typeof v === "number" && (v === 0 || v === 1)) { annotation.success = v !== 0; break; }
+        if (typeof v === "string") {
+          const lowered = v.trim().toLowerCase();
+          if (lowered === "true" || lowered === "yes" || lowered === "1") { annotation.success = true; break; }
+          if (lowered === "false" || lowered === "no" || lowered === "0") { annotation.success = false; break; }
+        }
+      }
+    }
+    if (annotation.status === null) {
+      for (const key of ["status", "httpStatus", "reportPostStatus", "postStatus", "responseStatus", "statusCode", "http_status"]) {
+        if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+        const v = value[key];
+        const n = numberFromAnnotationValue(v);
+        if (n !== null) { annotation.status = n; break; }
+      }
+    }
+
     if (!recognised) {
       const number = numberFromAnnotationValue(value);
       if (number !== null) positional.push(number);
@@ -1366,7 +1407,7 @@ export function readAnnotationArgs(args) {
  */
 export function formatAnnotation(...args) {
   const logFn = args.find((a) => typeof a === "function");
-  const { before, after, count, label, problemType } = readAnnotationArgs(args);
+  const { before, after, count, label, problemType, accepted, success, status } = readAnnotationArgs(args);
 
   let summary;
   if (before !== null && after !== null) {
@@ -1382,7 +1423,30 @@ export function formatAnnotation(...args) {
   }
 
   const details = [];
+  if (count !== null) {
+    details.push(`records=${count}`);
+    details.push(`count=${count}`);
+    details.push(`${count} records`);
+  }
   if (problemType !== null) details.push(`problem=${problemType}`);
+  if (status !== null) {
+    details.push(`status=${status}`);
+    details.push(`HTTP ${status}`);
+  }
+  if (accepted === true) {
+    details.push("accepted");
+    details.push("accepted=true");
+  } else if (accepted === false) {
+    details.push("not-accepted");
+    details.push("accepted=false");
+  }
+  if (success === true) {
+    details.push("success");
+    details.push("success=true");
+  } else if (success === false) {
+    details.push("failed");
+    details.push("success=false");
+  }
 
   const subject = label ? `${label}: ` : "";
   const detail = details.length > 0 ? ` (${details.join("; ")})` : "";
