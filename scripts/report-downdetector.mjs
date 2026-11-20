@@ -205,6 +205,16 @@ export function getBackoffDelay(attempt = 0, delays) {
 
 export function buildOptions(argv, env) {
   const parsed = parseArgs(argv);
+  const allowUnchanged =
+    parsed["allow-unchanged-count"] !== undefined
+      ? parsed["allow-unchanged-count"] !== "false"
+      : parsed["allow-unchanged"] !== undefined
+        ? parsed["allow-unchanged"] !== "false"
+        : env.DD_ALLOW_UNCHANGED_COUNT !== undefined
+          ? env.DD_ALLOW_UNCHANGED_COUNT !== "false" && env.DD_ALLOW_UNCHANGED_COUNT !== "0"
+          : env.DD_ALLOW_UNCHANGED !== undefined
+            ? env.DD_ALLOW_UNCHANGED !== "false" && env.DD_ALLOW_UNCHANGED !== "0"
+            : false;
   return {
     pageUrl: parsed["page-url"] || env.DD_PAGE_URL || "",
     indicatorLabel: parsed["indicator"] || env.DD_INDICATOR || "ブロードバンド",
@@ -223,6 +233,8 @@ export function buildOptions(argv, env) {
       env.DD_STATE_FILE ||
       dirname(fileURLToPath(import.meta.url)) + "/.downdetector-state/last-report",
     rateLimitSec: parseInt(parsed["rate-limit-sec"] || env.DD_RATE_LIMIT_SEC || "1800", 10),
+    allowUnchangedCount: allowUnchanged,
+    allowUnchanged: allowUnchanged,
     waitUntil: parsed["wait-until"] || env.DD_WAIT_UNTIL || "domcontentloaded",
     maxRetries: parseInt(parsed["max-retries"] || env.DD_MAX_RETRIES || "2", 10),
   };
@@ -577,6 +589,14 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
   let page = pageOrOptions;
   let before = beforeCount;
   let after = afterCount;
+  let allowUnchanged = false;
+  const envAllow =
+    process.env.DD_ALLOW_UNCHANGED_COUNT !== undefined
+      ? process.env.DD_ALLOW_UNCHANGED_COUNT !== "false" && process.env.DD_ALLOW_UNCHANGED_COUNT !== "0"
+      : process.env.DD_ALLOW_UNCHANGED !== undefined
+        ? process.env.DD_ALLOW_UNCHANGED !== "false" && process.env.DD_ALLOW_UNCHANGED !== "0"
+        : false;
+  if (envAllow) allowUnchanged = true;
   const isOptionObject =
     pageOrOptions && typeof pageOrOptions === "object" && !Array.isArray(pageOrOptions) &&
     (pageOrOptions.page !== undefined || pageOrOptions.pageObject !== undefined ||
@@ -587,7 +607,9 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
       "afterCount" in pageOrOptions || "after" in pageOrOptions ||
       "after_count" in pageOrOptions || "countAfter" in pageOrOptions ||
       "currentCount" in pageOrOptions || "current" in pageOrOptions ||
-      "newCount" in pageOrOptions || "endCount" in pageOrOptions);
+      "newCount" in pageOrOptions || "endCount" in pageOrOptions ||
+      "allowUnchanged" in pageOrOptions || "allowUnchangedCount" in pageOrOptions ||
+      "allow_unchanged" in pageOrOptions || "trustThankYou" in pageOrOptions);
   if (isOptionObject) {
     page = pageOrOptions.page ?? pageOrOptions.pageObject;
     before = pageOrOptions.beforeCount ?? pageOrOptions.before ?? pageOrOptions.before_count ??
@@ -596,6 +618,9 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
     after = pageOrOptions.afterCount ?? pageOrOptions.after ?? pageOrOptions.after_count ??
       pageOrOptions.countAfter ?? pageOrOptions.currentCount ?? pageOrOptions.current ??
       pageOrOptions.newCount ?? pageOrOptions.endCount ?? afterCount;
+    const au = pageOrOptions.allowUnchanged ?? pageOrOptions.allowUnchangedCount ??
+      pageOrOptions.allow_unchanged ?? pageOrOptions.trustThankYou;
+    if (au !== undefined && au !== null) allowUnchanged = au === true || au === "true" || au === "1" || au === 1;
   }
   if (beforeCount && typeof beforeCount === "object" && !Array.isArray(beforeCount)) {
     before = beforeCount.beforeCount ?? beforeCount.before ?? beforeCount.before_count ??
@@ -604,6 +629,9 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
     after = beforeCount.afterCount ?? beforeCount.after ?? beforeCount.after_count ??
       beforeCount.countAfter ?? beforeCount.currentCount ?? beforeCount.current ??
       beforeCount.newCount ?? beforeCount.endCount ?? after;
+    const au2 = beforeCount.allowUnchanged ?? beforeCount.allowUnchangedCount ??
+      beforeCount.allow_unchanged ?? beforeCount.trustThankYou;
+    if (au2 !== undefined && au2 !== null) allowUnchanged = au2 === true || au2 === "true" || au2 === "1" || au2 === 1;
   }
   if (typeof before === "string") {
     const cleaned = before.replace(/[,\s]/g, "");
@@ -680,7 +708,9 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
   // (issue #116: "silently broken: success but count not increased").
   if (typeof before === "number" && !Number.isNaN(before) &&
       typeof after === "number" && !Number.isNaN(after)) {
-    return hasReportCountIncreased(before, after);
+    if (hasReportCountIncreased(before, after)) return true;
+    if (!allowUnchanged) return false;
+    // allowUnchanged: fall through to the thank-you heuristics below.
   }
 
   try {
@@ -759,9 +789,12 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
     if (typeof before === "number" && !Number.isNaN(before) &&
         typeof after === "number" && !Number.isNaN(after)) {
       if (hasReportCountIncreased(before, after)) return true;
-      // An unchanged count is a failure when both tallies are known (issue
-      // #116): do not fall through to the dialog-closed heuristics.
-      return false;
+      if (!allowUnchanged) {
+        // An unchanged count is a failure when both tallies are known (issue
+        // #116): do not fall through to the dialog-closed heuristics.
+        return false;
+      }
+      // allowUnchanged: fall through to the thank-you / dialog heuristics.
     }
 
     // Also check if the report dialog closed (implicit success)
@@ -886,7 +919,9 @@ async function run() {
     waitUntil,
     maxRetries,
     channel,
+    allowUnchangedCount,
   } = buildOptions(process.argv.slice(2), process.env);
+  const allowUnchanged = Boolean(allowUnchangedCount);
 
   if (!pageUrl) {
     console.error("Error: --page-url (or DD_PAGE_URL) is required");
@@ -1164,7 +1199,7 @@ async function run() {
       // The global tally may stay unchanged (e.g. J:COM) even though
       // Downdetector shows a thank-you message, so check the page-level
       // success indicators before continuing to poll.
-      if (await determineSuccess(page, beforeCount, afterCount)) {
+      if (await determineSuccess({ page, beforeCount, afterCount, allowUnchangedCount: allowUnchanged })) {
         success = true;
         break;
       }
@@ -1174,7 +1209,7 @@ async function run() {
     }
   }
   if (!success) {
-    success = await determineSuccess(page, beforeCount, afterCount);
+    success = await determineSuccess({ page, beforeCount, afterCount, allowUnchangedCount: allowUnchanged });
   }
 
   // Downdetector often keeps showing the pre-submission tally in the DOM
@@ -1196,6 +1231,9 @@ async function run() {
   if (!success && beforeCount !== null && afterCount !== null &&
       hasReportCountIncreased(beforeCount, afterCount)) {
     success = true;
+  }
+  if (!success && allowUnchanged) {
+    success = await determineSuccess({ page, beforeCount, afterCount, allowUnchangedCount: true });
   }
 
   // Emit one well-formed annotation with the category tally before and after

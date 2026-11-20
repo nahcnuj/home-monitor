@@ -28,6 +28,10 @@ function readConfig() {
 }
 
 function main() {
+  // E2E verifies the submission path (thank-you) rather than a real-time
+  // count increase, which Downdetector often does not reflect for repeated
+  // reports from the same runner.
+  process.env.DD_ALLOW_UNCHANGED_COUNT = "1";
   const cfg = readConfig();
   const dd = cfg.downdetector || {};
   const services = dd.services || {};
