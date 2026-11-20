@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DAY_SEC, HOUR_SEC, MIN_SEC, RANGE_PRESETS } from "./constants.ts";
+import { DAY_SEC, HOUR_SEC, JST_OFFSET, MIN_SEC, RANGE_PRESETS } from "./constants.ts";
 import { setDisplayRangeSec } from "./state.ts";
 import {
   chartTimeBounds,
@@ -83,6 +83,41 @@ describe("chartTimeBounds", () => {
     const dataCutoffTs = SAMPLE_NOW - 2 * HOUR_SEC;
     const bounds = chartTimeBounds(SAMPLE_NOW, false, { dataMinTs, dataCutoffTs });
     expect(bounds.min).toBe(dataCutoffTs);
+  });
+
+  it("ends the 30m range at the latest data timestamp (rounded up to a minute)", () => {
+    setDisplayRangeSec(30 * MIN_SEC);
+    const dataMaxTs = SAMPLE_NOW - 5 * MIN_SEC - 10; // 23:20-ish
+    const bounds = chartTimeBounds(SAMPLE_NOW, false, { dataMaxTs });
+    expect(bounds.max).toBe(Math.ceil(dataMaxTs / MIN_SEC) * MIN_SEC);
+    expect(bounds.min).toBe(bounds.max - 30 * MIN_SEC);
+    expect(bounds.viewportSec).toBe(30 * MIN_SEC);
+  });
+
+  it("ends the 1h range at the latest data timestamp (rounded up to a JST hour)", () => {
+    setDisplayRangeSec(HOUR_SEC);
+    const dataMaxTs = SAMPLE_NOW - 30 * MIN_SEC;
+    const bounds = chartTimeBounds(SAMPLE_NOW, false, { dataMaxTs });
+    expect(bounds.max).toBe(Math.ceil((dataMaxTs + JST_OFFSET) / HOUR_SEC) * HOUR_SEC - JST_OFFSET);
+    expect(bounds.min).toBe(bounds.max - HOUR_SEC);
+  });
+
+  it("falls back to now when dataMaxTs is missing or invalid", () => {
+    setDisplayRangeSec(30 * MIN_SEC);
+    const withMissing = chartTimeBounds(SAMPLE_NOW, false, { dataMaxTs: undefined });
+    const withNaN = chartTimeBounds(SAMPLE_NOW, false, { dataMaxTs: NaN });
+    expect(withMissing.max).toBe(Math.ceil(SAMPLE_NOW / MIN_SEC) * MIN_SEC);
+    expect(withNaN.max).toBe(Math.ceil(SAMPLE_NOW / MIN_SEC) * MIN_SEC);
+  });
+
+  it("extends the left edge to older data when ending at latest data", () => {
+    setDisplayRangeSec(30 * MIN_SEC);
+    const dataMaxTs = SAMPLE_NOW;
+    const dataMinTs = SAMPLE_NOW - 3 * HOUR_SEC;
+    const bounds = chartTimeBounds(SAMPLE_NOW, false, { dataMinTs, dataMaxTs });
+    expect(bounds.max).toBe(Math.ceil(dataMaxTs / MIN_SEC) * MIN_SEC);
+    expect(bounds.min).toBe(dataMinTs);
+    expect(bounds.range).toBeGreaterThan(30 * MIN_SEC);
   });
 });
 

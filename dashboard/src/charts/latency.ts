@@ -709,10 +709,12 @@ export function buildLatencyChart(
   const latencies: number[] = [];
   const batchTsSet = new Set<number>();
   let dataMinTs: number | undefined;
+  let dataMaxTs: number | undefined;
 
   for (const r of rawRecords) {
     batchTsSet.add(r.ts);
     if (dataMinTs === undefined || r.ts < dataMinTs) dataMinTs = r.ts;
+    if (dataMaxTs === undefined || r.ts > dataMaxTs) dataMaxTs = r.ts;
     if (isSuccess(r)) {
       latencies.push(r.latency_ms);
       let list = successesByServer.get(r.dns_server);
@@ -733,6 +735,7 @@ export function buildLatencyChart(
   const compact = isCompactChartLayout();
   const xBounds = chartTimeBounds(undefined, compact, {
     dataMinTs,
+    dataMaxTs,
     dataCutoffTs,
   });
   // Full history domain for pan; plot shows only the selected viewport window.
