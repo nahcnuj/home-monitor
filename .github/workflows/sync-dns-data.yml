@@ -279,7 +279,7 @@ jobs:
 
       - name: Post to Slack
         if: always()
-        uses: slackapi/slack-github-action@v4
+        uses: slackapi/slack-github-action@v4.0.0
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
           webhook-type: incoming-webhook
