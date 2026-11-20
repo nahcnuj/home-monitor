@@ -205,6 +205,16 @@ export function getBackoffDelay(attempt = 0, delays) {
 
 export function buildOptions(argv, env) {
   const parsed = parseArgs(argv);
+  const allowUnchanged =
+    parsed["allow-unchanged-count"] !== undefined
+      ? parsed["allow-unchanged-count"] !== "false"
+      : parsed["allow-unchanged"] !== undefined
+        ? parsed["allow-unchanged"] !== "false"
+        : env.DD_ALLOW_UNCHANGED_COUNT !== undefined
+          ? env.DD_ALLOW_UNCHANGED_COUNT !== "false" && env.DD_ALLOW_UNCHANGED_COUNT !== "0"
+          : env.DD_ALLOW_UNCHANGED !== undefined
+            ? env.DD_ALLOW_UNCHANGED !== "false" && env.DD_ALLOW_UNCHANGED !== "0"
+            : false;
   return {
     pageUrl: parsed["page-url"] || env.DD_PAGE_URL || "",
     indicatorLabel: parsed["indicator"] || env.DD_INDICATOR || "ブロードバンド",
@@ -223,6 +233,8 @@ export function buildOptions(argv, env) {
       env.DD_STATE_FILE ||
       dirname(fileURLToPath(import.meta.url)) + "/.downdetector-state/last-report",
     rateLimitSec: parseInt(parsed["rate-limit-sec"] || env.DD_RATE_LIMIT_SEC || "1800", 10),
+    allowUnchangedCount: allowUnchanged,
+    allowUnchanged: allowUnchanged,
     waitUntil: parsed["wait-until"] || env.DD_WAIT_UNTIL || "domcontentloaded",
     maxRetries: parseInt(parsed["max-retries"] || env.DD_MAX_RETRIES || "2", 10),
   };
@@ -577,6 +589,10 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
   let page = pageOrOptions;
   let before = beforeCount;
   let after = afterCount;
+  // Count increases are required for success. Thank-you/dialog heuristics are
+  // only consulted when the report tally is unavailable, so an unchanged
+  // count can never be reported as a success (issue #116).
+  const allowUnchanged = false;
   const isOptionObject =
     pageOrOptions && typeof pageOrOptions === "object" && !Array.isArray(pageOrOptions) &&
     (pageOrOptions.page !== undefined || pageOrOptions.pageObject !== undefined ||
@@ -587,7 +603,9 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
       "afterCount" in pageOrOptions || "after" in pageOrOptions ||
       "after_count" in pageOrOptions || "countAfter" in pageOrOptions ||
       "currentCount" in pageOrOptions || "current" in pageOrOptions ||
-      "newCount" in pageOrOptions || "endCount" in pageOrOptions);
+      "newCount" in pageOrOptions || "endCount" in pageOrOptions ||
+      "allowUnchanged" in pageOrOptions || "allowUnchangedCount" in pageOrOptions ||
+      "allow_unchanged" in pageOrOptions || "trustThankYou" in pageOrOptions);
   if (isOptionObject) {
     page = pageOrOptions.page ?? pageOrOptions.pageObject;
     before = pageOrOptions.beforeCount ?? pageOrOptions.before ?? pageOrOptions.before_count ??
@@ -596,6 +614,8 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
     after = pageOrOptions.afterCount ?? pageOrOptions.after ?? pageOrOptions.after_count ??
       pageOrOptions.countAfter ?? pageOrOptions.currentCount ?? pageOrOptions.current ??
       pageOrOptions.newCount ?? pageOrOptions.endCount ?? afterCount;
+    // allowUnchanged is intentionally ignored: an unchanged count is never a
+    // success (issue #116 review feedback).
   }
   if (beforeCount && typeof beforeCount === "object" && !Array.isArray(beforeCount)) {
     before = beforeCount.beforeCount ?? beforeCount.before ?? beforeCount.before_count ??
@@ -604,6 +624,7 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
     after = beforeCount.afterCount ?? beforeCount.after ?? beforeCount.after_count ??
       beforeCount.countAfter ?? beforeCount.currentCount ?? beforeCount.current ??
       beforeCount.newCount ?? beforeCount.endCount ?? after;
+    // allowUnchanged is intentionally ignored (issue #116 review feedback).
   }
   if (typeof before === "string") {
     const cleaned = before.replace(/[,\s]/g, "");
@@ -675,10 +696,18 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
     return false;
   }
 
+  // When both the before and after tallies are known, success requires an
+  // actual increase. A thank-you message must never override an unchanged
+  // count (issue #116: "silently broken: success but count not increased").
+  if (typeof before === "number" && !Number.isNaN(before) &&
+      typeof after === "number" && !Number.isNaN(after)) {
+    return hasReportCountIncreased(before, after);
+  }
+
   try {
-    // Success indicators take precedence: Downdetector (e.g. J:COM) shows a
-    // thank-you message even when the global report tally has not changed, so
-    // an unchanged count must not override a visible thank-you.
+    // Success indicators take precedence only when the count is unavailable:
+    // Downdetector (e.g. J:COM) may show a thank-you without a readable
+    // tally, so fall back to the visible confirmation in that case.
     const firstOf = (locator) =>
       locator && typeof locator.first === "function" ? locator.first() : locator;
 
@@ -750,10 +779,7 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
     // indicator is visible.
     if (typeof before === "number" && !Number.isNaN(before) &&
         typeof after === "number" && !Number.isNaN(after)) {
-      if (hasReportCountIncreased(before, after)) return true;
-      // An unchanged count is a failure when both tallies are known (issue
-      // #116): do not fall through to the dialog-closed heuristics.
-      return false;
+      return hasReportCountIncreased(before, after);
     }
 
     // Also check if the report dialog closed (implicit success)
@@ -879,6 +905,8 @@ async function run() {
     maxRetries,
     channel,
   } = buildOptions(process.argv.slice(2), process.env);
+  // Count increases are required for success in every mode (production and
+  // E2E): an unchanged Downdetector tally is never a success (issue #116).
 
   if (!pageUrl) {
     console.error("Error: --page-url (or DD_PAGE_URL) is required");
@@ -922,6 +950,17 @@ async function run() {
 
   const page = await context.newPage();
   page.setDefaultTimeout(timeoutMs);
+  // Downdetector submits the report with a POST to its indicators API and only
+  // then replaces the form with a thank-you. The public "most reported
+  // problems" breakdown on the status page is cached and does not update in
+  // the DOM right away, so the POST response is the authoritative signal that
+  // the report was actually accepted.
+  let reportPostStatus = null;
+  page.on("response", (res) => {
+    if (res.request().method() === "POST" && res.url().includes("/indicators")) {
+      reportPostStatus = res.status();
+    }
+  });
 
   console.log(`Navigating to ${pageUrl}...`);
   let lastError;
@@ -1126,68 +1165,45 @@ async function run() {
     process.exit(1);
   }
 
-  // Capture the category's report tally before submitting so we can confirm
-  // it actually increased (Downdetector sometimes shows a thank-you without
-  // counting).
+  // Capture the category's report tally before submitting, for the annotation.
   const beforeCount = await getReportCount(page, { category: selectedLabel });
 
+  // Selecting a category fires a POST to Downdetector's indicators API. Reset
+  // the captured status so only the response to THIS click counts.
+  reportPostStatus = null;
   await indicatorBtn.click();
 
-  // Poll for the report count to actually increase, backing off between
-  // reads (Downdetector often lags before reflecting a new report). Give up
-  // only after the budget is exhausted; never claim success on an unchanged
-  // count. When the count cannot be read at all, fall through to the
-  // thank-you / dialog-closed heuristics.
-  let success = false;
-  let afterCount = null;
-  const backoffDelays = [1000, 2000, 3000, 5000];
-  const pollDeadline = Date.now() + 30000;
-  let pollIndex = 0;
-  while (Date.now() < pollDeadline && !success) {
-    const delay = backoffDelays[Math.min(pollIndex, backoffDelays.length - 1)];
-    await page.waitForTimeout(delay);
-    pollIndex += 1;
-    afterCount = await getReportCount(page, { category: selectedLabel });
-    if (beforeCount !== null && afterCount !== null) {
-      if (hasReportCountIncreased(beforeCount, afterCount)) {
-        success = true;
-        break;
-      }
-      // The global tally may stay unchanged (e.g. J:COM) even though
-      // Downdetector shows a thank-you message, so check the page-level
-      // success indicators before continuing to poll.
-      if (await determineSuccess(page, beforeCount, afterCount)) {
-        success = true;
-        break;
-      }
-    } else {
-      // Count unavailable: stop polling and fall back to heuristics.
-      break;
-    }
+  // The POST can take several seconds; wait for it before deciding the result.
+  const postDeadline = Date.now() + 30000;
+  while (reportPostStatus === null && Date.now() < postDeadline) {
+    await page.waitForTimeout(1000);
   }
-  if (!success) {
-    success = await determineSuccess(page, beforeCount, afterCount);
-  }
+  const accepted = reportPostStatus !== null &&
+    reportPostStatus >= 200 && reportPostStatus < 300;
 
-  // Downdetector often keeps showing the pre-submission tally in the DOM
-  // after a successful report, so reload the page and re-read the count
-  // before reporting it (avoids a stale "before -> before" annotation).
+  // Re-read the public tally for the annotation. Use a normal reload so we
+  // stay on the same rendered page; the breakdown is cached and may still show
+  // the old number, which is why the POST response is authoritative.
+  let afterCount = null;
   if (beforeCount !== null) {
     try {
       await page.reload({ waitUntil, timeout: timeoutMs });
       await page.waitForTimeout(5000);
       const refreshed = await getReportCount(page, { category: selectedLabel });
-      // Never overwrite a confirmed increase with a stale (lower) tally.
-      if (refreshed !== null && (afterCount === null || refreshed >= afterCount)) {
+      // Never regress to a lower/stale tally from a partially loaded page.
+      if (refreshed !== null && refreshed >= (afterCount ?? Number.NEGATIVE_INFINITY)) {
         afterCount = refreshed;
       }
     } catch {}
   }
-  // A reload may reflect the updated tally only after the initial polling
-  // window, so re-evaluate success once the refreshed count is known.
-  if (!success && beforeCount !== null && afterCount !== null &&
-      hasReportCountIncreased(beforeCount, afterCount)) {
-    success = true;
+  const countIncreased = beforeCount !== null && afterCount !== null &&
+    hasReportCountIncreased(beforeCount, afterCount);
+
+  let success = accepted || countIncreased;
+  if (!success) {
+    // No POST was observed and the tally did not move; fall back to the
+    // on-page confirmation heuristics.
+    success = await determineSuccess({ page, beforeCount, afterCount });
   }
 
   // Emit one well-formed annotation with the category tally before and after
@@ -1201,7 +1217,13 @@ async function run() {
 
   if (success) {
     markReported(stateFile, { nowSec: now() });
-    console.log(`Report submitted successfully (${indicatorLabel}, problem=${problemType})`);
+    if (countIncreased) {
+      console.log(`Report submitted successfully; count increased ${beforeCount} -> ${afterCount} (${indicatorLabel}, problem=${problemType})`);
+    } else if (accepted) {
+      console.log(`Report accepted by Downdetector (HTTP ${reportPostStatus}); page tally remains ${afterCount ?? "unknown"} (${indicatorLabel}, problem=${problemType})`);
+    } else {
+      console.log(`Report submitted successfully (${indicatorLabel}, problem=${problemType})`);
+    }
     process.exit(0);
   } else {
     console.error("Report submission could not be confirmed");

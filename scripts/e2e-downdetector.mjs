@@ -28,6 +28,9 @@ function readConfig() {
 }
 
 function main() {
+  // E2E runs the real reporting flow and requires an actual Downdetector
+  // count increase, just like production (Sync). Allowing an unchanged
+  // tally to pass would hide a broken submission (issue #116).
   const cfg = readConfig();
   const dd = cfg.downdetector || {};
   const services = dd.services || {};
