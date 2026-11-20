@@ -1132,6 +1132,10 @@ async function run() {
       await indicatorBtn.waitFor({ state: "visible", timeout: perLabelTimeout });
     } catch {}
     console.log(`Selecting "${selectedCandidate}"...`);
+    try {
+      console.log("DEBUG matched radio html:", await indicatorBtn.evaluate((e) => e.outerHTML));
+      console.log("DEBUG all radio labels:", JSON.stringify(matchSource));
+    } catch (e) { console.log("DEBUG radio inspect err:", e.message); }
   } else {
     // Fall back to the original Playwright name-based matching in case the
     // radio accessible names differ from their visible text.
@@ -1172,7 +1176,9 @@ async function run() {
   try {
     const txt = await page.innerText("body");
     console.log("DEBUG thank-you visible:", /ありがとう|thank you/i.test(String(txt)));
-  } catch {}
+    console.log("DEBUG after-click url:", page.url(), "title:", await page.title());
+    console.log("DEBUG after-click matched html:", await indicatorBtn.evaluate((e) => e.outerHTML));
+  } catch (e) { console.log("DEBUG after-click inspect err:", e.message); }
 
   // Poll for the report count to actually increase. Downdetector often keeps
   // showing the pre-submission tally in the DOM after a successful report, so
