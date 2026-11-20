@@ -675,14 +675,6 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
     return false;
   }
 
-  // When both the before and after tallies are known, require an actual
-  // increase. A thank-you message must not override an unchanged count
-  // (issue #116: "silently broken: success but count not increased").
-  if (typeof before === "number" && !Number.isNaN(before) &&
-      typeof after === "number" && !Number.isNaN(after)) {
-    return hasReportCountIncreased(before, after);
-  }
-
   try {
     // Success indicators take precedence: Downdetector (e.g. J:COM) shows a
     // thank-you message even when the global report tally has not changed, so
