@@ -951,10 +951,9 @@ async function run() {
   const page = await context.newPage();
   page.setDefaultTimeout(timeoutMs);
   // Downdetector submits the report with a POST to its indicators API and only
-  // then replaces the form with a thank-you. The public "most reported
-  // problems" breakdown on the status page is cached and does not update in
-  // the DOM right away, so the POST response is the authoritative signal that
-  // the report was actually accepted.
+  // then replaces the form with a thank-you. We capture the response status
+  // for diagnostics, but it is NOT treated as proof of success: the public
+  // tally must increase (see issue #126).
   let reportPostStatus = null;
   page.on("response", (res) => {
     if (res.request().method() === "POST" && res.url().includes("/indicators")) {
@@ -1183,7 +1182,7 @@ async function run() {
 
   // Re-read the public tally for the annotation. Use a normal reload so we
   // stay on the same rendered page; the breakdown is cached and may still show
-  // the old number, which is why the POST response is authoritative.
+  // the old number. The POST response alone is not authoritative (issue #126).
   let afterCount = null;
   if (beforeCount !== null) {
     try {
@@ -1199,10 +1198,13 @@ async function run() {
   const countIncreased = beforeCount !== null && afterCount !== null &&
     hasReportCountIncreased(beforeCount, afterCount);
 
-  let success = accepted || countIncreased;
+  // A POST that returns 2xx is not proof the report was recorded: Downdetector
+  // can accept the request (rate-limit/dedupe) without incrementing the public
+  // tally. The tally is the ground truth, so an unchanged count is never a
+  // success, even when the API responded 2xx (issue #126). Fall back to the
+  // on-page heuristics only when no tally is available.
+  let success = countIncreased;
   if (!success) {
-    // No POST was observed and the tally did not move; fall back to the
-    // on-page confirmation heuristics.
     success = await determineSuccess({ page, beforeCount, afterCount });
   }
 
@@ -1219,14 +1221,16 @@ async function run() {
     markReported(stateFile, { nowSec: now() });
     if (countIncreased) {
       console.log(`Report submitted successfully; count increased ${beforeCount} -> ${afterCount} (${indicatorLabel}, problem=${problemType})`);
-    } else if (accepted) {
-      console.log(`Report accepted by Downdetector (HTTP ${reportPostStatus}); page tally remains ${afterCount ?? "unknown"} (${indicatorLabel}, problem=${problemType})`);
     } else {
       console.log(`Report submitted successfully (${indicatorLabel}, problem=${problemType})`);
     }
     process.exit(0);
   } else {
-    console.error("Report submission could not be confirmed");
+    if (accepted) {
+      console.error(`Report not recorded: Downdetector returned HTTP ${reportPostStatus} but the public tally stayed ${beforeCount ?? "unknown"} -> ${afterCount ?? "unknown"} (${indicatorLabel}, problem=${problemType})`);
+    } else {
+      console.error("Report submission could not be confirmed");
+    }
     process.exit(1);
   }
 }
