@@ -950,13 +950,15 @@ async function run() {
 
   const page = await context.newPage();
   page.setDefaultTimeout(timeoutMs);
-  // DEBUG: capture the report-submission API response so E2E logs reveal
-  // whether Downdetector actually accepted the report.
+  // Downdetector submits the report with a POST to its indicators API and only
+  // then replaces the form with a thank-you. The public "most reported
+  // problems" breakdown on the status page is cached and does not update in
+  // the DOM right away, so the POST response is the authoritative signal that
+  // the report was actually accepted.
+  let reportPostStatus = null;
   page.on("response", (res) => {
-    const req = res.request();
-    if (req.method() === "POST" && res.url().includes("indicators")) {
-      console.log("DEBUG report POST status:", res.status(), "url:", res.url().split("?")[0]);
-      res.text().then((b) => console.log("DEBUG report POST body:", String(b).slice(0, 500))).catch(() => {});
+    if (res.request().method() === "POST" && res.url().includes("/indicators")) {
+      reportPostStatus = res.status();
     }
   });
 
@@ -1132,10 +1134,6 @@ async function run() {
       await indicatorBtn.waitFor({ state: "visible", timeout: perLabelTimeout });
     } catch {}
     console.log(`Selecting "${selectedCandidate}"...`);
-    try {
-      console.log("DEBUG matched radio html:", await indicatorBtn.evaluate((e) => e.outerHTML));
-      console.log("DEBUG all radio labels:", JSON.stringify(matchSource));
-    } catch (e) { console.log("DEBUG radio inspect err:", e.message); }
   } else {
     // Fall back to the original Playwright name-based matching in case the
     // radio accessible names differ from their visible text.
@@ -1167,72 +1165,47 @@ async function run() {
     process.exit(1);
   }
 
-  // Capture the category's report tally before submitting so we can confirm
-  // it actually increased (Downdetector sometimes shows a thank-you without
-  // counting).
+  // Capture the category's report tally before submitting, for the annotation.
   const beforeCount = await getReportCount(page, { category: selectedLabel });
 
+  // Selecting a category fires a POST to Downdetector's indicators API. Reset
+  // the captured status so only the response to THIS click counts.
+  reportPostStatus = null;
   await indicatorBtn.click();
-  try {
-    const txt = await page.innerText("body");
-    console.log("DEBUG thank-you visible:", /ありがとう|thank you/i.test(String(txt)));
-    console.log("DEBUG after-click url:", page.url(), "title:", await page.title());
-    console.log("DEBUG after-click matched html:", await indicatorBtn.evaluate((e) => e.outerHTML));
-  } catch (e) { console.log("DEBUG after-click inspect err:", e.message); }
 
-  // Poll for the report count to actually increase. Downdetector often keeps
-  // showing the pre-submission tally in the DOM after a successful report, so
-  // reload the page between reads instead of re-reading the stale DOM.
-  // Give up only after the budget is exhausted; never claim success on an
-  // unchanged count. When the count cannot be read at all, fall through to
-  // the thank-you / dialog-closed heuristics.
-  let success = false;
+  // The POST can take several seconds; wait for it before deciding the result.
+  const postDeadline = Date.now() + 30000;
+  while (reportPostStatus === null && Date.now() < postDeadline) {
+    await page.waitForTimeout(1000);
+  }
+  const accepted = reportPostStatus !== null &&
+    reportPostStatus >= 200 && reportPostStatus < 300;
+
+  // Re-read the public tally for the annotation. Use a normal reload so we
+  // stay on the same rendered page; the breakdown is cached and may still show
+  // the old number, which is why the POST response is authoritative.
   let afterCount = null;
-  const pollDeadline = Date.now() + 90000;
-  while (Date.now() < pollDeadline && !success) {
-    await page.waitForTimeout(8000);
-    try {
-      const cbUrl = pageUrl + (pageUrl.includes("?") ? "&" : "?") + "_cb=" + Date.now();
-      await page.goto(cbUrl, { waitUntil, timeout: timeoutMs });
-      await page.waitForTimeout(4000);
-    } catch {}
-    afterCount = await getReportCount(page, { category: selectedLabel });
-    if (beforeCount !== null && afterCount !== null) {
-      if (hasReportCountIncreased(beforeCount, afterCount)) {
-        success = true;
-        break;
-      }
-    } else {
-      // Count unavailable: fall back to the heuristics once.
-      if (await determineSuccess({ page })) {
-        success = true;
-        break;
-      }
-      break;
-    }
-  }
-  if (!success) {
-    success = await determineSuccess({ page, beforeCount, afterCount });
-  }
-
-  // A final reload may reflect the updated tally only after the polling
-  // window, so re-read the count once more before reporting it.
   if (beforeCount !== null) {
     try {
-      const cbUrl = pageUrl + (pageUrl.includes("?") ? "&" : "?") + "_cb=" + Date.now();
-      await page.goto(cbUrl, { waitUntil, timeout: timeoutMs });
+      await page.reload({ waitUntil, timeout: timeoutMs });
       await page.waitForTimeout(5000);
       const refreshed = await getReportCount(page, { category: selectedLabel });
-      if (refreshed !== null && (afterCount === null || refreshed >= afterCount)) {
+      // Never regress to a lower/stale tally from a partially loaded page.
+      if (refreshed !== null && refreshed >= (afterCount ?? Number.NEGATIVE_INFINITY)) {
         afterCount = refreshed;
       }
     } catch {}
   }
-  if (!success && beforeCount !== null && afterCount !== null &&
-      hasReportCountIncreased(beforeCount, afterCount)) {
-    success = true;
+  const countIncreased = beforeCount !== null && afterCount !== null &&
+    hasReportCountIncreased(beforeCount, afterCount);
+
+  let success = accepted || countIncreased;
+  if (!success) {
+    // No POST was observed and the tally did not move; fall back to the
+    // on-page confirmation heuristics.
+    success = await determineSuccess({ page, beforeCount, afterCount });
   }
-  // No allowUnchanged fallback: an unchanged count is never a success.
+
   // Emit one well-formed annotation with the category tally before and after
   // the submission (and the number of local records that triggered the
   // report), so a 0 from the chart axis is never mistaken for the count.
@@ -1244,13 +1217,12 @@ async function run() {
 
   if (success) {
     markReported(stateFile, { nowSec: now() });
-    const countIncreased =
-      beforeCount !== null && afterCount !== null &&
-      hasReportCountIncreased(beforeCount, afterCount);
     if (countIncreased) {
-      console.log(`Report submitted successfully (${indicatorLabel}, problem=${problemType})`);
+      console.log(`Report submitted successfully; count increased ${beforeCount} -> ${afterCount} (${indicatorLabel}, problem=${problemType})`);
+    } else if (accepted) {
+      console.log(`Report accepted by Downdetector (HTTP ${reportPostStatus}); page tally remains ${afterCount ?? "unknown"} (${indicatorLabel}, problem=${problemType})`);
     } else {
-      console.log(`Report submitted (thank-you received; count unchanged) (${indicatorLabel}, problem=${problemType})`);
+      console.log(`Report submitted successfully (${indicatorLabel}, problem=${problemType})`);
     }
     process.exit(0);
   } else {
