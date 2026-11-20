@@ -1107,6 +1107,14 @@ async function run() {
     }
   }
   const normalizedAvailable = extractAvailableCategories(accessibleTexts);
+  try {
+    const outer = await radiosLocator.evaluateAll((els) => els.map((e) => e.outerHTML));
+    console.log("DEBUG radios outerHTML:", JSON.stringify(outer));
+  } catch (e) { console.log("DEBUG radios outerHTML err:", e.message); }
+  try {
+    const btns = page.getByRole("button");
+    console.log("DEBUG buttons:", JSON.stringify(await btns.allInnerTexts()));
+  } catch (e) { console.log("DEBUG buttons err:", e.message); }
 
   let indicatorBtn = null;
   let selectedLabel = null;
@@ -1160,6 +1168,12 @@ async function run() {
   const beforeCount = await getReportCount(page, { category: selectedLabel });
 
   await indicatorBtn.click();
+  console.log("DEBUG clicked; waiting 5s...");
+  await page.waitForTimeout(5000);
+  try {
+    const txt = await page.innerText("body");
+    console.log("DEBUG body text (first 1500):", String(txt).slice(0,1500));
+  } catch (e) { console.log("DEBUG body text err:", e.message); }
 
   // Poll for the report count to actually increase, backing off between
   // reads (Downdetector often lags before reflecting a new report). Give up
