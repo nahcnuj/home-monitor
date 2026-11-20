@@ -1439,26 +1439,19 @@ export function formatAnnotation(...args) {
   const details = [];
   if (count !== null) {
     details.push(`records=${count}`);
-    details.push(`count=${count}`);
-    details.push(`${count} records`);
   }
   if (problemType !== null) details.push(`problem=${problemType}`);
   if (status !== null) {
     details.push(`status=${status}`);
-    details.push(`HTTP ${status}`);
   }
   if (accepted === true) {
-    details.push("accepted");
     details.push("accepted=true");
   } else if (accepted === false) {
-    details.push("not-accepted");
     details.push("accepted=false");
   }
   if (success === true) {
-    details.push("success");
     details.push("success=true");
   } else if (success === false) {
-    details.push("failed");
     details.push("success=false");
   }
 
