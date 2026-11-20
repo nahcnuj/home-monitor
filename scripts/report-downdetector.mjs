@@ -1173,7 +1173,8 @@ async function run() {
   while (Date.now() < pollDeadline && !success) {
     await page.waitForTimeout(8000);
     try {
-      await page.reload({ waitUntil, timeout: timeoutMs });
+      const cbUrl = pageUrl + (pageUrl.includes("?") ? "&" : "?") + "_cb=" + Date.now();
+      await page.goto(cbUrl, { waitUntil, timeout: timeoutMs });
       await page.waitForTimeout(4000);
     } catch {}
     afterCount = await getReportCount(page, { category: selectedLabel });
@@ -1199,7 +1200,8 @@ async function run() {
   // window, so re-read the count once more before reporting it.
   if (beforeCount !== null) {
     try {
-      await page.reload({ waitUntil, timeout: timeoutMs });
+      const cbUrl = pageUrl + (pageUrl.includes("?") ? "&" : "?") + "_cb=" + Date.now();
+      await page.goto(cbUrl, { waitUntil, timeout: timeoutMs });
       await page.waitForTimeout(5000);
       const refreshed = await getReportCount(page, { category: selectedLabel });
       if (refreshed !== null && (afterCount === null || refreshed >= afterCount)) {
