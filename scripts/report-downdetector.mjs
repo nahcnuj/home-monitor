@@ -1407,7 +1407,13 @@ export function readAnnotationArgs(args) {
  */
 export function formatAnnotation(...args) {
   const logFn = args.find((a) => typeof a === "function");
-  const { before, after, count, label, problemType, accepted, success, status } = readAnnotationArgs(args);
+  const parsed = readAnnotationArgs(args);
+  let { before, after, count, label, problemType, accepted, success, status } = parsed;
+  // An HTTP 2xx is an accepted report, so reflect that in the annotation even
+  // when no explicit `accepted` flag was supplied.
+  if (accepted === null && typeof status === "number" && status >= 200 && status < 300) {
+    accepted = true;
+  }
 
   let summary;
   if (before !== null && after !== null) {
