@@ -79,6 +79,8 @@ export function chartTickStep(rangeSec: number, compact = false): number {
 export interface ChartTimeBoundsOptions {
   /** Earliest record timestamp (unix sec). Extends the chart left so history is scrollable. */
   dataMinTs?: number;
+  /** Latest record timestamp (unix sec). Short ranges (30m/1h) end at this instead of wall-clock now. */
+  dataMaxTs?: number;
   /** Hard floor from config; never draw older than this. */
   dataCutoffTs?: number;
 }
@@ -97,11 +99,18 @@ export function chartTimeBounds(
   const now = nowSec ?? Math.floor(Date.now() / 1000);
   const viewportSec = displayRangeSec;
   const useCompact = compact ?? isCompactChartLayout();
+  // For the short ranges (30m / 1h) prefer the latest data timestamp so the
+  // window shows the most recent data that actually exists; fall back to now.
+  const dataMaxTs = options?.dataMaxTs;
+  const shortRangeRef =
+    dataMaxTs != null && Number.isFinite(dataMaxTs) ? dataMaxTs : now;
   let max: number;
   if (viewportSec > DAY_SEC) {
     max = nextJstDay(now);
   } else if (viewportSec < HOUR_SEC) {
-    max = ceilToMinute(now);
+    max = ceilToMinute(shortRangeRef);
+  } else if (viewportSec === HOUR_SEC) {
+    max = ceilToJstHour(shortRangeRef);
   } else {
     max = ceilToJstHour(now);
   }
