@@ -301,14 +301,10 @@ jobs:
                     text: "*実行者:*\n${{ github.actor }}"
                   - type: mrkdwn
                     text: "*イベント:*\n`${{ github.event_name }}`"
-              - type: actions
-                elements:
-                  - type: button
-                    text:
-                      type: plain_text
-                      text: "実行結果を見る"
-                      emoji: true
-                    url: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|実行結果を見る>"
               - type: context
                 elements:
                   - type: mrkdwn
