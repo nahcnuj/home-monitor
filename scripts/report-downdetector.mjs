@@ -950,6 +950,15 @@ async function run() {
 
   const page = await context.newPage();
   page.setDefaultTimeout(timeoutMs);
+  // DEBUG: capture the report-submission API response so E2E logs reveal
+  // whether Downdetector actually accepted the report.
+  page.on("response", (res) => {
+    const req = res.request();
+    if (req.method() === "POST" && res.url().includes("indicators")) {
+      console.log("DEBUG report POST status:", res.status(), "url:", res.url().split("?")[0]);
+      res.text().then((b) => console.log("DEBUG report POST body:", String(b).slice(0, 500))).catch(() => {});
+    }
+  });
 
   console.log(`Navigating to ${pageUrl}...`);
   let lastError;
@@ -1160,6 +1169,10 @@ async function run() {
   const beforeCount = await getReportCount(page, { category: selectedLabel });
 
   await indicatorBtn.click();
+  try {
+    const txt = await page.innerText("body");
+    console.log("DEBUG thank-you visible:", /ありがとう|thank you/i.test(String(txt)));
+  } catch {}
 
   // Poll for the report count to actually increase. Downdetector often keeps
   // showing the pre-submission tally in the DOM after a successful report, so
