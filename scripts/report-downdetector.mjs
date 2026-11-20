@@ -904,11 +904,9 @@ async function run() {
     waitUntil,
     maxRetries,
     channel,
-    allowUnchangedCount,
   } = buildOptions(process.argv.slice(2), process.env);
-  // E2E smoke mode may verify the submission path (thank-you) even when the
-  // Downdetector tally does not increase; production never sets this.
-  const e2eMode = process.env.DD_E2E === "1";
+  // Count increases are required for success in every mode (production and
+  // E2E): an unchanged Downdetector tally is never a success (issue #116).
 
   if (!pageUrl) {
     console.error("Error: --page-url (or DD_PAGE_URL) is required");
@@ -1183,14 +1181,8 @@ async function run() {
         success = true;
         break;
       }
-      // In E2E smoke mode the tally may legitimately stay unchanged, so
-      // allow the thank-you heuristics to confirm the submission path.
-      if (e2eMode && await determineSuccess({ page })) {
-        success = true;
-        break;
-      }
-      // Production: keep polling for a count increase; never trust a
-      // thank-you on an unchanged tally.
+      // Keep polling for a count increase; never trust a thank-you on an
+      // unchanged tally (issue #116).
     } else {
       // Count unavailable: fall back to the heuristics.
       if (await determineSuccess({ page })) {
@@ -1201,11 +1193,7 @@ async function run() {
     }
   }
   if (!success) {
-    if (e2eMode) {
-      success = await determineSuccess({ page });
-    } else {
-      success = await determineSuccess({ page, beforeCount, afterCount });
-    }
+    success = await determineSuccess({ page, beforeCount, afterCount });
   }
 
   // Downdetector often keeps showing the pre-submission tally in the DOM

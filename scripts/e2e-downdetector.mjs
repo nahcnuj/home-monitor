@@ -28,11 +28,9 @@ function readConfig() {
 }
 
 function main() {
-  // E2E verifies the submission path (thank-you) rather than a real-time
-  // count increase, which Downdetector often does not reflect for repeated
-  // reports from the same runner.
-  process.env.DD_E2E = "1";
-  process.env.DD_ALLOW_UNCHANGED_COUNT = "1";
+  // E2E runs the real reporting flow and requires an actual Downdetector
+  // count increase, just like production (Sync). Allowing an unchanged
+  // tally to pass would hide a broken submission (issue #116).
   const cfg = readConfig();
   const dd = cfg.downdetector || {};
   const services = dd.services || {};
