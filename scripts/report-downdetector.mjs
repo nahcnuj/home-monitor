@@ -1414,6 +1414,14 @@ export function formatAnnotation(...args) {
   if (accepted === null && typeof status === "number" && status >= 200 && status < 300) {
     accepted = true;
   }
+  // "success" (a report that actually moved the public tally) must agree with
+  // the before/after counts: an unchanged tally is never a success, even when
+  // Downdetector returned HTTP 2xx (issue #131). Accepted (HTTP 2xx) is a
+  // separate, weaker signal and is reported on its own.
+  if (typeof before === "number" && !Number.isNaN(before) &&
+      typeof after === "number" && !Number.isNaN(after)) {
+    success = after > before;
+  }
 
   let summary;
   if (before !== null && after !== null) {
