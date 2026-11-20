@@ -1414,6 +1414,11 @@ export function formatAnnotation(...args) {
   if (accepted === null && typeof status === "number" && status >= 200 && status < 300) {
     accepted = true;
   }
+  // `success` is supplied by the caller (the report job's overall outcome:
+  // accepted by Downdetector OR the public tally increased). Keep it as-is so
+  // the annotation agrees with the job result instead of being recomputed from
+  // the tally alone (issue #131): an accepted report can succeed even when
+  // the cached public tally has not moved yet.
 
   let summary;
   if (before !== null && after !== null) {
@@ -1428,35 +1433,25 @@ export function formatAnnotation(...args) {
     summary = "report count: unknown";
   }
 
-  const details = [];
-  if (count !== null) {
-    details.push(`records=${count}`);
-    details.push(`count=${count}`);
-    details.push(`${count} records`);
-  }
-  if (problemType !== null) details.push(`problem=${problemType}`);
-  if (status !== null) {
-    details.push(`status=${status}`);
-    details.push(`HTTP ${status}`);
-  }
-  if (accepted === true) {
-    details.push("accepted");
-    details.push("accepted=true");
-  } else if (accepted === false) {
-    details.push("not-accepted");
-    details.push("accepted=false");
-  }
-  if (success === true) {
-    details.push("success");
-    details.push("success=true");
-  } else if (success === false) {
-    details.push("failed");
-    details.push("success=false");
-  }
-
+  // Report only whether the network problem was reported or not; the
+  // diagnostic key=value enumeration only confused readers (issue #131).
   const subject = label ? `${label}: ` : "";
-  const detail = details.length > 0 ? ` (${details.join("; ")})` : "";
-  const annotation = `::notice::Downdetector ${subject}${summary}${detail}`;
+  let outcome = "";
+  if (success === true) outcome = "reported (success)";
+  else if (success === false) outcome = "not reported (failed)";
+
+  const extras = [];
+  if (count !== null && before !== null && after !== null) {
+    extras.push(`${count} local records`);
+  }
+  const detail = extras.length > 0 ? ` (${extras.join(", ")})` : "";
+
+  let annotation;
+  if (outcome) {
+    annotation = `::notice::Downdetector ${subject}network problem ${outcome}: ${summary}${detail}`;
+  } else {
+    annotation = `::notice::Downdetector ${subject}${summary}${detail}`;
+  }
 
   if (logFn) {
     try { logFn(annotation); } catch {}
