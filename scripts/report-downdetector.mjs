@@ -1414,14 +1414,11 @@ export function formatAnnotation(...args) {
   if (accepted === null && typeof status === "number" && status >= 200 && status < 300) {
     accepted = true;
   }
-  // "success" (a report that actually moved the public tally) must agree with
-  // the before/after counts: an unchanged tally is never a success, even when
-  // Downdetector returned HTTP 2xx (issue #131). Accepted (HTTP 2xx) is a
-  // separate, weaker signal and is reported on its own.
-  if (typeof before === "number" && !Number.isNaN(before) &&
-      typeof after === "number" && !Number.isNaN(after)) {
-    success = after > before;
-  }
+  // `success` is supplied by the caller (the report job's overall outcome:
+  // accepted by Downdetector OR the public tally increased). Keep it as-is so
+  // the annotation agrees with the job result instead of being recomputed from
+  // the tally alone (issue #131): an accepted report can succeed even when
+  // the cached public tally has not moved yet.
 
   let summary;
   if (before !== null && after !== null) {
