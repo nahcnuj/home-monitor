@@ -589,14 +589,10 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
   let page = pageOrOptions;
   let before = beforeCount;
   let after = afterCount;
-  let allowUnchanged = false;
-  const envAllow =
-    process.env.DD_ALLOW_UNCHANGED_COUNT !== undefined
-      ? process.env.DD_ALLOW_UNCHANGED_COUNT !== "false" && process.env.DD_ALLOW_UNCHANGED_COUNT !== "0"
-      : process.env.DD_ALLOW_UNCHANGED !== undefined
-        ? process.env.DD_ALLOW_UNCHANGED !== "false" && process.env.DD_ALLOW_UNCHANGED !== "0"
-        : false;
-  if (envAllow) allowUnchanged = true;
+  // Count increases are required for success. Thank-you/dialog heuristics are
+  // only consulted when the report tally is unavailable, so an unchanged
+  // count can never be reported as a success (issue #116).
+  const allowUnchanged = false;
   const isOptionObject =
     pageOrOptions && typeof pageOrOptions === "object" && !Array.isArray(pageOrOptions) &&
     (pageOrOptions.page !== undefined || pageOrOptions.pageObject !== undefined ||
@@ -618,9 +614,8 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
     after = pageOrOptions.afterCount ?? pageOrOptions.after ?? pageOrOptions.after_count ??
       pageOrOptions.countAfter ?? pageOrOptions.currentCount ?? pageOrOptions.current ??
       pageOrOptions.newCount ?? pageOrOptions.endCount ?? afterCount;
-    const au = pageOrOptions.allowUnchanged ?? pageOrOptions.allowUnchangedCount ??
-      pageOrOptions.allow_unchanged ?? pageOrOptions.trustThankYou;
-    if (au !== undefined && au !== null) allowUnchanged = au === true || au === "true" || au === "1" || au === 1;
+    // allowUnchanged is intentionally ignored: an unchanged count is never a
+    // success (issue #116 review feedback).
   }
   if (beforeCount && typeof beforeCount === "object" && !Array.isArray(beforeCount)) {
     before = beforeCount.beforeCount ?? beforeCount.before ?? beforeCount.before_count ??
@@ -629,9 +624,7 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
     after = beforeCount.afterCount ?? beforeCount.after ?? beforeCount.after_count ??
       beforeCount.countAfter ?? beforeCount.currentCount ?? beforeCount.current ??
       beforeCount.newCount ?? beforeCount.endCount ?? after;
-    const au2 = beforeCount.allowUnchanged ?? beforeCount.allowUnchangedCount ??
-      beforeCount.allow_unchanged ?? beforeCount.trustThankYou;
-    if (au2 !== undefined && au2 !== null) allowUnchanged = au2 === true || au2 === "true" || au2 === "1" || au2 === 1;
+    // allowUnchanged is intentionally ignored (issue #116 review feedback).
   }
   if (typeof before === "string") {
     const cleaned = before.replace(/[,\s]/g, "");
@@ -703,14 +696,12 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
     return false;
   }
 
-  // When both the before and after tallies are known, require an actual
-  // increase. A thank-you message must not override an unchanged count
-  // (issue #116: "silently broken: success but count not increased").
+  // When both the before and after tallies are known, success requires an
+  // actual increase. A thank-you message must never override an unchanged
+  // count (issue #116: "silently broken: success but count not increased").
   if (typeof before === "number" && !Number.isNaN(before) &&
       typeof after === "number" && !Number.isNaN(after)) {
-    if (hasReportCountIncreased(before, after)) return true;
-    if (!allowUnchanged) return false;
-    // allowUnchanged: fall through to the thank-you heuristics below.
+    return hasReportCountIncreased(before, after);
   }
 
   try {
@@ -788,13 +779,7 @@ export async function determineSuccess(pageOrOptions, beforeCount, afterCount) {
     // indicator is visible.
     if (typeof before === "number" && !Number.isNaN(before) &&
         typeof after === "number" && !Number.isNaN(after)) {
-      if (hasReportCountIncreased(before, after)) return true;
-      if (!allowUnchanged) {
-        // An unchanged count is a failure when both tallies are known (issue
-        // #116): do not fall through to the dialog-closed heuristics.
-        return false;
-      }
-      // allowUnchanged: fall through to the thank-you / dialog heuristics.
+      return hasReportCountIncreased(before, after);
     }
 
     // Also check if the report dialog closed (implicit success)
@@ -921,7 +906,9 @@ async function run() {
     channel,
     allowUnchangedCount,
   } = buildOptions(process.argv.slice(2), process.env);
-  const allowUnchanged = Boolean(allowUnchangedCount);
+  // E2E smoke mode may verify the submission path (thank-you) even when the
+  // Downdetector tally does not increase; production never sets this.
+  const e2eMode = process.env.DD_E2E === "1";
 
   if (!pageUrl) {
     console.error("Error: --page-url (or DD_PAGE_URL) is required");
@@ -1196,20 +1183,29 @@ async function run() {
         success = true;
         break;
       }
-      // The global tally may stay unchanged (e.g. J:COM) even though
-      // Downdetector shows a thank-you message, so check the page-level
-      // success indicators before continuing to poll.
-      if (await determineSuccess({ page, beforeCount, afterCount, allowUnchangedCount: allowUnchanged })) {
+      // In E2E smoke mode the tally may legitimately stay unchanged, so
+      // allow the thank-you heuristics to confirm the submission path.
+      if (e2eMode && await determineSuccess({ page })) {
         success = true;
         break;
       }
+      // Production: keep polling for a count increase; never trust a
+      // thank-you on an unchanged tally.
     } else {
-      // Count unavailable: stop polling and fall back to heuristics.
+      // Count unavailable: fall back to the heuristics.
+      if (await determineSuccess({ page })) {
+        success = true;
+        break;
+      }
       break;
     }
   }
   if (!success) {
-    success = await determineSuccess({ page, beforeCount, afterCount, allowUnchangedCount: allowUnchanged });
+    if (e2eMode) {
+      success = await determineSuccess({ page });
+    } else {
+      success = await determineSuccess({ page, beforeCount, afterCount });
+    }
   }
 
   // Downdetector often keeps showing the pre-submission tally in the DOM
@@ -1232,10 +1228,7 @@ async function run() {
       hasReportCountIncreased(beforeCount, afterCount)) {
     success = true;
   }
-  if (!success && allowUnchanged) {
-    success = await determineSuccess({ page, beforeCount, afterCount, allowUnchangedCount: true });
-  }
-
+  // No allowUnchanged fallback: an unchanged count is never a success.
   // Emit one well-formed annotation with the category tally before and after
   // the submission (and the number of local records that triggered the
   // report), so a 0 from the chart axis is never mistaken for the count.
@@ -1247,7 +1240,14 @@ async function run() {
 
   if (success) {
     markReported(stateFile, { nowSec: now() });
-    console.log(`Report submitted successfully (${indicatorLabel}, problem=${problemType})`);
+    const countIncreased =
+      beforeCount !== null && afterCount !== null &&
+      hasReportCountIncreased(beforeCount, afterCount);
+    if (countIncreased) {
+      console.log(`Report submitted successfully (${indicatorLabel}, problem=${problemType})`);
+    } else {
+      console.log(`Report submitted (thank-you received; count unchanged) (${indicatorLabel}, problem=${problemType})`);
+    }
     process.exit(0);
   } else {
     console.error("Report submission could not be confirmed");
