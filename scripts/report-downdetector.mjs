@@ -1420,17 +1420,6 @@ export function formatAnnotation(...args) {
   // the tally alone (issue #131): an accepted report can succeed even when
   // the cached public tally has not moved yet.
 
-  // Whether the public tally actually moved. This is the basis for explaining
-  // `success` in the annotation: an unchanged tally with success=true means
-  // Downdetector accepted the report (HTTP 2xx) even though its cached
-  // tally has not caught up yet.
-  const countIncreased =
-    typeof before === "number" && !Number.isNaN(before) &&
-    typeof after === "number" && !Number.isNaN(after) && after > before;
-  const tallyUnchanged =
-    typeof before === "number" && !Number.isNaN(before) &&
-    typeof after === "number" && !Number.isNaN(after) && after === before;
-
   let summary;
   if (before !== null && after !== null) {
     summary = `report count before: ${before} → after: ${after}`;
@@ -1444,38 +1433,25 @@ export function formatAnnotation(...args) {
     summary = "report count: unknown";
   }
 
-  const details = [];
-  if (count !== null) {
-    details.push(`records=${count}`);
-  }
-  if (problemType !== null) details.push(`problem=${problemType}`);
-  if (status !== null) {
-    details.push(`status=${status}`);
-  }
-  if (accepted === true) {
-    details.push("accepted=true");
-  } else if (accepted === false) {
-    details.push("accepted=false");
-  }
-  if (success === true) {
-    if (countIncreased) {
-      details.push("success=true (count increased)");
-    } else if (accepted === true) {
-      details.push(`success=true (accepted by Downdetector${typeof status === "number" ? `, HTTP ${status}` : ""}; public tally unchanged)`);
-    } else {
-      details.push("success=true");
-    }
-  } else if (success === false) {
-    if (tallyUnchanged) {
-      details.push(`success=false (public tally unchanged${accepted === true ? "; Downdetector did not confirm" : ""})`);
-    } else {
-      details.push("success=false");
-    }
-  }
-
+  // Report only whether the network problem was reported or not; the
+  // diagnostic key=value enumeration only confused readers (issue #131).
   const subject = label ? `${label}: ` : "";
-  const detail = details.length > 0 ? ` (${details.join("; ")})` : "";
-  const annotation = `::notice::Downdetector ${subject}${summary}${detail}`;
+  let outcome = "";
+  if (success === true) outcome = "reported (success)";
+  else if (success === false) outcome = "not reported (failed)";
+
+  const extras = [];
+  if (count !== null && before !== null && after !== null) {
+    extras.push(`${count} local records`);
+  }
+  const detail = extras.length > 0 ? ` (${extras.join(", ")})` : "";
+
+  let annotation;
+  if (outcome) {
+    annotation = `::notice::Downdetector ${subject}network problem ${outcome}: ${summary}${detail}`;
+  } else {
+    annotation = `::notice::Downdetector ${subject}${summary}${detail}`;
+  }
 
   if (logFn) {
     try { logFn(annotation); } catch {}
