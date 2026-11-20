@@ -1107,14 +1107,6 @@ async function run() {
     }
   }
   const normalizedAvailable = extractAvailableCategories(accessibleTexts);
-  try {
-    const outer = await radiosLocator.evaluateAll((els) => els.map((e) => e.outerHTML));
-    console.log("DEBUG radios outerHTML:", JSON.stringify(outer));
-  } catch (e) { console.log("DEBUG radios outerHTML err:", e.message); }
-  try {
-    const btns = page.getByRole("button");
-    console.log("DEBUG buttons:", JSON.stringify(await btns.allInnerTexts()));
-  } catch (e) { console.log("DEBUG buttons err:", e.message); }
 
   let indicatorBtn = null;
   let selectedLabel = null;
@@ -1168,37 +1160,30 @@ async function run() {
   const beforeCount = await getReportCount(page, { category: selectedLabel });
 
   await indicatorBtn.click();
-  console.log("DEBUG clicked; waiting 5s...");
-  await page.waitForTimeout(5000);
-  try {
-    const txt = await page.innerText("body");
-    console.log("DEBUG body text (first 1500):", String(txt).slice(0,1500));
-  } catch (e) { console.log("DEBUG body text err:", e.message); }
 
-  // Poll for the report count to actually increase, backing off between
-  // reads (Downdetector often lags before reflecting a new report). Give up
-  // only after the budget is exhausted; never claim success on an unchanged
-  // count. When the count cannot be read at all, fall through to the
-  // thank-you / dialog-closed heuristics.
+  // Poll for the report count to actually increase. Downdetector often keeps
+  // showing the pre-submission tally in the DOM after a successful report, so
+  // reload the page between reads instead of re-reading the stale DOM.
+  // Give up only after the budget is exhausted; never claim success on an
+  // unchanged count. When the count cannot be read at all, fall through to
+  // the thank-you / dialog-closed heuristics.
   let success = false;
   let afterCount = null;
-  const backoffDelays = [1000, 2000, 3000, 5000];
-  const pollDeadline = Date.now() + 30000;
-  let pollIndex = 0;
+  const pollDeadline = Date.now() + 90000;
   while (Date.now() < pollDeadline && !success) {
-    const delay = backoffDelays[Math.min(pollIndex, backoffDelays.length - 1)];
-    await page.waitForTimeout(delay);
-    pollIndex += 1;
+    await page.waitForTimeout(8000);
+    try {
+      await page.reload({ waitUntil, timeout: timeoutMs });
+      await page.waitForTimeout(4000);
+    } catch {}
     afterCount = await getReportCount(page, { category: selectedLabel });
     if (beforeCount !== null && afterCount !== null) {
       if (hasReportCountIncreased(beforeCount, afterCount)) {
         success = true;
         break;
       }
-      // Keep polling for a count increase; never trust a thank-you on an
-      // unchanged tally (issue #116).
     } else {
-      // Count unavailable: fall back to the heuristics.
+      // Count unavailable: fall back to the heuristics once.
       if (await determineSuccess({ page })) {
         success = true;
         break;
@@ -1210,22 +1195,18 @@ async function run() {
     success = await determineSuccess({ page, beforeCount, afterCount });
   }
 
-  // Downdetector often keeps showing the pre-submission tally in the DOM
-  // after a successful report, so reload the page and re-read the count
-  // before reporting it (avoids a stale "before -> before" annotation).
+  // A final reload may reflect the updated tally only after the polling
+  // window, so re-read the count once more before reporting it.
   if (beforeCount !== null) {
     try {
       await page.reload({ waitUntil, timeout: timeoutMs });
       await page.waitForTimeout(5000);
       const refreshed = await getReportCount(page, { category: selectedLabel });
-      // Never overwrite a confirmed increase with a stale (lower) tally.
       if (refreshed !== null && (afterCount === null || refreshed >= afterCount)) {
         afterCount = refreshed;
       }
     } catch {}
   }
-  // A reload may reflect the updated tally only after the initial polling
-  // window, so re-evaluate success once the refreshed count is known.
   if (!success && beforeCount !== null && afterCount !== null &&
       hasReportCountIncreased(beforeCount, afterCount)) {
     success = true;
