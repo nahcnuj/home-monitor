@@ -1420,6 +1420,17 @@ export function formatAnnotation(...args) {
   // the tally alone (issue #131): an accepted report can succeed even when
   // the cached public tally has not moved yet.
 
+  // Whether the public tally actually moved. This is the basis for explaining
+  // `success` in the annotation: an unchanged tally with success=true means
+  // Downdetector accepted the report (HTTP 2xx) even though its cached
+  // tally has not caught up yet.
+  const countIncreased =
+    typeof before === "number" && !Number.isNaN(before) &&
+    typeof after === "number" && !Number.isNaN(after) && after > before;
+  const tallyUnchanged =
+    typeof before === "number" && !Number.isNaN(before) &&
+    typeof after === "number" && !Number.isNaN(after) && after === before;
+
   let summary;
   if (before !== null && after !== null) {
     summary = `report count before: ${before} → after: ${after}`;
@@ -1447,9 +1458,19 @@ export function formatAnnotation(...args) {
     details.push("accepted=false");
   }
   if (success === true) {
-    details.push("success=true");
+    if (countIncreased) {
+      details.push("success=true (count increased)");
+    } else if (accepted === true) {
+      details.push(`success=true (accepted by Downdetector${typeof status === "number" ? `, HTTP ${status}` : ""}; public tally unchanged)`);
+    } else {
+      details.push("success=true");
+    }
   } else if (success === false) {
-    details.push("success=false");
+    if (tallyUnchanged) {
+      details.push(`success=false (public tally unchanged${accepted === true ? "; Downdetector did not confirm" : ""})`);
+    } else {
+      details.push("success=false");
+    }
   }
 
   const subject = label ? `${label}: ` : "";
