@@ -352,9 +352,9 @@ describe("formatAnnotation", () => {
 
   it("supports positional numbers and a logger", () => {
     const logs = [];
-    const out = formatAnnotation(0, 0, 22, (msg) => logs.push(msg));
+    const out = formatAnnotation(0, 1, 22, (msg) => logs.push(msg));
     expect(out).toContain("before: 0");
-    expect(out).toContain("after: 0");
+    expect(out).toContain("after: 1");
     expect(logs).toEqual([out]);
   });
 
@@ -534,7 +534,7 @@ describe("formatAnnotation #133 unchanged count", () => {
     expect(out).toContain("reported (success)");
   });
 
-  it("annotates a failed unchanged report as not reported", () => {
+  it("does not annotate an unchanged count even when failed", () => {
     const out = formatAnnotation({
       beforeCount: 73,
       afterCount: 73,
@@ -542,6 +542,6 @@ describe("formatAnnotation #133 unchanged count", () => {
       category: "Broadband Internet",
       success: false,
     });
-    expect(out).toContain("not reported (failed)");
+    expect(out).toBeNull();
   });
 });
