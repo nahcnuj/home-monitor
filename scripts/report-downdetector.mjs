@@ -1435,9 +1435,15 @@ export function formatAnnotation(...args) {
 
   // Report only whether the network problem was reported or not; the
   // diagnostic key=value enumeration only confused readers (issue #131).
+  // An unchanged public tally is never annotated as a success, even when
+  // Downdetector accepted the report (HTTP 2xx): the count did not move, so
+  // claiming "reported (success)" for it is misleading (issue #133).
   const subject = label ? `${label}: ` : "";
+  const countUnchanged =
+    typeof before === "number" && !Number.isNaN(before) &&
+    typeof after === "number" && !Number.isNaN(after) && after === before;
   let outcome = "";
-  if (success === true) outcome = "reported (success)";
+  if (success === true && !countUnchanged) outcome = "reported (success)";
   else if (success === false) outcome = "not reported (failed)";
 
   const extras = [];
