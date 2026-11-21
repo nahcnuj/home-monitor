@@ -520,8 +520,7 @@ describe("formatAnnotation #133 unchanged count", () => {
       success: true,
       reportPostStatus: 200,
     });
-    expect(out).not.toContain("reported (success)");
-    expect(out).toContain("report count before: 73 → after: 73");
+    expect(out).toBeNull();
   });
 
   it("still annotates a changed count as a success", () => {
