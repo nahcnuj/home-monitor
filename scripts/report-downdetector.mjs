@@ -1447,8 +1447,10 @@ export function formatAnnotation(...args) {
   else if (success === false) outcome = "not reported (failed)";
 
   // An unchanged count is not annotated at all: the tally did not move, so
-  // printing "before: X -> after: X" only adds noise (issue #135).
-  if (countUnchanged && (success === true || accepted === true)) {
+  // printing "before: X -> after: X" only adds noise (issue #135, #137).
+  // This holds even for a failed report — the job result/Slack already
+  // carries the failure, so the annotation only repeats it.
+  if (countUnchanged) {
     return null;
   }
 
