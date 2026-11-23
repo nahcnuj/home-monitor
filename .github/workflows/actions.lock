@@ -8,7 +8,7 @@ workflows:
         - 'actions/checkout@v7'
         - 'actions/setup-node@v7'
     '.github/workflows/deploy-pages.yml':
-        - 'actions/cache@v5'
+        - 'actions/cache@v6'
         - 'actions/checkout@v7'
         - 'actions/configure-pages@v6'
         - 'actions/deploy-pages@v5'
@@ -18,7 +18,7 @@ workflows:
         - 'actions/checkout@v7'
         - 'actions/setup-node@v7'
     '.github/workflows/sync-dns-data.yml':
-        - 'actions/cache@v5'
+        - 'actions/cache@v6'
         - 'actions/checkout@v7'
         - 'actions/configure-pages@v6'
         - 'actions/deploy-pages@v5'
@@ -26,9 +26,9 @@ workflows:
         - 'actions/upload-pages-artifact@v5'
         - 'slackapi/slack-github-action@v4.0.0'
 dependencies:
-    'actions/cache@v5':
-        ref: 'v5'
-        commit: 'sha1-caa296126883cff596d87d8935842f9db880ef25'
+    'actions/cache@v6':
+        ref: 'v6'
+        commit: 'sha1-55cc8345863c7cc4c66a329aec7e433d2d1c52a9'
         owner_id: 44036562
         repo_id: 215566462
     'actions/checkout@v7':

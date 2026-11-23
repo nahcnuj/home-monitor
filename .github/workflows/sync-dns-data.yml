@@ -37,7 +37,7 @@ jobs:
           cache-dependency-path: source/package-lock.json
 
       - name: Restore published data
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: data-store
           key: data-store-restore-${{ github.run_id }}
@@ -220,7 +220,7 @@ jobs:
           fi
 
       - name: Save published data
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@v6
         with:
           path: data-store
           key: dns-data-${{ github.run_id }}
